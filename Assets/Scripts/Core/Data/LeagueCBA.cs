@@ -207,35 +207,6 @@ namespace NBAHeadCoach.Core.Data
         }
 
         // ==================== SUPERMAX ELIGIBILITY (2023 CBA) ====================
-        
-        /// <summary>
-        /// Checks if player is eligible for supermax (Designated Veteran Extension).
-        /// Requirements: 8-9 years in league + performance accolades.
-        /// </summary>
-        public static bool IsSuperMaxEligible(SupermaxCriteria criteria)
-        {
-            // Must be 8-9 years in league
-            if (criteria.YearsInLeague < 8 || criteria.YearsInLeague > 9)
-                return false;
-            
-            // Must be with drafting team (or traded within first 4 years)
-            if (!criteria.IsWithOriginalTeam)
-                return false;
-            
-            // Must meet at least one performance criteria:
-            // - All-NBA in prior season OR 2 of last 3 seasons
-            // - MVP in any of last 3 seasons
-            // - DPOY in prior season OR 2 of last 3 seasons
-            
-            if (criteria.AllNBALastSeason)
-                return true;
-            if (criteria.AllNBACount >= 2)
-                return true;
-            if (criteria.MVPLastThreeSeasons)
-                return true;
-            if (criteria.DPOYLastSeason)
-                return true;
-            if (criteria.DPOYCount >= 2)
                 return true;
             
             return false;
@@ -262,31 +233,6 @@ namespace NBAHeadCoach.Core.Data
         
         /// <summary>Trade deadline (2nd Thursday of February, simplified to Feb 8)</summary>
         public static DateTime GetTradeDeadline(int year) => new DateTime(year, 2, 8);
-        
-        /// <summary>
-        /// Checks if player can be traded based on when they were signed.
-        /// Players cannot be traded for 3 months after signing, or until Dec 15.
-        /// </summary>
-        public static bool CanPlayerBeTraded(DateTime signedDate, DateTime currentDate)
-        {
-            // Free agent signing restriction
-            var threeMonths = signedDate.AddMonths(3);
-            var dec15 = new DateTime(signedDate.Year, 12, 15);
-            var earliestTradeDate = threeMonths > dec15 ? threeMonths : dec15;
-            
-            return currentDate >= earliestTradeDate;
-        }
-        
-        /// <summary>
-        /// Checks if it's past the trade deadline.
-        /// </summary>
-        public static bool IsPastTradeDeadline(DateTime currentDate)
-        {
-            return currentDate > GetTradeDeadline(currentDate.Year);
-        }
-
-        // ==================== RFA MATCHING (2023 CBA) ====================
-        
         /// <summary>RFA offer sheet matching period (reduced to 24 hours in 2023 CBA)</summary>
         public const int RFA_MATCHING_HOURS = 24;
         

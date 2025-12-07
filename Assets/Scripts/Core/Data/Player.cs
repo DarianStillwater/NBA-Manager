@@ -18,6 +18,7 @@ namespace NBAHeadCoach.Core.Data
         public int JerseyNumber;
         public Position Position;
         public int Age;
+        public int YearsPro; // 0 = Rookie
         public float HeightInches; // e.g., 78 = 6'6"
         public float WeightLbs;
         public string SkinToneCode; // For 3D model customization (e.g., "TONE_03")
@@ -127,6 +128,19 @@ namespace NBAHeadCoach.Core.Data
         {
             float staminaMultiplier = Mathf.Lerp(1.5f, 0.5f, Stamina / 100f);
             Energy = Mathf.Max(0, Energy - (amount * staminaMultiplier));
+        }
+
+        // ==================== HISTORY & AWARDS ====================
+        public List<SeasonStats> CareerStats = new List<SeasonStats>();
+        public List<AwardHistory> Awards = new List<AwardHistory>();
+        
+        public SeasonStats CurrentSeasonStats 
+        {
+            get 
+            {
+                if (CareerStats == null || CareerStats.Count == 0) return null;
+                return CareerStats[CareerStats.Count - 1]; // Return current/latest season
+            }
         }
 
         /// <summary>

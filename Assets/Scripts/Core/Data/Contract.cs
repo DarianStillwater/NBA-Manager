@@ -19,12 +19,23 @@ namespace NBAHeadCoach.Core.Data
         Supermax           // Designated veteran extension (35% max)
     }
 
+    [Serializable]
+    public class ContractIncentive
+    {
+        public AwardType Condition;
+        public long Amount;
+        public bool IsLikely; // Affects cap hold
+    }
+
     /// <summary>
     /// Represents a player's contract with their team.
     /// </summary>
     [Serializable]
     public class Contract
     {
+        // ==================== INCENTIVES ====================
+        public System.Collections.Generic.List<ContractIncentive> Incentives = new System.Collections.Generic.List<ContractIncentive>();
+
         // ==================== BASIC CONTRACT INFO ====================
         
         public string PlayerId;
