@@ -1,0 +1,422 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using UnityEngine;
+using NBAHeadCoach.Core.Data;
+
+namespace NBAHeadCoach.Core.Simulation
+{
+    /// <summary>
+    /// The core simulation engine that processes possessions.
+    /// Each possession takes 10-24 seconds and ends with a shot attempt or turnover.
+    /// </summary>
+    public class PossessionSimulator
+    {
+        private const float SHOT_CLOCK = 24f;
+        private const float MIN_POSSESSION_TIME = 6f;   // Minimum seconds before shot
+        private const float AVG_POSSESSION_TIME = 12f;  // Average possession length (~100 possessions per team)
+        
+        private System.Random _random;
+        private SpatialTracker _tracker;
+        
+        // Current game state
+        private Player[] _offensePlayers = new Player[5];
+        private Player[] _defensePlayers = new Player[5];
+        private CourtPosition[] _offensePositions = new CourtPosition[5];
+        private CourtPosition[] _defensePositions = new CourtPosition[5];
+        private int _ballHandlerIndex;
+        private TeamStrategy _offenseStrategy;
+        private TeamStrategy _defenseStrategy;
+        private bool _isOffenseHome;
+
+        public PossessionSimulator(int? seed = null)
+        {
+            _random = seed.HasValue ? new System.Random(seed.Value) : new System.Random();
+            _tracker = new SpatialTracker();
+        }
+
+        /// <summary>
+        /// Simulates a single possession and returns the result with full spatial data.
+        /// </summary>
+        public PossessionResult SimulatePossession(
+            Player[] offensePlayers,
+            Player[] defensePlayers,
+            TeamStrategy offenseStrategy,
+            TeamStrategy defenseStrategy,
+            float gameClock,
+            int quarter,
+            bool isOffenseHome)
+        {
+            _offensePlayers = offensePlayers;
+            _defensePlayers = defensePlayers;
+            _offenseStrategy = offenseStrategy;
+            _defenseStrategy = defenseStrategy;
+            _isOffenseHome = isOffenseHome;
+
+            var result = new PossessionResult
+            {
+                Events = new List<PossessionEvent>(),
+                SpatialStates = new List<SpatialState>(),
+                StartGameClock = gameClock,
+                Quarter = quarter
+            };
+
+            // Initialize positions
+            InitializePositions(isOffenseHome);
+            
+            // Determine possession duration (8-16 seconds, influenced by pace)
+            float paceMultiplier = Mathf.Lerp(1.15f, 0.85f, _offenseStrategy.Pace / 100f);
+            float possessionDuration = AVG_POSSESSION_TIME * paceMultiplier;
+            possessionDuration += (float)(_random.NextDouble() * 4.0 - 2.0); // +/- 2 seconds variance
+            possessionDuration = Mathf.Clamp(possessionDuration, MIN_POSSESSION_TIME, SHOT_CLOCK - 2f);
+            
+            // Don't exceed remaining game clock
+            possessionDuration = Mathf.Min(possessionDuration, gameClock);
+
+            // Select primary ball handler (weighted by position and skill)
+            _ballHandlerIndex = SelectBallHandler();
+            
+            // Determine possession outcome FIRST (shot, turnover, or foul)
+            PossessionOutcomeType outcomeType = DeterminePossessionOutcome();
+
+            // Record spatial states during possession (every 0.5 seconds)
+            float currentTime = gameClock;
+            float possessionClock = SHOT_CLOCK;
+            int spatialTicks = Mathf.FloorToInt(possessionDuration / 0.5f);
+            
+            for (int i = 0; i < spatialTicks && i < 48; i++) // Max 48 ticks (24 seconds)
+            {
+                var state = CreateSpatialState(currentTime, quarter, possessionClock);
+                result.SpatialStates.Add(state);
+                currentTime -= 0.5f;
+                possessionClock -= 0.5f;
+                SimulatePlayerMovement();
+            }
+
+            // Execute the possession outcome
+            float endGameClock = gameClock - possessionDuration;
+            
+            if (outcomeType == PossessionOutcomeType.Turnover)
+            {
+                result.Events.Add(CreateTurnoverEvent(endGameClock, quarter));
+                result.Outcome = PossessionOutcome.Turnover;
+                result.PointsScored = 0;
+            }
+            else // Shot attempt
+            {
+                // Select shooter (could be different from ball handler after ball movement)
+                int shooterIndex = SelectShooter();
+                var shotEvent = ExecuteShot(_offensePlayers[shooterIndex], shooterIndex, endGameClock, quarter, possessionClock);
+                result.Events.Add(shotEvent);
+                
+                if (shotEvent.Type == EventType.Block)
+                {
+                    result.Outcome = PossessionOutcome.Block;
+                    result.PointsScored = 0;
+                }
+                else if (shotEvent.Outcome == EventOutcome.Success)
+                {
+                    result.Outcome = PossessionOutcome.Score;
+                    result.PointsScored = shotEvent.PointsScored;
+                }
+                else
+                {
+                    result.Outcome = PossessionOutcome.Miss;
+                    result.PointsScored = 0;
+                }
+            }
+
+            result.EndGameClock = endGameClock;
+            return result;
+        }
+
+        /// <summary>
+        /// Determines the outcome type of the possession (shot or turnover).
+        /// </summary>
+        private PossessionOutcomeType DeterminePossessionOutcome()
+        {
+            // Base turnover rate is ~13% in NBA
+            float turnoverChance = 0.13f;
+            
+            // Adjust for ball handler skill
+            Player handler = _offensePlayers[_ballHandlerIndex];
+            turnoverChance -= (handler.BallHandling - 50) / 500f;
+            turnoverChance -= (handler.BasketballIQ - 50) / 500f;
+            
+            // Adjust for defense
+            turnoverChance += (_defenseStrategy.DefensiveAggression - 50) / 300f;
+            
+            turnoverChance = Mathf.Clamp(turnoverChance, 0.05f, 0.25f);
+            
+            return _random.NextDouble() < turnoverChance 
+                ? PossessionOutcomeType.Turnover 
+                : PossessionOutcomeType.Shot;
+        }
+
+        private enum PossessionOutcomeType { Shot, Turnover }
+
+        /// <summary>
+        /// Selects the ball handler based on position and playmaking skill.
+        /// </summary>
+        private int SelectBallHandler()
+        {
+            // Weight towards guards
+            float[] weights = new float[5];
+            weights[0] = 40f + _offensePlayers[0].BallHandling * 0.3f;  // PG
+            weights[1] = 25f + _offensePlayers[1].BallHandling * 0.2f;  // SG
+            weights[2] = 15f + _offensePlayers[2].BallHandling * 0.15f; // SF
+            weights[3] = 10f + _offensePlayers[3].BallHandling * 0.1f;  // PF
+            weights[4] = 5f + _offensePlayers[4].BallHandling * 0.05f;  // C
+
+            float total = weights.Sum();
+            float roll = (float)_random.NextDouble() * total;
+            float cumulative = 0;
+            
+            for (int i = 0; i < 5; i++)
+            {
+                cumulative += weights[i];
+                if (roll <= cumulative) return i;
+            }
+            return 0;
+        }
+
+        /// <summary>
+        /// Selects the shooter based on shooting skill and strategy.
+        /// </summary>
+        private int SelectShooter()
+        {
+            float[] weights = new float[5];
+            
+            for (int i = 0; i < 5; i++)
+            {
+                Player p = _offensePlayers[i];
+                
+                // Base weight on shooting ability
+                float avgShooting = (p.Shot_Three + p.Shot_MidRange + p.Finishing_Rim) / 3f;
+                weights[i] = avgShooting;
+                
+                // Strategy influence
+                if (_offenseStrategy.ThreePointFrequency > 60)
+                    weights[i] += p.Shot_Three * 0.3f;
+                if (_offenseStrategy.PostUpFrequency > 50 && (i == 3 || i == 4))
+                    weights[i] += p.Finishing_PostMoves * 0.3f;
+            }
+
+            float total = weights.Sum();
+            float roll = (float)_random.NextDouble() * total;
+            float cumulative = 0;
+            
+            for (int i = 0; i < 5; i++)
+            {
+                cumulative += weights[i];
+                if (roll <= cumulative) return i;
+            }
+            return 0;
+        }
+
+        /// <summary>
+        /// Sets initial positions for a half-court possession.
+        /// </summary>
+        private void InitializePositions(bool attackingRight)
+        {
+            float xMult = attackingRight ? 1f : -1f;
+
+            // Offense - spread formation
+            _offensePositions[0] = new CourtPosition(25f * xMult, 0);      // PG top
+            _offensePositions[1] = new CourtPosition(28f * xMult, -16f);   // SG left wing
+            _offensePositions[2] = new CourtPosition(28f * xMult, 16f);    // SF right wing
+            _offensePositions[3] = new CourtPosition(36f * xMult, -8f);    // PF left block
+            _offensePositions[4] = new CourtPosition(36f * xMult, 8f);     // C right block
+
+            // Defense - man-to-man
+            for (int i = 0; i < 5; i++)
+            {
+                float defX = Mathf.Lerp(_offensePositions[i].X, 42f * xMult, 0.25f);
+                float defY = _offensePositions[i].Y * 0.9f;
+                _defensePositions[i] = new CourtPosition(defX, defY);
+            }
+        }
+
+        /// <summary>
+        /// Simulates player movement during the possession.
+        /// </summary>
+        private void SimulatePlayerMovement()
+        {
+            // Simple movement - players shift positions slightly
+            for (int i = 0; i < 5; i++)
+            {
+                float dx = (float)(_random.NextDouble() * 2.0 - 1.0);
+                float dy = (float)(_random.NextDouble() * 2.0 - 1.0);
+                _offensePositions[i] = new CourtPosition(
+                    _offensePositions[i].X + dx,
+                    _offensePositions[i].Y + dy
+                );
+                
+                // Defenders track their man
+                _defensePositions[i] = _defensePositions[i].MoveTowards(_offensePositions[i], 1.5f);
+            }
+        }
+
+        /// <summary>
+        /// Creates a spatial state snapshot.
+        /// </summary>
+        private SpatialState CreateSpatialState(float gameClock, int quarter, float possessionClock)
+        {
+            var state = new SpatialState(gameClock, quarter, possessionClock);
+
+            for (int i = 0; i < 5; i++)
+            {
+                state.Players[i] = new PlayerSnapshot(
+                    _offensePlayers[i].PlayerId,
+                    _offensePositions[i].X,
+                    _offensePositions[i].Y
+                )
+                {
+                    HasBall = (i == _ballHandlerIndex),
+                    CurrentAction = i == _ballHandlerIndex ? PlayerAction.Dribbling : PlayerAction.Idle
+                };
+
+                state.Players[i + 5] = new PlayerSnapshot(
+                    _defensePlayers[i].PlayerId,
+                    _defensePositions[i].X,
+                    _defensePositions[i].Y
+                )
+                {
+                    CurrentAction = PlayerAction.Defending
+                };
+            }
+
+            state.Ball = new BallState(
+                _offensePositions[_ballHandlerIndex].X,
+                _offensePositions[_ballHandlerIndex].Y,
+                4f
+            )
+            {
+                Status = BallStatus.Held,
+                HeldByPlayerId = _offensePlayers[_ballHandlerIndex].PlayerId
+            };
+
+            return state;
+        }
+
+        /// <summary>
+        /// Executes a shot attempt.
+        /// </summary>
+        private PossessionEvent ExecuteShot(Player shooter, int shooterIndex, float gameClock, int quarter, float possessionClock)
+        {
+            var position = _offensePositions[shooterIndex];
+            var defender = _defensePlayers[shooterIndex];
+            float defenderDistance = position.DistanceTo(_defensePositions[shooterIndex]);
+
+            // Determine shot type and zone
+            var shotType = ShotCalculator.DetermineShotType(shooter, position, defenderDistance, false);
+            
+            // Calculate shot probability
+            float shotProb = ShotCalculator.CalculateShotProbability(
+                shooter, position, defender, defenderDistance, shotType,
+                isFastBreak: false, secondsRemaining: possessionClock, isHomeTeam: _isOffenseHome);
+
+            bool made = _random.NextDouble() < shotProb;
+            
+            // Check for block (only on close shots with good defender)
+            bool blocked = false;
+            if (!made && defenderDistance < 4f)
+            {
+                float blockChance = (defender.Block / 100f) * (1f - defenderDistance / 6f) * 0.15f;
+                blocked = _random.NextDouble() < blockChance;
+            }
+
+            // IMPORTANT: Use _isOffenseHome to determine which basket to calculate zones from
+            // Home attacks basket at X=42, Away attacks basket at X=-42
+            var zone = position.GetZone(_isOffenseHome);
+            int points = made ? (zone == CourtZone.ThreePoint ? 3 : 2) : 0;
+
+            // Record shot for shot charts
+            _tracker.RecordShot(shooter.PlayerId, position, made, points);
+
+            if (blocked)
+            {
+                return new PossessionEvent
+                {
+                    Type = EventType.Block,
+                    GameClock = gameClock,
+                    Quarter = quarter,
+                    PossessionClock = possessionClock,
+                    ActorPlayerId = shooter.PlayerId,
+                    ActorPosition = position,
+                    DefenderPlayerId = defender.PlayerId,
+                    Outcome = EventOutcome.Fail,
+                    ShotType = shotType,
+                    ContestLevel = 1f - (defenderDistance / 6f)
+                };
+            }
+
+            return new PossessionEvent
+            {
+                Type = EventType.Shot,
+                GameClock = gameClock,
+                Quarter = quarter,
+                PossessionClock = possessionClock,
+                ActorPlayerId = shooter.PlayerId,
+                ActorPosition = position,
+                DefenderPlayerId = defender.PlayerId,
+                Outcome = made ? EventOutcome.Success : EventOutcome.Fail,
+                PointsScored = points,
+                ShotType = shotType,
+                ContestLevel = 1f - Mathf.Clamp01(defenderDistance / 6f)
+            };
+        }
+
+        /// <summary>
+        /// Creates a turnover event.
+        /// </summary>
+        private PossessionEvent CreateTurnoverEvent(float gameClock, int quarter)
+        {
+            // Determine type of turnover
+            string[] turnoverTypes = { "Bad pass", "Lost handle", "Offensive foul", "Traveled", "Out of bounds" };
+            string description = turnoverTypes[_random.Next(turnoverTypes.Length)];
+
+            return new PossessionEvent
+            {
+                Type = EventType.Turnover,
+                GameClock = gameClock,
+                Quarter = quarter,
+                ActorPlayerId = _offensePlayers[_ballHandlerIndex].PlayerId,
+                ActorPosition = _offensePositions[_ballHandlerIndex],
+                Description = description,
+                Outcome = EventOutcome.Fail
+            };
+        }
+    }
+
+    public enum PossessionOutcome
+    {
+        Score,
+        Miss,
+        Turnover,
+        Block,
+        Foul,
+        EndOfQuarter
+    }
+
+    /// <summary>
+    /// Complete result of a simulated possession.
+    /// </summary>
+    public class PossessionResult
+    {
+        public List<PossessionEvent> Events;
+        public List<SpatialState> SpatialStates;
+        public PossessionOutcome Outcome;
+        public int PointsScored;
+        public float StartGameClock;
+        public float EndGameClock;
+        public int Quarter;
+
+        public float Duration => StartGameClock - EndGameClock;
+
+        public string GetPlayByPlay(Func<string, string> getPlayerName)
+        {
+            return string.Join("\n", Events.Select(e => e.ToPlayByPlay(getPlayerName)));
+        }
+    }
+}
