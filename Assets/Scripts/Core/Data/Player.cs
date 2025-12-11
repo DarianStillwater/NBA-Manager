@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace NBAHeadCoach.Core.Data
@@ -13,6 +14,8 @@ namespace NBAHeadCoach.Core.Data
         // ==================== BIOGRAPHICAL DATA ====================
         [Header("Biographical")]
         public string PlayerId;
+        public int Overall => (Finishing_Rim + Shot_Three + Defense_Perimeter + Passing) / 4; // Placeholder
+
         public string FirstName;
         public string LastName;
         public int JerseyNumber;

@@ -207,8 +207,16 @@ namespace NBAHeadCoach.Core.Data
         }
 
         // ==================== SUPERMAX ELIGIBILITY (2023 CBA) ====================
-                return true;
+        /// <summary>
+        /// Checks if a player meets the criteria for a Supermax extension.
+        /// </summary>
+        public static bool IsSuperMaxEligible(Player p)
+        {
+            if (p == null) return false;
+            if (p.YearsPro < 7 || p.YearsPro > 9) return false;
             
+            // Check for awards (logic pending integration with AwardHistory)
+            // For now, return false or check basic counts if available
             return false;
         }
 
@@ -233,6 +241,20 @@ namespace NBAHeadCoach.Core.Data
         
         /// <summary>Trade deadline (2nd Thursday of February, simplified to Feb 8)</summary>
         public static DateTime GetTradeDeadline(int year) => new DateTime(year, 2, 8);
+        
+        public static bool IsPastTradeDeadline(DateTime currentDate)
+        {
+            var deadline = GetTradeDeadline(currentDate.Year);
+            // If current month is later than deadline month (Feb), and we are in same season... 
+            // Usually sim runs Oct -> June. 
+            // If date is Oct-Dec, deadline is next year Feb.
+            // If date is Jan-Jun, deadline is this year Feb.
+            
+            int seasonEndYear = currentDate.Month > 7 ? currentDate.Year + 1 : currentDate.Year;
+            deadline = GetTradeDeadline(seasonEndYear);
+            
+            return currentDate > deadline;
+        }
         /// <summary>RFA offer sheet matching period (reduced to 24 hours in 2023 CBA)</summary>
         public const int RFA_MATCHING_HOURS = 24;
         

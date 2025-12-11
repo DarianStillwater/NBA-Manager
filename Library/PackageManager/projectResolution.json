@@ -19,6 +19,16 @@
       "source": "builtin",
       "testable": false
     },
+    "com.unity.ugui@2.0.0": {
+      "name": "com.unity.ugui",
+      "displayName": "Unity UI",
+      "resolvedPath": "D:\\NBA Head Coach\\Library\\PackageCache\\com.unity.ugui@4ee0fac0c6e4",
+      "fingerprint": "4ee0fac0c6e4c152adcf1ae6457981f8a39985db",
+      "editorCompatibility": "2019.2.0a1",
+      "version": "2.0.0",
+      "source": "builtin",
+      "testable": false
+    },
     "com.unity.modules.accessibility@1.0.0": {
       "name": "com.unity.modules.accessibility",
       "displayName": "Accessibility",

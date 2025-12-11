@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using NBAHeadCoach.Core.Data;
 using NBAHeadCoach.Core.Manager;
+using Position = NBAHeadCoach.Core.Data.Position;
 
 namespace NBAHeadCoach.Tests
 {
@@ -78,7 +79,9 @@ namespace NBAHeadCoach.Tests
             else s.GamesStarted = starts;
             
             s.Points = (int)(ppg * gp);
-            s.TotalRebounds = (int)(rpg * gp); // Hack: sets total, doesn't split O/D yet properly for this test
+            int totalRebs = (int)(rpg * gp);
+            s.OffensiveRebounds = (int)(totalRebs * 0.3f);
+            s.DefensiveRebounds = totalRebs - s.OffensiveRebounds;
             s.Assists = (int)(apg * gp);
             
             s.PER = per;
@@ -101,11 +104,11 @@ namespace NBAHeadCoach.Tests
             
             // Check Supermax Eligibility for MVP
             var bron = _players.Find(p => p.PlayerId == "LeBronJames");
-            bool isEligible = LeagueCBA.IsSuperMaxEligible(bron, 2026);
+            bool isEligible = LeagueCBA.IsSuperMaxEligible(bron);
             Debug.Log($"LeBron Supermax Eligible (Expect True): {isEligible}"); // 10 years pro, just won MVP
             
             var wemby = _players.Find(p => p.PlayerId == "VictorWembanyama");
-            bool wembyEligible = LeagueCBA.IsSuperMaxEligible(wemby, 2026);
+            bool wembyEligible = LeagueCBA.IsSuperMaxEligible(wemby);
             Debug.Log($"Wembanyama Supermax Eligible (Expect False): {wembyEligible}"); // Rookie
         }
 

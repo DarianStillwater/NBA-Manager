@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using NBAHeadCoach.Core.Simulation;
 using NBAHeadCoach.Core.Data;
+using EventType = NBAHeadCoach.Core.Simulation.EventType;
 
 namespace NBAHeadCoach.View
 {

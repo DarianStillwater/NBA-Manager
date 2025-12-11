@@ -92,7 +92,7 @@ namespace NBAHeadCoach.View
         // Called by UI buttons
         public void CallTimeout()
         {
-            if (UserCoach != null) UserCoach.CallTimeout();
+            if (UserCoach != null) UserCoach.CallTimeout(TimeoutReason.RestPlayers);
         }
         
         public void CallSub(string playerOutId, string playerInId)

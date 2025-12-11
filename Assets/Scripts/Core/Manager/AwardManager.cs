@@ -136,17 +136,17 @@ namespace NBAHeadCoach.Core.Manager
                 if (guards >= 2 && forwards >= 2 && centers >= 1) break;
 
                 bool added = false;
-                if ((p.Position == Position.PointGuard || p.Position == Position.ShootingGuard) && guards < 2)
+                if ((p.Position == NBAHeadCoach.Core.Data.Position.PointGuard || p.Position == NBAHeadCoach.Core.Data.Position.ShootingGuard) && guards < 2)
                 {
                     guards++;
                     added = true;
                 }
-                else if ((p.Position == Position.SmallForward || p.Position == Position.PowerForward) && forwards < 2)
+                else if ((p.Position == NBAHeadCoach.Core.Data.Position.SmallForward || p.Position == NBAHeadCoach.Core.Data.Position.PowerForward) && forwards < 2)
                 {
                     forwards++;
                     added = true;
                 }
-                else if (p.Position == Position.Center && centers < 1)
+                else if (p.Position == NBAHeadCoach.Core.Data.Position.Center && centers < 1)
                 {
                     centers++;
                     added = true;
