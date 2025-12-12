@@ -7,16 +7,39 @@ using NBAHeadCoach.Core.Data;
 namespace NBAHeadCoach.Core.Manager
 {
     /// <summary>
-    /// Manages scouting operations including scouts, assignments, and reports.
-    /// Each team can have up to 5 scouts.
+    /// Manages scouting operations including scouts, assignments, and text-based reports.
+    /// Each team can have up to 5 scouts with varying specializations.
     /// </summary>
     public class ScoutingManager
     {
         public const int MAX_SCOUTS_PER_TEAM = 5;
-        
-        private Dictionary<string, List<Scout>> _teamScouts = new Dictionary<string, List<Scout>>();
-        private Dictionary<string, List<ScoutingReport>> _teamReports = new Dictionary<string, List<ScoutingReport>>();
-        private Dictionary<string, ScoutAssignment> _activeAssignments = new Dictionary<string, ScoutAssignment>();
+        public const int MIN_SCOUTS_PER_TEAM = 1;
+
+        private Dictionary<string, List<Scout>> _teamScouts = new();
+        private Dictionary<string, List<ScoutingReport>> _teamReports = new();
+        private Dictionary<string, ScoutAssignment> _activeAssignments = new();  // ScoutId -> Assignment
+        private Dictionary<string, ScoutingHistory> _scoutingHistory = new();    // PlayerId -> History
+
+        private ScoutingReportGenerator _reportGenerator;
+        private PlayerDatabase _playerDatabase;
+
+        // ==================== INITIALIZATION ====================
+
+        public ScoutingManager()
+        {
+            _reportGenerator = new ScoutingReportGenerator();
+        }
+
+        public ScoutingManager(PlayerDatabase playerDatabase)
+        {
+            _reportGenerator = new ScoutingReportGenerator();
+            _playerDatabase = playerDatabase;
+        }
+
+        public void SetPlayerDatabase(PlayerDatabase db)
+        {
+            _playerDatabase = db;
+        }
 
         // ==================== SCOUT MANAGEMENT ====================
 
@@ -29,38 +52,70 @@ namespace NBAHeadCoach.Core.Manager
         }
 
         /// <summary>
-        /// Hires a new scout for a team.
+        /// Gets a specific scout by ID.
         /// </summary>
-        public bool HireScout(string teamId, Scout scout)
+        public Scout GetScoutById(string scoutId)
         {
-            if (!_teamScouts.ContainsKey(teamId))
-                _teamScouts[teamId] = new List<Scout>();
-            
-            if (_teamScouts[teamId].Count >= MAX_SCOUTS_PER_TEAM)
+            foreach (var scouts in _teamScouts.Values)
             {
-                Debug.LogWarning($"{teamId} already has {MAX_SCOUTS_PER_TEAM} scouts");
-                return false;
+                var scout = scouts.FirstOrDefault(s => s.ScoutId == scoutId);
+                if (scout != null) return scout;
             }
-            
-            scout.TeamId = teamId;
-            _teamScouts[teamId].Add(scout);
-            return true;
+            return null;
         }
 
         /// <summary>
-        /// Fires a scout.
+        /// Gets available (unassigned) scouts for a team.
         /// </summary>
-        public bool FireScout(string teamId, string scoutId)
+        public List<Scout> GetAvailableScouts(string teamId)
+        {
+            return GetScouts(teamId).Where(s => s.IsAvailable && !_activeAssignments.ContainsKey(s.ScoutId)).ToList();
+        }
+
+        /// <summary>
+        /// Hires a new scout for a team.
+        /// Returns tuple of (success, errorMessage).
+        /// </summary>
+        public (bool success, string message) HireScout(string teamId, Scout scout)
         {
             if (!_teamScouts.ContainsKey(teamId))
-                return false;
-            
+                _teamScouts[teamId] = new List<Scout>();
+
+            if (_teamScouts[teamId].Count >= MAX_SCOUTS_PER_TEAM)
+                return (false, $"Team already has maximum {MAX_SCOUTS_PER_TEAM} scouts.");
+
+            scout.TeamId = teamId;
+            scout.IsAvailable = true;
+            _teamScouts[teamId].Add(scout);
+
+            Debug.Log($"[ScoutingManager] {teamId} hired scout {scout.FullName} ({scout.PrimarySpecialization})");
+            return (true, $"Successfully hired {scout.FullName}.");
+        }
+
+        /// <summary>
+        /// Fires a scout from a team.
+        /// </summary>
+        public (bool success, string message) FireScout(string teamId, string scoutId)
+        {
+            if (!_teamScouts.ContainsKey(teamId))
+                return (false, "Team not found.");
+
+            if (_teamScouts[teamId].Count <= MIN_SCOUTS_PER_TEAM)
+                return (false, $"Cannot fire scout - team must have at least {MIN_SCOUTS_PER_TEAM} scout.");
+
+            var scout = _teamScouts[teamId].FirstOrDefault(s => s.ScoutId == scoutId);
+            if (scout == null)
+                return (false, "Scout not found on this team.");
+
             // Cancel any active assignment
-            var assignment = _activeAssignments.Values.FirstOrDefault(a => a.ScoutId == scoutId);
-            if (assignment != null)
+            if (_activeAssignments.ContainsKey(scoutId))
+            {
                 _activeAssignments.Remove(scoutId);
-            
-            return _teamScouts[teamId].RemoveAll(s => s.ScoutId == scoutId) > 0;
+            }
+
+            _teamScouts[teamId].Remove(scout);
+            Debug.Log($"[ScoutingManager] {teamId} fired scout {scout.FullName}");
+            return (true, $"Released {scout.FullName}.");
         }
 
         /// <summary>
@@ -68,61 +123,116 @@ namespace NBAHeadCoach.Core.Manager
         /// </summary>
         public void GenerateStartingScouts(string teamId, int count = 3)
         {
-            var rng = new System.Random();
-            var specialties = Enum.GetValues(typeof(ScoutSpecialty)).Cast<ScoutSpecialty>().ToList();
-            
-            for (int i = 0; i < count; i++)
+            if (!_teamScouts.ContainsKey(teamId))
+                _teamScouts[teamId] = new List<Scout>();
+
+            var rng = new System.Random(teamId.GetHashCode());
+
+            // Ensure variety in specializations
+            var desiredSpecs = new[] { ScoutSpecialization.Pro, ScoutSpecialization.College, ScoutSpecialization.International };
+
+            for (int i = 0; i < count && _teamScouts[teamId].Count < MAX_SCOUTS_PER_TEAM; i++)
             {
-                var scout = new Scout
+                var scout = Scout.CreateRandom(teamId, rng);
+
+                // Try to fill gaps in specializations
+                if (i < desiredSpecs.Length)
                 {
-                    ScoutId = $"SCOUT_{teamId}_{i}",
-                    Name = GenerateScoutName(rng),
-                    Specialty = specialties[rng.Next(specialties.Count)],
-                    SkillRating = 50 + rng.Next(30), // 50-79
-                    Experience = rng.Next(15),
-                    Salary = 50_000 + rng.Next(100_000)
-                };
-                
+                    var spec = desiredSpecs[i];
+                    if (!_teamScouts[teamId].Any(s => s.PrimarySpecialization == spec))
+                    {
+                        scout.PrimarySpecialization = spec;
+                    }
+                }
+
                 HireScout(teamId, scout);
             }
         }
 
-        private string GenerateScoutName(System.Random rng)
+        /// <summary>
+        /// Gets total scouting budget (salaries) for a team.
+        /// </summary>
+        public int GetScoutingBudget(string teamId)
         {
-            var firstNames = new[] { "Mike", "John", "Bob", "Steve", "Tom", "Bill", "Dave", "Jim", "Dan", "Rick" };
-            var lastNames = new[] { "Smith", "Johnson", "Williams", "Brown", "Davis", "Miller", "Wilson", "Moore", "Taylor", "Anderson" };
-            return $"{firstNames[rng.Next(firstNames.Length)]} {lastNames[rng.Next(lastNames.Length)]}";
+            return GetScouts(teamId).Sum(s => s.AnnualSalary);
         }
 
-        // ==================== ASSIGNMENTS ====================
+        /// <summary>
+        /// Gets available scouting capacity for the week.
+        /// </summary>
+        public int GetWeeklyCapacity(string teamId)
+        {
+            return GetAvailableScouts(teamId).Sum(s => s.WeeklyCapacity);
+        }
+
+        // ==================== SCOUTING ASSIGNMENTS ====================
 
         /// <summary>
-        /// Assigns a scout to evaluate a target.
+        /// Assigns a scout to evaluate a player.
         /// </summary>
-        public bool AssignScout(string scoutId, ScoutingTarget target, int durationDays)
+        public (bool success, string message) AssignScoutToPlayer(string scoutId, string playerId, int durationDays = 7)
         {
             var scout = GetScoutById(scoutId);
             if (scout == null)
-                return false;
-            
-            // Check if scout is already assigned
+                return (false, "Scout not found.");
+
             if (_activeAssignments.ContainsKey(scoutId))
-            {
-                Debug.LogWarning($"Scout {scoutId} is already on an assignment");
-                return false;
-            }
-            
+                return (false, $"{scout.FullName} is already on an assignment.");
+
+            Player player = _playerDatabase?.GetPlayer(playerId);
+            string playerName = player?.FullName ?? playerId;
+
+            var targetType = player?.YearsPro > 0 ? ScoutingTargetType.NBAPlayer : ScoutingTargetType.CollegeProspect;
+
             var assignment = new ScoutAssignment
             {
+                AssignmentId = $"ASN_{Guid.NewGuid().ToString().Substring(0, 8)}",
                 ScoutId = scoutId,
-                Target = target,
+                TargetPlayerId = playerId,
+                TargetPlayerName = playerName,
+                TargetType = targetType,
                 StartDate = DateTime.Now,
                 DurationDays = durationDays,
                 GamesObserved = 0
             };
-            
+
             _activeAssignments[scoutId] = assignment;
-            return true;
+            scout.IsAvailable = false;
+            scout.CurrentAssignmentId = assignment.AssignmentId;
+
+            Debug.Log($"[ScoutingManager] {scout.FullName} assigned to scout {playerName} for {durationDays} days");
+            return (true, $"{scout.FullName} assigned to scout {playerName}.");
+        }
+
+        /// <summary>
+        /// Assigns a scout to evaluate an opponent team.
+        /// </summary>
+        public (bool success, string message) AssignScoutToTeam(string scoutId, string targetTeamId, int durationDays = 5)
+        {
+            var scout = GetScoutById(scoutId);
+            if (scout == null)
+                return (false, "Scout not found.");
+
+            if (_activeAssignments.ContainsKey(scoutId))
+                return (false, $"{scout.FullName} is already on an assignment.");
+
+            var assignment = new ScoutAssignment
+            {
+                AssignmentId = $"ASN_{Guid.NewGuid().ToString().Substring(0, 8)}",
+                ScoutId = scoutId,
+                TargetTeamId = targetTeamId,
+                TargetType = ScoutingTargetType.OpponentTeam,
+                StartDate = DateTime.Now,
+                DurationDays = durationDays,
+                GamesObserved = 0
+            };
+
+            _activeAssignments[scoutId] = assignment;
+            scout.IsAvailable = false;
+            scout.CurrentAssignmentId = assignment.AssignmentId;
+
+            Debug.Log($"[ScoutingManager] {scout.FullName} assigned to scout team {targetTeamId}");
+            return (true, $"{scout.FullName} assigned to advance scout {targetTeamId}.");
         }
 
         /// <summary>
@@ -130,7 +240,16 @@ namespace NBAHeadCoach.Core.Manager
         /// </summary>
         public void CancelAssignment(string scoutId)
         {
-            _activeAssignments.Remove(scoutId);
+            if (_activeAssignments.Remove(scoutId))
+            {
+                var scout = GetScoutById(scoutId);
+                if (scout != null)
+                {
+                    scout.IsAvailable = true;
+                    scout.CurrentAssignmentId = null;
+                }
+                Debug.Log($"[ScoutingManager] Cancelled assignment for scout {scoutId}");
+            }
         }
 
         /// <summary>
@@ -141,242 +260,257 @@ namespace NBAHeadCoach.Core.Manager
             return _activeAssignments.TryGetValue(scoutId, out var a) ? a : null;
         }
 
-        // ==================== REPORT GENERATION ====================
+        /// <summary>
+        /// Gets all active assignments for a team.
+        /// </summary>
+        public List<ScoutAssignment> GetActiveAssignments(string teamId)
+        {
+            var teamScoutIds = GetScouts(teamId).Select(s => s.ScoutId).ToHashSet();
+            return _activeAssignments.Values.Where(a => teamScoutIds.Contains(a.ScoutId)).ToList();
+        }
+
+        // ==================== SCOUTING PROCESSING ====================
 
         /// <summary>
-        /// Processes scouting for one day/game. Call this during game simulation.
+        /// Processes daily scouting progress. Call this each game day.
         /// </summary>
-        public List<ScoutingReport> ProcessScouting(string teamId, DateTime gameDate)
+        public List<ScoutingReport> ProcessDailyScouting(string teamId, DateTime gameDate)
         {
             var newReports = new List<ScoutingReport>();
-            var scouts = GetScouts(teamId);
-            
-            foreach (var scout in scouts)
+            var completedAssignments = new List<string>();
+
+            foreach (var scout in GetScouts(teamId))
             {
                 if (!_activeAssignments.TryGetValue(scout.ScoutId, out var assignment))
                     continue;
-                
+
+                // Increment games observed (simplified - could be smarter about actual games)
                 assignment.GamesObserved++;
-                
+
                 // Check if assignment is complete
-                bool isComplete = (gameDate - assignment.StartDate).TotalDays >= assignment.DurationDays;
-                
-                if (isComplete)
+                int daysElapsed = (int)(gameDate - assignment.StartDate).TotalDays;
+                if (daysElapsed >= assignment.DurationDays)
                 {
-                    var report = GenerateReport(scout, assignment);
-                    newReports.Add(report);
-                    AddReport(teamId, report);
-                    _activeAssignments.Remove(scout.ScoutId);
+                    // Generate report for player scouting
+                    if (!string.IsNullOrEmpty(assignment.TargetPlayerId))
+                    {
+                        var report = GeneratePlayerReport(scout, assignment);
+                        if (report != null)
+                        {
+                            newReports.Add(report);
+                            AddReport(teamId, report);
+                        }
+                    }
+                    // TODO: Generate team scouting report for opponent teams
+
+                    completedAssignments.Add(scout.ScoutId);
                 }
             }
-            
+
+            // Clear completed assignments
+            foreach (var scoutId in completedAssignments)
+            {
+                var scout = GetScoutById(scoutId);
+                if (scout != null)
+                {
+                    scout.IsAvailable = true;
+                    scout.CurrentAssignmentId = null;
+                }
+                _activeAssignments.Remove(scoutId);
+            }
+
             return newReports;
         }
 
-        private ScoutingReport GenerateReport(Scout scout, ScoutAssignment assignment)
+        /// <summary>
+        /// Generates a scouting report for a player.
+        /// </summary>
+        private ScoutingReport GeneratePlayerReport(Scout scout, ScoutAssignment assignment)
         {
-            var rng = new System.Random();
-            
-            // Report accuracy based on scout skill, time spent, and specialty match
-            float baseAccuracy = scout.SkillRating / 100f;
-            float timeBonus = Math.Min(assignment.GamesObserved * 0.1f, 0.3f); // Up to 30% from games
-            float specialtyBonus = IsSpecialtyMatch(scout.Specialty, assignment.Target) ? 0.15f : 0f;
-            
-            float accuracy = Math.Min(baseAccuracy + timeBonus + specialtyBonus, 0.95f);
-            
-            // Add some randomness (scouts can have bad takes)
-            float randomFactor = (float)rng.NextDouble() * 0.2f - 0.1f;
-            accuracy = Math.Max(0.3f, Math.Min(0.95f, accuracy + randomFactor));
-            
-            return new ScoutingReport
+            if (_playerDatabase == null)
             {
-                ReportId = $"RPT_{DateTime.Now.Ticks}",
-                ScoutId = scout.ScoutId,
-                ScoutName = scout.Name,
-                Target = assignment.Target,
-                GeneratedDate = DateTime.Now,
-                GamesObserved = assignment.GamesObserved,
-                AccuracyRating = accuracy,
-                
-                // Report content generated based on target type
-                Strengths = GenerateStrengths(assignment.Target, rng),
-                Weaknesses = GenerateWeaknesses(assignment.Target, rng),
-                Recommendation = GenerateRecommendation(assignment.Target, accuracy, rng),
-                Grade = CalculateGrade(assignment.Target, accuracy)
-            };
-        }
-
-        private bool IsSpecialtyMatch(ScoutSpecialty specialty, ScoutingTarget target)
-        {
-            return target.Type switch
-            {
-                ScoutingTargetType.DraftProspect => specialty == ScoutSpecialty.Amateur,
-                ScoutingTargetType.NBAPlayer => specialty == ScoutSpecialty.Pro,
-                ScoutingTargetType.OpponentTeam => specialty == ScoutSpecialty.Advance,
-                ScoutingTargetType.InternationalProspect => specialty == ScoutSpecialty.International,
-                _ => false
-            };
-        }
-
-        private List<string> GenerateStrengths(ScoutingTarget target, System.Random rng)
-        {
-            var allStrengths = new[] {
-                "Elite athleticism", "High basketball IQ", "Great court vision",
-                "Excellent shooter", "Strong defender", "Good motor",
-                "Leadership qualities", "Versatile skill set", "Good size for position",
-                "Physical tools", "Quick first step", "Good hands"
-            };
-            
-            int count = 2 + rng.Next(3);
-            return allStrengths.OrderBy(x => rng.Next()).Take(count).ToList();
-        }
-
-        private List<string> GenerateWeaknesses(ScoutingTarget target, System.Random rng)
-        {
-            var allWeaknesses = new[] {
-                "Inconsistent shooter", "Needs to add strength", "Below average defender",
-                "Limited playmaking", "Questionable motor", "Injury concerns",
-                "Poor shot selection", "Struggles vs length", "Limited range",
-                "Turnover prone", "Needs to improve conditioning", "Raw offensive game"
-            };
-            
-            int count = 1 + rng.Next(3);
-            return allWeaknesses.OrderBy(x => rng.Next()).Take(count).ToList();
-        }
-
-        private string GenerateRecommendation(ScoutingTarget target, float accuracy, System.Random rng)
-        {
-            if (target.Type == ScoutingTargetType.DraftProspect)
-            {
-                var recs = new[] {
-                    "Strong first-round value",
-                    "Solid second-round pick",
-                    "Worth a late flyer",
-                    "Not recommended - pass",
-                    "Could be a steal in the second round"
-                };
-                return recs[rng.Next(recs.Length)];
+                Debug.LogWarning("[ScoutingManager] PlayerDatabase not set - cannot generate report");
+                return null;
             }
-            
-            if (target.Type == ScoutingTargetType.OpponentTeam)
+
+            var player = _playerDatabase.GetPlayer(assignment.TargetPlayerId);
+            if (player == null)
             {
-                var recs = new[] {
-                    "Key matchup advantage at PG",
-                    "Attack their weak transition defense",
-                    "Exploit mismatches in the post",
-                    "Control the pace - they struggle in half court",
-                    "Focus on their weak perimeter defense"
-                };
-                return recs[rng.Next(recs.Length)];
+                Debug.LogWarning($"[ScoutingManager] Player {assignment.TargetPlayerId} not found");
+                return null;
             }
-            
-            return "Continue monitoring";
+
+            // Get scouting history
+            int timesScoutedBefore = GetTimesScounted(assignment.TargetPlayerId);
+
+            // Generate report
+            var report = _reportGenerator.GenerateReport(player, scout, timesScoutedBefore, assignment.GamesObserved);
+
+            // Update scouting history
+            UpdateScoutingHistory(assignment.TargetPlayerId, scout.ScoutId);
+
+            Debug.Log($"[ScoutingManager] Generated report for {player.FullName} (Confidence: {report.Confidence})");
+            return report;
         }
 
-        private string CalculateGrade(ScoutingTarget target, float accuracy)
+        // ==================== SCOUTING HISTORY ====================
+
+        /// <summary>
+        /// Gets how many times a player has been scouted by this organization.
+        /// </summary>
+        public int GetTimesScounted(string playerId)
         {
-            // A+ to F based on target quality (with accuracy affecting confidence)
-            var grades = new[] { "A+", "A", "A-", "B+", "B", "B-", "C+", "C", "C-", "D", "F" };
-            int gradeIdx = (int)((1 - accuracy) * grades.Length);
-            return grades[Math.Max(0, Math.Min(gradeIdx, grades.Length - 1))];
+            return _scoutingHistory.TryGetValue(playerId, out var history) ? history.TimesScounted : 0;
         }
 
-        // ==================== REPORTS ====================
+        /// <summary>
+        /// Updates scouting history for a player.
+        /// </summary>
+        private void UpdateScoutingHistory(string playerId, string scoutId)
+        {
+            if (!_scoutingHistory.ContainsKey(playerId))
+            {
+                _scoutingHistory[playerId] = new ScoutingHistory { PlayerId = playerId };
+            }
 
+            var history = _scoutingHistory[playerId];
+            history.TimesScounted++;
+            history.LastScoutedDate = DateTime.Now;
+            history.ScoutIdsWhoScouted.Add(scoutId);
+        }
+
+        /// <summary>
+        /// Gets full scouting history for a player.
+        /// </summary>
+        public ScoutingHistory GetScoutingHistory(string playerId)
+        {
+            return _scoutingHistory.TryGetValue(playerId, out var history) ? history : null;
+        }
+
+        // ==================== REPORT ACCESS ====================
+
+        /// <summary>
+        /// Adds a report to a team's collection.
+        /// </summary>
         private void AddReport(string teamId, ScoutingReport report)
         {
             if (!_teamReports.ContainsKey(teamId))
                 _teamReports[teamId] = new List<ScoutingReport>();
-            
+
+            // Remove old reports for same player (keep only latest)
+            _teamReports[teamId].RemoveAll(r => r.PlayerId == report.PlayerId);
             _teamReports[teamId].Add(report);
         }
 
+        /// <summary>
+        /// Gets all reports for a team.
+        /// </summary>
         public List<ScoutingReport> GetReports(string teamId)
         {
             return _teamReports.TryGetValue(teamId, out var reports) ? reports.ToList() : new List<ScoutingReport>();
         }
 
-        public List<ScoutingReport> GetReportsForTarget(string teamId, string targetId)
+        /// <summary>
+        /// Gets the most recent report for a specific player.
+        /// </summary>
+        public ScoutingReport GetReportForPlayer(string teamId, string playerId)
         {
-            return GetReports(teamId).Where(r => r.Target.TargetId == targetId).ToList();
+            return GetReports(teamId).FirstOrDefault(r => r.PlayerId == playerId);
         }
 
-        private Scout GetScoutById(string scoutId)
+        /// <summary>
+        /// Gets all reports for a specific target type.
+        /// </summary>
+        public List<ScoutingReport> GetReportsByType(string teamId, ScoutingTargetType type)
         {
-            foreach (var scouts in _teamScouts.Values)
+            return GetReports(teamId).Where(r => r.TargetType == type).ToList();
+        }
+
+        /// <summary>
+        /// Gets outdated reports that need refreshing.
+        /// </summary>
+        public List<ScoutingReport> GetOutdatedReports(string teamId)
+        {
+            return GetReports(teamId).Where(r => r.IsOutdated).ToList();
+        }
+
+        /// <summary>
+        /// Checks if we have a recent (non-outdated) report for a player.
+        /// </summary>
+        public bool HasRecentReport(string teamId, string playerId)
+        {
+            var report = GetReportForPlayer(teamId, playerId);
+            return report != null && !report.IsOutdated;
+        }
+
+        // ==================== FREE AGENT SCOUT POOL ====================
+
+        /// <summary>
+        /// Generates a pool of available scouts to hire.
+        /// </summary>
+        public List<Scout> GenerateFreeAgentScouts(int count = 10)
+        {
+            var scouts = new List<Scout>();
+            var rng = new System.Random();
+
+            for (int i = 0; i < count; i++)
             {
-                var scout = scouts.FirstOrDefault(s => s.ScoutId == scoutId);
-                if (scout != null) return scout;
+                var scout = Scout.CreateRandom(null, rng);
+                scout.ContractYearsRemaining = 0; // Free agent
+                scouts.Add(scout);
             }
-            return null;
+
+            // Add one elite scout to the pool (rare)
+            if (rng.NextDouble() < 0.2)
+            {
+                scouts.Add(Scout.CreateElite(null));
+            }
+
+            return scouts.OrderByDescending(s => s.OverallRating).ToList();
         }
     }
 
-    // ==================== DATA CLASSES ====================
+    // ==================== SUPPORTING CLASSES ====================
 
-    [Serializable]
-    public class Scout
-    {
-        public string ScoutId;
-        public string TeamId;
-        public string Name;
-        public ScoutSpecialty Specialty;
-        public int SkillRating;     // 1-100
-        public int Experience;       // Years
-        public int Salary;
-    }
-
-    public enum ScoutSpecialty
-    {
-        Pro,            // Current NBA players
-        Amateur,        // College prospects
-        International,  // Overseas players
-        Advance         // Next opponent preparation
-    }
-
-    [Serializable]
-    public class ScoutingTarget
-    {
-        public string TargetId;
-        public string TargetName;
-        public ScoutingTargetType Type;
-    }
-
-    public enum ScoutingTargetType
-    {
-        DraftProspect,
-        NBAPlayer,
-        OpponentTeam,
-        InternationalProspect
-    }
-
+    /// <summary>
+    /// Represents an active scouting assignment.
+    /// </summary>
     [Serializable]
     public class ScoutAssignment
     {
+        public string AssignmentId;
         public string ScoutId;
-        public ScoutingTarget Target;
+
+        // Target (either player or team)
+        public string TargetPlayerId;
+        public string TargetPlayerName;
+        public string TargetTeamId;
+        public ScoutingTargetType TargetType;
+
+        // Timing
         public DateTime StartDate;
         public int DurationDays;
         public int GamesObserved;
-        
-        public float Progress => (float)(DateTime.Now - StartDate).TotalDays / DurationDays;
+
+        public float Progress => Mathf.Clamp01((float)(DateTime.Now - StartDate).TotalDays / DurationDays);
         public bool IsComplete => Progress >= 1f;
+        public int DaysRemaining => Math.Max(0, DurationDays - (int)(DateTime.Now - StartDate).TotalDays);
+
+        public string TargetDisplay => !string.IsNullOrEmpty(TargetPlayerName) ? TargetPlayerName :
+                                       !string.IsNullOrEmpty(TargetTeamId) ? TargetTeamId : "Unknown";
     }
 
+    /// <summary>
+    /// Tracks scouting history for a player.
+    /// </summary>
     [Serializable]
-    public class ScoutingReport
+    public class ScoutingHistory
     {
-        public string ReportId;
-        public string ScoutId;
-        public string ScoutName;
-        public ScoutingTarget Target;
-        public DateTime GeneratedDate;
-        public int GamesObserved;
-        public float AccuracyRating;  // 0-1, how reliable is this report
-        
-        public List<string> Strengths = new List<string>();
-        public List<string> Weaknesses = new List<string>();
-        public string Recommendation;
-        public string Grade;
+        public string PlayerId;
+        public int TimesScounted;
+        public DateTime LastScoutedDate;
+        public List<string> ScoutIdsWhoScouted = new List<string>();
+
+        public int DaysSinceLastScouted => (int)(DateTime.Now - LastScoutedDate).TotalDays;
     }
 }

@@ -7,6 +7,7 @@ namespace NBAHeadCoach.Core.Data
     /// <summary>
     /// Complete player data model with all attributes for simulation.
     /// Attributes range from 0-100 where 50 is league average.
+    /// NOTE: All skill attributes are HIDDEN from the player - only accessible via scouting reports.
     /// </summary>
     [Serializable]
     public class Player
@@ -14,8 +15,6 @@ namespace NBAHeadCoach.Core.Data
         // ==================== BIOGRAPHICAL DATA ====================
         [Header("Biographical")]
         public string PlayerId;
-        public int Overall => (Finishing_Rim + Shot_Three + Defense_Perimeter + Passing) / 4; // Placeholder
-
         public string FirstName;
         public string LastName;
         public int JerseyNumber;
@@ -28,55 +27,63 @@ namespace NBAHeadCoach.Core.Data
         public string HairStyle;
         public string TeamId;
 
-        // ==================== OFFENSIVE ATTRIBUTES ====================
+        // ==================== HIDDEN POTENTIAL SYSTEM ====================
+        [Header("Development (Hidden)")]
+        [HideInInspector] [Range(0, 100)] public int HiddenPotential;     // Caps maximum growth
+        [HideInInspector] [Range(25, 34)] public int PeakAge;             // When they'll be at their best
+        [HideInInspector] [Range(0, 100)] public int DeclineRate;         // How fast they decline (higher = faster)
+        [HideInInspector] [Range(0, 100)] public int InjuryProneness;     // Likelihood of injury
+        [HideInInspector] public int InjuryHistoryCount;                  // Past injuries affect decline
+
+        // ==================== OFFENSIVE ATTRIBUTES (HIDDEN) ====================
         [Header("Offense - Scoring")]
-        [Range(0, 100)] public int Finishing_Rim;        // Layups, dunks at rim
-        [Range(0, 100)] public int Finishing_PostMoves;  // Back-to-basket scoring
-        [Range(0, 100)] public int Shot_Close;           // Floaters, close shots
-        [Range(0, 100)] public int Shot_MidRange;        // Pull-up jumpers
-        [Range(0, 100)] public int Shot_Three;           // 3-point shooting
-        [Range(0, 100)] public int FreeThrow;            // Free throw accuracy
+        [HideInInspector] [Range(0, 100)] public int Finishing_Rim;        // Layups, dunks at rim
+        [HideInInspector] [Range(0, 100)] public int Finishing_PostMoves;  // Back-to-basket scoring
+        [HideInInspector] [Range(0, 100)] public int Shot_Close;           // Floaters, close shots
+        [HideInInspector] [Range(0, 100)] public int Shot_MidRange;        // Pull-up jumpers
+        [HideInInspector] [Range(0, 100)] public int Shot_Three;           // 3-point shooting
+        [HideInInspector] [Range(0, 100)] public int FreeThrow;            // Free throw accuracy
 
         [Header("Offense - Playmaking")]
-        [Range(0, 100)] public int Passing;              // Pass accuracy & vision
-        [Range(0, 100)] public int BallHandling;         // Dribble moves, control
-        [Range(0, 100)] public int OffensiveIQ;          // Reads, positioning
-        [Range(0, 100)] public int SpeedWithBall;        // Movement while dribbling
+        [HideInInspector] [Range(0, 100)] public int Passing;              // Pass accuracy & vision
+        [HideInInspector] [Range(0, 100)] public int BallHandling;         // Dribble moves, control
+        [HideInInspector] [Range(0, 100)] public int OffensiveIQ;          // Reads, positioning
+        [HideInInspector] [Range(0, 100)] public int SpeedWithBall;        // Movement while dribbling
 
-        // ==================== DEFENSIVE ATTRIBUTES ====================
+        // ==================== DEFENSIVE ATTRIBUTES (HIDDEN) ====================
         [Header("Defense")]
-        [Range(0, 100)] public int Defense_Perimeter;    // Guarding wings/guards
-        [Range(0, 100)] public int Defense_Interior;     // Protecting the paint
-        [Range(0, 100)] public int Defense_PostDefense;  // Guarding back-to-basket
-        [Range(0, 100)] public int Steal;                // Ball-hawking ability
-        [Range(0, 100)] public int Block;                // Shot-blocking
-        [Range(0, 100)] public int DefensiveIQ;          // Help defense, rotations
-        [Range(0, 100)] public int DefensiveRebound;     // Boxing out, grabbing boards
+        [HideInInspector] [Range(0, 100)] public int Defense_Perimeter;    // Guarding wings/guards
+        [HideInInspector] [Range(0, 100)] public int Defense_Interior;     // Protecting the paint
+        [HideInInspector] [Range(0, 100)] public int Defense_PostDefense;  // Guarding back-to-basket
+        [HideInInspector] [Range(0, 100)] public int Steal;                // Ball-hawking ability
+        [HideInInspector] [Range(0, 100)] public int Block;                // Shot-blocking
+        [HideInInspector] [Range(0, 100)] public int DefensiveIQ;          // Help defense, rotations
+        [HideInInspector] [Range(0, 100)] public int DefensiveRebound;     // Boxing out, grabbing boards
 
-        // ==================== PHYSICAL ATTRIBUTES ====================
+        // ==================== PHYSICAL ATTRIBUTES (HIDDEN) ====================
         [Header("Physical")]
-        [Range(0, 100)] public int Speed;                // Foot speed without ball
-        [Range(0, 100)] public int Acceleration;         // First step quickness
-        [Range(0, 100)] public int Strength;             // Body control, physicality
-        [Range(0, 100)] public int Vertical;             // Leaping ability
-        [Range(0, 100)] public int Stamina;              // How long before fatigue
-        [Range(0, 100)] public int Durability;           // Injury resistance
-        [Range(0, 100)] public int Wingspan;             // Relative to height (affects contests)
+        [HideInInspector] [Range(0, 100)] public int Speed;                // Foot speed without ball
+        [HideInInspector] [Range(0, 100)] public int Acceleration;         // First step quickness
+        [HideInInspector] [Range(0, 100)] public int Strength;             // Body control, physicality
+        [HideInInspector] [Range(0, 100)] public int Vertical;             // Leaping ability
+        [HideInInspector] [Range(0, 100)] public int Stamina;              // How long before fatigue
+        [HideInInspector] [Range(0, 100)] public int Durability;           // Injury resistance
+        [HideInInspector] [Range(0, 100)] public int Wingspan;             // Relative to height (affects contests)
 
-        // ==================== MENTAL ATTRIBUTES ====================
+        // ==================== MENTAL ATTRIBUTES (HIDDEN) ====================
         [Header("Mental")]
-        [Range(0, 100)] public int BasketballIQ;         // Overall court awareness
-        [Range(0, 100)] public int Clutch;               // Performance in big moments
-        [Range(0, 100)] public int Consistency;          // Game-to-game variance
-        [Range(0, 100)] public int WorkEthic;            // Training improvement rate
-        [Range(0, 100)] public int Coachability;         // Responds to adjustments
+        [HideInInspector] [Range(0, 100)] public int BasketballIQ;         // Overall court awareness
+        [HideInInspector] [Range(0, 100)] public int Clutch;               // Performance in big moments
+        [HideInInspector] [Range(0, 100)] public int Consistency;          // Game-to-game variance
+        [HideInInspector] [Range(0, 100)] public int WorkEthic;            // Training improvement rate
+        [HideInInspector] [Range(0, 100)] public int Coachability;         // Responds to adjustments
 
-        // ==================== PERSONALITY TRAITS ====================
+        // ==================== PERSONALITY TRAITS (HIDDEN) ====================
         [Header("Personality")]
-        [Range(0, 100)] public int Ego;                  // Demands shots, attention
-        [Range(0, 100)] public int Leadership;           // Boosts teammates
-        [Range(0, 100)] public int Composure;            // Handles pressure
-        [Range(0, 100)] public int Aggression;           // Playing style intensity
+        [HideInInspector] [Range(0, 100)] public int Ego;                  // Demands shots, attention
+        [HideInInspector] [Range(0, 100)] public int Leadership;           // Boosts teammates
+        [HideInInspector] [Range(0, 100)] public int Composure;            // Handles pressure
+        [HideInInspector] [Range(0, 100)] public int Aggression;           // Playing style intensity
 
         // ==================== DYNAMIC STATE (Changes during game) ====================
         [Header("Current State")]
@@ -87,17 +94,26 @@ namespace NBAHeadCoach.Core.Data
         public string InjuryType;
         public int InjuryDaysRemaining;
 
+        // ==================== DEVELOPMENT TRACKING ====================
+        [Header("Development")]
+        public int MinutesPlayedThisSeason;
+        public int GamesPlayedThisSeason;
+        public string DevelopmentFocus;                   // Current focus area
+        public List<DevelopmentLog> DevelopmentHistory = new List<DevelopmentLog>();
+
         // ==================== COMPUTED PROPERTIES ====================
         public string FullName => $"{FirstName} {LastName}";
-        
+
+        /// <summary>
+        /// Position-weighted overall rating. Used internally for simulation.
+        /// </summary>
         public int OverallRating
         {
             get
             {
-                // Weight attributes based on position
                 float score = Position switch
                 {
-                    Position.PointGuard => (BallHandling * 0.2f + Passing * 0.2f + Shot_Three * 0.15f + 
+                    Position.PointGuard => (BallHandling * 0.2f + Passing * 0.2f + Shot_Three * 0.15f +
                                            Speed * 0.15f + Defense_Perimeter * 0.15f + BasketballIQ * 0.15f),
                     Position.ShootingGuard => (Shot_Three * 0.2f + Shot_MidRange * 0.15f + Finishing_Rim * 0.15f +
                                               Defense_Perimeter * 0.2f + BallHandling * 0.15f + Speed * 0.15f),
@@ -112,6 +128,184 @@ namespace NBAHeadCoach.Core.Data
                 return Mathf.RoundToInt(score);
             }
         }
+
+        /// <summary>
+        /// Development phase based on age.
+        /// </summary>
+        public DevelopmentPhase CurrentDevelopmentPhase
+        {
+            get
+            {
+                if (Age <= 22) return DevelopmentPhase.PrimeDevelopment;
+                if (Age <= 26) return DevelopmentPhase.ContinuedDevelopment;
+                if (Age <= PeakAge) return DevelopmentPhase.Peak;
+                if (Age <= 34) return DevelopmentPhase.EarlyDecline;
+                return DevelopmentPhase.SteepDecline;
+            }
+        }
+
+        /// <summary>
+        /// Development rate multiplier based on age and phase.
+        /// </summary>
+        public float DevelopmentMultiplier
+        {
+            get
+            {
+                return CurrentDevelopmentPhase switch
+                {
+                    DevelopmentPhase.PrimeDevelopment => 1.5f,      // 19-22: Highest growth
+                    DevelopmentPhase.ContinuedDevelopment => 1.0f,  // 23-26: Normal growth
+                    DevelopmentPhase.Peak => 0.3f,                  // 27-30: Minimal growth
+                    DevelopmentPhase.EarlyDecline => 0f,            // 31-34: No growth
+                    DevelopmentPhase.SteepDecline => 0f,            // 35+: No growth
+                    _ => 0.5f
+                };
+            }
+        }
+
+        /// <summary>
+        /// Decline rate multiplier based on age and injury history.
+        /// </summary>
+        public float DeclineMultiplier
+        {
+            get
+            {
+                float baseDecline = CurrentDevelopmentPhase switch
+                {
+                    DevelopmentPhase.PrimeDevelopment => 0f,
+                    DevelopmentPhase.ContinuedDevelopment => 0f,
+                    DevelopmentPhase.Peak => 0.1f,      // Slight maintenance decline
+                    DevelopmentPhase.EarlyDecline => 0.5f,
+                    DevelopmentPhase.SteepDecline => 1.0f,
+                    _ => 0f
+                };
+
+                // Injury history accelerates decline
+                float injuryModifier = 1f + (InjuryHistoryCount * 0.1f);
+
+                // DeclineRate attribute affects speed
+                float personalDecline = DeclineRate / 100f;
+
+                return baseDecline * injuryModifier * (0.5f + personalDecline);
+            }
+        }
+
+        /// <summary>
+        /// How much room for growth this player has.
+        /// </summary>
+        public int GrowthRoom
+        {
+            get
+            {
+                if (CurrentDevelopmentPhase >= DevelopmentPhase.EarlyDecline)
+                    return 0;
+
+                return Math.Max(0, HiddenPotential - OverallRating);
+            }
+        }
+
+        // ==================== ATTRIBUTE ACCESS (For Simulation Only) ====================
+
+        /// <summary>
+        /// Gets an attribute value for simulation. Should only be called by simulation code.
+        /// UI should use scouting reports instead.
+        /// </summary>
+        public int GetAttributeForSimulation(PlayerAttribute attribute)
+        {
+            return attribute switch
+            {
+                PlayerAttribute.Finishing_Rim => Finishing_Rim,
+                PlayerAttribute.Finishing_PostMoves => Finishing_PostMoves,
+                PlayerAttribute.Shot_Close => Shot_Close,
+                PlayerAttribute.Shot_MidRange => Shot_MidRange,
+                PlayerAttribute.Shot_Three => Shot_Three,
+                PlayerAttribute.FreeThrow => FreeThrow,
+                PlayerAttribute.Passing => Passing,
+                PlayerAttribute.BallHandling => BallHandling,
+                PlayerAttribute.OffensiveIQ => OffensiveIQ,
+                PlayerAttribute.SpeedWithBall => SpeedWithBall,
+                PlayerAttribute.Defense_Perimeter => Defense_Perimeter,
+                PlayerAttribute.Defense_Interior => Defense_Interior,
+                PlayerAttribute.Defense_PostDefense => Defense_PostDefense,
+                PlayerAttribute.Steal => Steal,
+                PlayerAttribute.Block => Block,
+                PlayerAttribute.DefensiveIQ => DefensiveIQ,
+                PlayerAttribute.DefensiveRebound => DefensiveRebound,
+                PlayerAttribute.Speed => Speed,
+                PlayerAttribute.Acceleration => Acceleration,
+                PlayerAttribute.Strength => Strength,
+                PlayerAttribute.Vertical => Vertical,
+                PlayerAttribute.Stamina => Stamina,
+                PlayerAttribute.Durability => Durability,
+                PlayerAttribute.Wingspan => Wingspan,
+                PlayerAttribute.BasketballIQ => BasketballIQ,
+                PlayerAttribute.Clutch => Clutch,
+                PlayerAttribute.Consistency => Consistency,
+                PlayerAttribute.WorkEthic => WorkEthic,
+                PlayerAttribute.Coachability => Coachability,
+                PlayerAttribute.Ego => Ego,
+                PlayerAttribute.Leadership => Leadership,
+                PlayerAttribute.Composure => Composure,
+                PlayerAttribute.Aggression => Aggression,
+                _ => 50
+            };
+        }
+
+        /// <summary>
+        /// Sets an attribute value. Used by development system.
+        /// </summary>
+        internal void SetAttribute(PlayerAttribute attribute, int value)
+        {
+            value = Mathf.Clamp(value, 0, 100);
+
+            switch (attribute)
+            {
+                case PlayerAttribute.Finishing_Rim: Finishing_Rim = value; break;
+                case PlayerAttribute.Finishing_PostMoves: Finishing_PostMoves = value; break;
+                case PlayerAttribute.Shot_Close: Shot_Close = value; break;
+                case PlayerAttribute.Shot_MidRange: Shot_MidRange = value; break;
+                case PlayerAttribute.Shot_Three: Shot_Three = value; break;
+                case PlayerAttribute.FreeThrow: FreeThrow = value; break;
+                case PlayerAttribute.Passing: Passing = value; break;
+                case PlayerAttribute.BallHandling: BallHandling = value; break;
+                case PlayerAttribute.OffensiveIQ: OffensiveIQ = value; break;
+                case PlayerAttribute.SpeedWithBall: SpeedWithBall = value; break;
+                case PlayerAttribute.Defense_Perimeter: Defense_Perimeter = value; break;
+                case PlayerAttribute.Defense_Interior: Defense_Interior = value; break;
+                case PlayerAttribute.Defense_PostDefense: Defense_PostDefense = value; break;
+                case PlayerAttribute.Steal: Steal = value; break;
+                case PlayerAttribute.Block: Block = value; break;
+                case PlayerAttribute.DefensiveIQ: DefensiveIQ = value; break;
+                case PlayerAttribute.DefensiveRebound: DefensiveRebound = value; break;
+                case PlayerAttribute.Speed: Speed = value; break;
+                case PlayerAttribute.Acceleration: Acceleration = value; break;
+                case PlayerAttribute.Strength: Strength = value; break;
+                case PlayerAttribute.Vertical: Vertical = value; break;
+                case PlayerAttribute.Stamina: Stamina = value; break;
+                case PlayerAttribute.Durability: Durability = value; break;
+                case PlayerAttribute.Wingspan: Wingspan = value; break;
+                case PlayerAttribute.BasketballIQ: BasketballIQ = value; break;
+                case PlayerAttribute.Clutch: Clutch = value; break;
+                case PlayerAttribute.Consistency: Consistency = value; break;
+                case PlayerAttribute.WorkEthic: WorkEthic = value; break;
+                case PlayerAttribute.Coachability: Coachability = value; break;
+                case PlayerAttribute.Ego: Ego = value; break;
+                case PlayerAttribute.Leadership: Leadership = value; break;
+                case PlayerAttribute.Composure: Composure = value; break;
+                case PlayerAttribute.Aggression: Aggression = value; break;
+            }
+        }
+
+        /// <summary>
+        /// Modifies an attribute by a delta amount.
+        /// </summary>
+        internal void ModifyAttribute(PlayerAttribute attribute, int delta)
+        {
+            int current = GetAttributeForSimulation(attribute);
+            SetAttribute(attribute, current + delta);
+        }
+
+        // ==================== CONDITION METHODS ====================
 
         /// <summary>
         /// Returns shooting percentage modifier based on energy and morale.
@@ -133,19 +327,6 @@ namespace NBAHeadCoach.Core.Data
             Energy = Mathf.Max(0, Energy - (amount * staminaMultiplier));
         }
 
-        // ==================== HISTORY & AWARDS ====================
-        public List<SeasonStats> CareerStats = new List<SeasonStats>();
-        public List<AwardHistory> Awards = new List<AwardHistory>();
-        
-        public SeasonStats CurrentSeasonStats 
-        {
-            get 
-            {
-                if (CareerStats == null || CareerStats.Count == 0) return null;
-                return CareerStats[CareerStats.Count - 1]; // Return current/latest season
-            }
-        }
-
         /// <summary>
         /// Restores energy (called when player is on bench).
         /// </summary>
@@ -153,7 +334,73 @@ namespace NBAHeadCoach.Core.Data
         {
             Energy = Mathf.Min(100, Energy + amount);
         }
+
+        /// <summary>
+        /// Adjusts morale based on event.
+        /// </summary>
+        public void AdjustMorale(float amount)
+        {
+            Morale = Mathf.Clamp(Morale + amount, 0, 100);
+        }
+
+        // ==================== HISTORY & AWARDS ====================
+        public List<SeasonStats> CareerStats = new List<SeasonStats>();
+        public List<AwardHistory> Awards = new List<AwardHistory>();
+
+        public SeasonStats CurrentSeasonStats
+        {
+            get
+            {
+                if (CareerStats == null || CareerStats.Count == 0) return null;
+                return CareerStats[CareerStats.Count - 1];
+            }
+        }
+
+        // ==================== INITIALIZATION ====================
+
+        /// <summary>
+        /// Initializes hidden development attributes for a new player.
+        /// </summary>
+        public void InitializeDevelopmentAttributes(System.Random rng = null)
+        {
+            rng ??= new System.Random();
+
+            // Potential is based on current overall + variance
+            int baselineAdd = rng.Next(5, 25);  // 5-25 points above current
+            HiddenPotential = Math.Min(100, OverallRating + baselineAdd);
+
+            // Young players have higher potential ceiling
+            if (Age <= 22)
+            {
+                HiddenPotential = Math.Min(100, HiddenPotential + rng.Next(5, 15));
+            }
+
+            // Peak age (when they'll be at their best)
+            PeakAge = 27 + rng.Next(0, 6);  // 27-32
+
+            // Decline rate varies by player
+            DeclineRate = 30 + rng.Next(0, 50);  // 30-79
+
+            // Injury proneness
+            InjuryProneness = 20 + rng.Next(0, 60);  // 20-79
+            InjuryHistoryCount = 0;
+        }
+
+        /// <summary>
+        /// Creates a star player with high potential.
+        /// </summary>
+        public void InitializeAsStarPlayer(System.Random rng = null)
+        {
+            rng ??= new System.Random();
+
+            HiddenPotential = 90 + rng.Next(0, 11);  // 90-100
+            PeakAge = 28 + rng.Next(0, 4);           // 28-31
+            DeclineRate = 20 + rng.Next(0, 30);      // 20-49 (slower decline)
+            InjuryProneness = 10 + rng.Next(0, 40);  // 10-49 (more durable)
+        }
     }
+
+    // ==================== SUPPORTING ENUMS ====================
 
     public enum Position
     {
@@ -162,5 +409,183 @@ namespace NBAHeadCoach.Core.Data
         SmallForward = 3,
         PowerForward = 4,
         Center = 5
+    }
+
+    public enum DevelopmentPhase
+    {
+        PrimeDevelopment,       // 19-22: Highest growth potential
+        ContinuedDevelopment,   // 23-26: Moderate growth
+        Peak,                   // 27-30: Minimal growth, maintain
+        EarlyDecline,           // 31-34: Skills start decreasing
+        SteepDecline            // 35+: Accelerated decline
+    }
+
+    /// <summary>
+    /// All player attributes that can be developed or declined.
+    /// </summary>
+    public enum PlayerAttribute
+    {
+        // Offensive
+        Finishing_Rim,
+        Finishing_PostMoves,
+        Shot_Close,
+        Shot_MidRange,
+        Shot_Three,
+        FreeThrow,
+        Passing,
+        BallHandling,
+        OffensiveIQ,
+        SpeedWithBall,
+
+        // Defensive
+        Defense_Perimeter,
+        Defense_Interior,
+        Defense_PostDefense,
+        Steal,
+        Block,
+        DefensiveIQ,
+        DefensiveRebound,
+
+        // Physical
+        Speed,
+        Acceleration,
+        Strength,
+        Vertical,
+        Stamina,
+        Durability,
+        Wingspan,
+
+        // Mental
+        BasketballIQ,
+        Clutch,
+        Consistency,
+        WorkEthic,
+        Coachability,
+
+        // Personality
+        Ego,
+        Leadership,
+        Composure,
+        Aggression
+    }
+
+    /// <summary>
+    /// Attribute categories for development focus.
+    /// </summary>
+    public enum AttributeCategory
+    {
+        Scoring,
+        Shooting,
+        Playmaking,
+        PerimeterDefense,
+        InteriorDefense,
+        Rebounding,
+        Physical,
+        Mental
+    }
+
+    /// <summary>
+    /// Categorizes attributes for development purposes.
+    /// </summary>
+    public static class PlayerAttributeHelper
+    {
+        public static AttributeCategory GetCategory(PlayerAttribute attr)
+        {
+            return attr switch
+            {
+                PlayerAttribute.Finishing_Rim or
+                PlayerAttribute.Finishing_PostMoves or
+                PlayerAttribute.Shot_Close => AttributeCategory.Scoring,
+
+                PlayerAttribute.Shot_MidRange or
+                PlayerAttribute.Shot_Three or
+                PlayerAttribute.FreeThrow => AttributeCategory.Shooting,
+
+                PlayerAttribute.Passing or
+                PlayerAttribute.BallHandling or
+                PlayerAttribute.OffensiveIQ or
+                PlayerAttribute.SpeedWithBall => AttributeCategory.Playmaking,
+
+                PlayerAttribute.Defense_Perimeter or
+                PlayerAttribute.Steal or
+                PlayerAttribute.DefensiveIQ => AttributeCategory.PerimeterDefense,
+
+                PlayerAttribute.Defense_Interior or
+                PlayerAttribute.Defense_PostDefense or
+                PlayerAttribute.Block => AttributeCategory.InteriorDefense,
+
+                PlayerAttribute.DefensiveRebound => AttributeCategory.Rebounding,
+
+                PlayerAttribute.Speed or
+                PlayerAttribute.Acceleration or
+                PlayerAttribute.Strength or
+                PlayerAttribute.Vertical or
+                PlayerAttribute.Stamina or
+                PlayerAttribute.Durability or
+                PlayerAttribute.Wingspan => AttributeCategory.Physical,
+
+                _ => AttributeCategory.Mental
+            };
+        }
+
+        /// <summary>
+        /// Gets attributes that decline first with age (physical).
+        /// </summary>
+        public static PlayerAttribute[] GetFastDeclineAttributes()
+        {
+            return new[]
+            {
+                PlayerAttribute.Speed,
+                PlayerAttribute.Acceleration,
+                PlayerAttribute.Vertical,
+                PlayerAttribute.Stamina
+            };
+        }
+
+        /// <summary>
+        /// Gets attributes that decline slowly with age (skill-based).
+        /// </summary>
+        public static PlayerAttribute[] GetSlowDeclineAttributes()
+        {
+            return new[]
+            {
+                PlayerAttribute.Shot_Three,
+                PlayerAttribute.Shot_MidRange,
+                PlayerAttribute.FreeThrow,
+                PlayerAttribute.Passing,
+                PlayerAttribute.OffensiveIQ,
+                PlayerAttribute.DefensiveIQ
+            };
+        }
+
+        /// <summary>
+        /// Gets attributes that may not decline at all.
+        /// </summary>
+        public static PlayerAttribute[] GetNoDeclineAttributes()
+        {
+            return new[]
+            {
+                PlayerAttribute.BasketballIQ,
+                PlayerAttribute.Leadership,
+                PlayerAttribute.Composure
+            };
+        }
+    }
+
+    /// <summary>
+    /// Log entry for player development changes.
+    /// </summary>
+    [Serializable]
+    public class DevelopmentLog
+    {
+        public int Season;
+        public PlayerAttribute Attribute;
+        public int PreviousValue;
+        public int NewValue;
+        public string Reason;  // "Offseason training", "In-season development", "Age decline"
+        public DateTime Date;
+
+        public int Change => NewValue - PreviousValue;
+        public bool IsImprovement => Change > 0;
     }
 }
