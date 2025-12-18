@@ -299,9 +299,9 @@ Individual possession resolution.
 
 | # | Feature | Status | Notes |
 |---|---------|--------|-------|
-| 1 | Match Simulator | ✅/⬜ | Core simulation complete, visualization stub |
-| 2 | Playoff System | ❌ | Play-in and bracket need implementation |
-| 3 | Injury System | 🔶 | Basic injury data exists, needs full system |
+| 1 | Match Simulator | ✅ | Core sim + ESPN Gamecast visualization complete |
+| 2 | Playoff System | ✅ | Play-in tournament + bracket fully implemented |
+| 3 | Injury System | ✅ | Full system with generation, recovery, load management |
 | 4 | Offseason Phases | 🔶 | Summer League complete, others partial |
 | 5 | Awards System | 🔶 | AllStarManager exists, voting logic needed |
 | 6 | Morale & Chemistry | ⬜ | Data structures exist, no gameplay impact |
@@ -317,9 +317,16 @@ Individual possession resolution.
 
 ---
 
-### 1. MATCH SIMULATOR (Core Gameplay Experience) ✅ COMPLETE / ⬜ VISUALIZATION STUB
+### 1. MATCH SIMULATOR (Core Gameplay Experience) ✅ COMPLETE
 
 > **This is the heart of the game.** The Match Simulator is where users coach their team in real-time, making strategic decisions that determine outcomes. Inspired by ESPN Gamecast.
+
+**Implementation Files**:
+- `Core/MatchSimulationController.cs` - Main simulation controller with speed controls, auto-pause, events
+- `UI/Panels/MatchPanel.cs` - ESPN Gamecast-style UI layout
+- `UI/Components/CourtDiagramView.cs` - 2D half-court with player dots
+- `UI/Components/CoachingMenuView.cs` - Tabbed coaching interface (offense/defense/subs/matchups)
+- `Core/PlayByPlayGenerator.cs` - Broadcast-style text generation with highlight detection
 
 #### Visual Style
 - **ESPN Gamecast-style** - Text-based play-by-play as primary visualization
@@ -448,7 +455,12 @@ That's his fifth triple of the quarter!"
 - Aggression level
 - Shot selection tendencies
 
-### 2. PLAYOFF SYSTEM ❌ NOT IMPLEMENTED
+### 2. PLAYOFF SYSTEM ✅ COMPLETE
+
+**Implementation Files**:
+- `Core/Data/PlayoffData.cs` - Data structures for bracket, series, play-in games
+- `Core/Manager/PlayoffManager.cs` - Singleton manager for playoff flow
+- `UI/Panels/PlayoffBracketPanel.cs` - Bracket visualization UI
 
 #### Play-In Tournament (seeds 7-10 per conference)
 - Game 1: 7 vs 8 → Winner gets 7 seed
@@ -512,7 +524,13 @@ That's his fifth triple of the quarter!"
 - Pressure affects low-composure players
 - Cannot be instant-simmed (must at least watch at 4x)
 
-### 3. INJURY SYSTEM 🔶 PARTIAL
+### 3. INJURY SYSTEM ✅ COMPLETE
+
+**Implementation Files**:
+- `Core/Data/InjuryData.cs` - Enums and data structures (InjuryType, InjurySeverity, InjuryStatus)
+- `Core/Manager/InjuryManager.cs` - Full injury generation, recovery, and load management
+- Enhanced `Core/Data/Player.cs` - Injury history tracking, fatigue, minutes tracking
+- Enhanced `Core/Data/SaveData.cs` - Injury serialization
 
 #### Injury Occurrence
 
@@ -1722,10 +1740,10 @@ These 5 files are touched by almost every feature:
 
 > Based on audit: ✅ = Done, 🔶 = Enhance, ❌ = Build
 
-### Phase 1: Core Gameplay Completion (HIGH PRIORITY)
-1. ❌ **Playoff System** - Play-in tournament + bracket (critical for season completion)
-2. 🔶 **Injury System** - Full InjuryManager with load management, risk modifiers
-3. ⬜ **Match Visualization** - 2D court diagram, play-by-play UI, speed controls
+### Phase 1: Core Gameplay Completion ✅ COMPLETE
+1. ✅ **Playoff System** - Play-in tournament + bracket (PlayoffManager, PlayoffData, PlayoffBracketPanel)
+2. ✅ **Injury System** - Full InjuryManager with load management, risk modifiers (InjuryManager, InjuryData)
+3. ✅ **Match Visualization** - ESPN Gamecast UI, play-by-play, speed controls (MatchSimulationController, MatchPanel, CourtDiagramView, CoachingMenuView, PlayByPlayGenerator)
 
 ### Phase 2: Season Experience Enhancement
 1. 🔶 **Awards System** - Implement voting logic in AllStarManager
@@ -1788,5 +1806,5 @@ public void RestoreFromSave(ManagerState state) { ... }
 
 ---
 
-*Last Updated: December 17, 2024*
-*Version: Design Document v1.1 (Implementation Status Audit)*
+*Last Updated: December 18, 2024*
+*Version: Design Document v1.2 (Phase 1 Complete - Playoff, Injury, Match Visualization)*

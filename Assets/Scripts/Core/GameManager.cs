@@ -78,6 +78,11 @@ namespace NBAHeadCoach.Core
         private CoachJobMarketManager _coachJobManager;
         private InjuryManager _injuryManager;
         public InjuryManager InjuryManager => _injuryManager;
+        private PlayoffManager _playoffManager;
+        public PlayoffManager PlayoffManager => _playoffManager;
+
+        // MatchSimulationController uses its own singleton pattern
+        public MatchSimulationController MatchSimulation => MatchSimulationController.Instance;
 
         #endregion
 
@@ -372,6 +377,12 @@ namespace NBAHeadCoach.Core
 
             // Initialize season controller with saved calendar
             SeasonController.RestoreFromSave(data.CalendarData);
+
+            // Restore playoff state
+            if (data.PlayoffData != null)
+            {
+                _playoffManager?.RestoreFromSave(data.PlayoffData);
+            }
         }
 
         /// <summary>
@@ -389,7 +400,8 @@ namespace NBAHeadCoach.Core
                 CurrentDate = _currentDate,
                 TeamStates = CreateTeamStates(),
                 PlayerStates = CreatePlayerStates(),
-                CalendarData = SeasonController.CreateCalendarSaveData()
+                CalendarData = SeasonController.CreateCalendarSaveData(),
+                PlayoffData = _playoffManager?.CreateSaveData()
             };
         }
 
@@ -535,6 +547,7 @@ namespace NBAHeadCoach.Core
         public void RegisterAllStarManager(AllStarManager manager) => _allStarManager = manager;
         public void RegisterCoachJobManager(CoachJobMarketManager manager) => _coachJobManager = manager;
         public void RegisterInjuryManager(InjuryManager manager) => _injuryManager = manager;
+        public void RegisterPlayoffManager(PlayoffManager manager) => _playoffManager = manager;
 
         #endregion
 

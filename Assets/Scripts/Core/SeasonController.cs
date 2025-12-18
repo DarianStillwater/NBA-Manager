@@ -411,17 +411,34 @@ namespace NBAHeadCoach.Core
 
             bool madePlayoffs = IsPlayoffTeam(_gameManager.PlayerTeamId);
 
-            if (madePlayoffs)
+            // Get conference standings for playoff seeding
+            var eastStandings = GetConferenceStandings("Eastern");
+            var westStandings = GetConferenceStandings("Western");
+
+            // Initialize playoffs
+            var playoffManager = PlayoffManager.Instance;
+            if (playoffManager != null)
             {
-                _currentPhase = SeasonPhase.Playoffs;
-                OnPlayoffsStart?.Invoke();
-                // Would generate playoff bracket here
+                playoffManager.InitializePlayoffs(_currentSeason, eastStandings, westStandings);
             }
             else
             {
-                _currentPhase = SeasonPhase.Offseason;
-                OnSeasonEnd?.Invoke();
-                _gameManager.ChangeState(GameState.Offseason);
+                Debug.LogWarning("[SeasonController] PlayoffManager not found!");
+            }
+
+            _currentPhase = SeasonPhase.Playoffs;
+            OnPlayoffsStart?.Invoke();
+
+            if (madePlayoffs)
+            {
+                Debug.Log($"[SeasonController] {playerTeam?.Name} made the playoffs!");
+                // Player's team is in playoffs - continue to playoff bracket
+            }
+            else
+            {
+                Debug.Log($"[SeasonController] {playerTeam?.Name} missed the playoffs. Season over.");
+                // Player's team missed playoffs - go to offseason after watching/simulating playoffs
+                // For now, we still enter playoff phase but player watches from sidelines
             }
         }
 

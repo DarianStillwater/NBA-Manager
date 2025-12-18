@@ -39,6 +39,9 @@ namespace NBAHeadCoach.Core
         [Header("Calendar")]
         public CalendarSaveData CalendarData;
 
+        [Header("Playoffs")]
+        public PlayoffSaveData PlayoffData;
+
         [Header("Draft")]
         public List<DraftProspectSaveState> DraftClass = new List<DraftProspectSaveState>();
         public Dictionary<string, List<int>> TeamDraftPicks = new Dictionary<string, List<int>>();
