@@ -20,6 +20,7 @@ namespace NBAHeadCoach.Core
         public DateTime SaveTimestamp;
         public string SaveName;
         public string SaveSlot;
+        public bool IsIronman;  // Ironman mode - single save, no reload
 
         [Header("Career")]
         public CoachCareer Career;
@@ -66,7 +67,8 @@ namespace NBAHeadCoach.Core
                 Season = CurrentSeason,
                 Date = CurrentDate,
                 Record = GetRecordString(),
-                SaveTimestamp = SaveTimestamp
+                SaveTimestamp = SaveTimestamp,
+                IsIronman = IsIronman
             };
         }
 
@@ -99,6 +101,7 @@ namespace NBAHeadCoach.Core
         public DateTime Date;
         public string Record;
         public DateTime SaveTimestamp;
+        public bool IsIronman;
         public bool IsEmpty => string.IsNullOrEmpty(CoachName);
     }
 

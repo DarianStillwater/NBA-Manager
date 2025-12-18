@@ -7,17 +7,25 @@ using UnityEngine;
 namespace NBAHeadCoach.Core
 {
     /// <summary>
-    /// Manages saving and loading game state to/from disk
+    /// Manages saving and loading game state to/from disk.
+    /// Supports Ironman mode (single auto-save, no manual saves, save-on-load deletion).
     /// </summary>
     public class SaveLoadManager
     {
         private const string SAVE_FOLDER = "Saves";
         private const string SAVE_EXTENSION = ".nbahc";
         private const string AUTO_SAVE_NAME = "AutoSave";
+        private const string IRONMAN_SAVE_NAME = "Ironman";
         private const int MAX_AUTO_SAVES = 3;
 
         private string _savePath;
         private int _autoSaveIndex;
+
+        // Ironman mode tracking
+        private bool _isIronmanMode;
+        private string _currentIronmanSlot;
+
+        public bool IsIronmanMode => _isIronmanMode;
 
         public SaveLoadManager()
         {
@@ -31,6 +39,146 @@ namespace NBAHeadCoach.Core
                 Debug.Log($"[SaveLoadManager] Created save directory: {_savePath}");
             }
         }
+
+        #region Ironman Mode
+
+        /// <summary>
+        /// Enable Ironman mode for a new game.
+        /// </summary>
+        public void EnableIronmanMode(string careerName)
+        {
+            _isIronmanMode = true;
+            _currentIronmanSlot = $"{IRONMAN_SAVE_NAME}_{SanitizeName(careerName)}";
+            Debug.Log($"[SaveLoadManager] Ironman mode enabled: {_currentIronmanSlot}");
+        }
+
+        /// <summary>
+        /// Disable Ironman mode (when returning to menu).
+        /// </summary>
+        public void DisableIronmanMode()
+        {
+            _isIronmanMode = false;
+            _currentIronmanSlot = null;
+        }
+
+        /// <summary>
+        /// Save in Ironman mode - single slot, overwrites each time.
+        /// </summary>
+        public bool IronmanSave(SaveData data)
+        {
+            if (!_isIronmanMode || string.IsNullOrEmpty(_currentIronmanSlot))
+            {
+                Debug.LogError("[SaveLoadManager] Not in Ironman mode");
+                return false;
+            }
+
+            data.IsIronman = true;
+            data.SaveName = $"Ironman - {data.Career?.FullName ?? "Unknown"}";
+            return SaveGame(data, _currentIronmanSlot);
+        }
+
+        /// <summary>
+        /// Load an Ironman save - creates backup before loading, deletes after successful load.
+        /// This prevents save-scumming by ensuring you can't reload the same save repeatedly.
+        /// </summary>
+        public SaveData LoadIronmanGame(string slotName)
+        {
+            try
+            {
+                string filePath = GetSaveFilePath(slotName);
+                string backupPath = filePath + ".backup";
+
+                if (!File.Exists(filePath))
+                {
+                    Debug.LogWarning($"[SaveLoadManager] Ironman save not found: {filePath}");
+                    return null;
+                }
+
+                // Create a temporary backup in case of crash during load
+                File.Copy(filePath, backupPath, overwrite: true);
+
+                // Load the save
+                string json = File.ReadAllText(filePath);
+                var data = JsonUtility.FromJson<SaveData>(json);
+
+                if (data == null || !data.IsIronman)
+                {
+                    Debug.LogError("[SaveLoadManager] Invalid Ironman save data");
+                    return null;
+                }
+
+                // Set Ironman mode state
+                _isIronmanMode = true;
+                _currentIronmanSlot = slotName;
+
+                // Delete the save file to prevent reloading
+                // The game will auto-save on next action, creating a new save point
+                File.Delete(filePath);
+
+                // Delete backup after successful load
+                if (File.Exists(backupPath))
+                    File.Delete(backupPath);
+
+                Debug.Log($"[SaveLoadManager] Ironman save loaded and consumed: {slotName}");
+                return data;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[SaveLoadManager] Ironman load failed: {ex.Message}");
+
+                // Restore from backup if it exists
+                string filePath = GetSaveFilePath(slotName);
+                string backupPath = filePath + ".backup";
+                if (File.Exists(backupPath) && !File.Exists(filePath))
+                {
+                    File.Move(backupPath, filePath);
+                    Debug.Log("[SaveLoadManager] Restored from backup after failed load");
+                }
+
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Check if a save is an Ironman save.
+        /// </summary>
+        public bool IsIronmanSave(string slotName)
+        {
+            return slotName.StartsWith(IRONMAN_SAVE_NAME);
+        }
+
+        /// <summary>
+        /// Get all Ironman saves.
+        /// </summary>
+        public List<SaveSlotInfo> GetIronmanSaves()
+        {
+            return GetAllSaves()
+                .Where(s => s.IsIronman || s.SlotName.StartsWith(IRONMAN_SAVE_NAME))
+                .ToList();
+        }
+
+        /// <summary>
+        /// Delete an Ironman career completely (no undo).
+        /// </summary>
+        public bool DeleteIronmanCareer(string slotName)
+        {
+            if (!IsIronmanSave(slotName))
+            {
+                Debug.LogWarning("[SaveLoadManager] Attempting to delete non-Ironman save as Ironman");
+                return false;
+            }
+
+            return DeleteSave(slotName);
+        }
+
+        private string SanitizeName(string name)
+        {
+            return string.Join("_", name.Split(Path.GetInvalidFileNameChars()))
+                .Replace(" ", "_")
+                .Substring(0, Math.Min(name.Length, 20));
+        }
+
+        #endregion
 
         #region Save Operations
 

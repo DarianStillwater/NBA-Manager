@@ -80,6 +80,18 @@ namespace NBAHeadCoach.Core
         public InjuryManager InjuryManager => _injuryManager;
         private PlayoffManager _playoffManager;
         public PlayoffManager PlayoffManager => _playoffManager;
+        private HistoryManager _historyManager;
+        public HistoryManager HistoryManager => _historyManager;
+        private TrainingCampManager _trainingCampManager;
+        public TrainingCampManager TrainingCampManager => _trainingCampManager;
+        private MoraleChemistryManager _moraleChemistryManager;
+        public MoraleChemistryManager MoraleChemistryManager => _moraleChemistryManager;
+        private MediaManager _mediaManager;
+        public MediaManager MediaManager => _mediaManager;
+        private RevenueManager _revenueManager;
+        public RevenueManager RevenueManager => _revenueManager;
+        private AdvanceScoutingManager _advanceScoutingManager;
+        public AdvanceScoutingManager AdvanceScoutingManager => _advanceScoutingManager;
 
         // MatchSimulationController uses its own singleton pattern
         public MatchSimulationController MatchSimulation => MatchSimulationController.Instance;
@@ -548,6 +560,12 @@ namespace NBAHeadCoach.Core
         public void RegisterCoachJobManager(CoachJobMarketManager manager) => _coachJobManager = manager;
         public void RegisterInjuryManager(InjuryManager manager) => _injuryManager = manager;
         public void RegisterPlayoffManager(PlayoffManager manager) => _playoffManager = manager;
+        public void RegisterHistoryManager(HistoryManager manager) => _historyManager = manager;
+        public void RegisterTrainingCampManager(TrainingCampManager manager) => _trainingCampManager = manager;
+        public void RegisterMoraleChemistryManager(MoraleChemistryManager manager) => _moraleChemistryManager = manager;
+        public void RegisterMediaManager(MediaManager manager) => _mediaManager = manager;
+        public void RegisterRevenueManager(RevenueManager manager) => _revenueManager = manager;
+        public void RegisterAdvanceScoutingManager(AdvanceScoutingManager manager) => _advanceScoutingManager = manager;
 
         #endregion
 

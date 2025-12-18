@@ -4,24 +4,41 @@ namespace NBAHeadCoach.Core.Data
 {
     public enum AwardType
     {
+        // Individual Awards
         MVP,
         DefensivePlayerOfYear,
         RookieOfYear,
         SixthManOfYear,
         MostImprovedPlayer,
         FinalsMVP,
-        
+        CoachOfYear,
+
+        // All-NBA Teams
         AllNBAFirstTeam,
         AllNBASecondTeam,
         AllNBAThirdTeam,
-        
+
+        // All-Defensive Teams
         AllDefensiveFirstTeam,
         AllDefensiveSecondTeam,
-        
+
+        // All-Rookie Teams
         AllRookieFirstTeam,
         AllRookieSecondTeam,
-        
-        AllStar
+
+        // All-Star
+        AllStar,
+        AllStarMVP,
+
+        // Monthly Awards
+        PlayerOfMonth,
+        RookieOfMonth,
+
+        // Weekly Awards
+        PlayerOfWeek,
+
+        // Championship
+        NBAChampion
     }
 
     [Serializable]

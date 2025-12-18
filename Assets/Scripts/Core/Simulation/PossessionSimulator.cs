@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using NBAHeadCoach.Core.Data;
+using NBAHeadCoach.Core.Manager;
 
 namespace NBAHeadCoach.Core.Simulation
 {
@@ -137,20 +138,54 @@ namespace NBAHeadCoach.Core.Simulation
         {
             // Base turnover rate is ~13% in NBA
             float turnoverChance = 0.13f;
-            
+
             // Adjust for ball handler skill
             Player handler = _offensePlayers[_ballHandlerIndex];
             turnoverChance -= (handler.BallHandling - 50) / 500f;
             turnoverChance -= (handler.BasketballIQ - 50) / 500f;
-            
+
             // Adjust for defense
             turnoverChance += (_defenseStrategy.DefensiveAggression - 50) / 300f;
-            
+
+            // Adjust for team chemistry (good chemistry = fewer turnovers)
+            float chemistryMod = GetLineupChemistryModifier();
+            turnoverChance -= chemistryMod * 0.05f; // ±0.6% based on chemistry
+
+            // Adjust for morale (low morale = more careless mistakes)
+            float avgMorale = GetAverageMorale(_offensePlayers);
+            float moraleMod = (avgMorale - 50f) / 50f; // -1 to +1
+            turnoverChance -= moraleMod * 0.02f; // ±2% based on morale
+
             turnoverChance = Mathf.Clamp(turnoverChance, 0.05f, 0.25f);
-            
-            return _random.NextDouble() < turnoverChance 
-                ? PossessionOutcomeType.Turnover 
+
+            return _random.NextDouble() < turnoverChance
+                ? PossessionOutcomeType.Turnover
                 : PossessionOutcomeType.Shot;
+        }
+
+        /// <summary>
+        /// Gets lineup chemistry modifier from MoraleChemistryManager.
+        /// </summary>
+        private float GetLineupChemistryModifier()
+        {
+            var manager = Manager.MoraleChemistryManager.Instance;
+            if (manager == null) return 0f;
+
+            var playerIds = _offensePlayers.Select(p => p.PlayerId).ToList();
+            return manager.GetLineupChemistryModifier(playerIds);
+        }
+
+        /// <summary>
+        /// Gets average morale of players.
+        /// </summary>
+        private float GetAverageMorale(Player[] players)
+        {
+            float total = 0f;
+            foreach (var player in players)
+            {
+                total += player.Morale;
+            }
+            return total / players.Length;
         }
 
         private enum PossessionOutcomeType { Shot, Turnover }
