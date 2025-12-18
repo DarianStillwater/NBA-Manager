@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using NBAHeadCoach.Core.Data;
 
 namespace NBAHeadCoach.Core
 {
@@ -811,17 +812,184 @@ namespace NBAHeadCoach.Core
             OnRetirementComplete?.Invoke(package);
         }
 
+        /// <summary>
+        /// Determine post-retirement role based on player attributes, legacy, and personality
+        /// Uses weighted factors to calculate probabilities for each career path
+        /// </summary>
         private string DeterminePostRetirementRole(RetirementPackage package)
+        {
+            // Get player data for attribute-based calculation
+            var playerData = GetPlayerData(package.PlayerId);
+            if (playerData == null)
+            {
+                // Fallback to legacy-based simple calculation
+                return DeterminePostRetirementRoleByLegacy(package.LegacyTier);
+            }
+
+            return DeterminePostRetirementRoleByAttributes(playerData, package.LegacyTier);
+        }
+
+        /// <summary>
+        /// Calculate career path based on player attributes and personality
+        /// </summary>
+        private string DeterminePostRetirementRoleByAttributes(PlayerCareerData player, LegacyTier legacy)
+        {
+            // Calculate base scores for each path
+            float coachingScore = 25f;
+            float scoutingScore = 20f;
+            float analystScore = 15f;
+            float frontOfficeScore = 10f;
+            float privateScore = 30f;
+
+            // Get player attributes (use defaults if not available)
+            int basketballIQ = player.BasketballIQ > 0 ? player.BasketballIQ : 50;
+            int leadership = player.Leadership > 0 ? player.Leadership : 50;
+            bool hasLeaderTrait = player.AllStarSelections >= 3; // Proxy for leadership
+            bool isProfessional = player.CareerInjuries < 5; // Proxy for professionalism
+            bool isCompetitor = player.AllNbaSelections > 0 || player.AllDefensiveSelections > 0;
+
+            // High Leadership + IQ: +25% coaching, +10% scouting, +5% analyst, -20% private
+            if (leadership >= 65 && basketballIQ >= 65)
+            {
+                coachingScore += 25f;
+                scoutingScore += 10f;
+                analystScore += 5f;
+                privateScore -= 20f;
+            }
+
+            // Leader/Mentor trait: +15% coaching, +10% analyst, -15% private
+            if (hasLeaderTrait)
+            {
+                coachingScore += 15f;
+                analystScore += 10f;
+                privateScore -= 15f;
+            }
+
+            // Professional trait: +10% coaching, +5% scouting, -20% private
+            if (isProfessional)
+            {
+                coachingScore += 10f;
+                scoutingScore += 5f;
+                privateScore -= 20f;
+            }
+
+            // HoF/All-Time legacy: +20% analyst (media wants them), -10% scouting
+            if (legacy == LegacyTier.HallOfFame || legacy == LegacyTier.AllTimeTier)
+            {
+                analystScore += 20f;
+                scoutingScore -= 10f;
+                frontOfficeScore += 15f;
+            }
+
+            // Role player legacy: +10% coaching, +15% scouting, -15% analyst
+            if (legacy == LegacyTier.RolePlayers || legacy == LegacyTier.SolidCareer)
+            {
+                coachingScore += 10f;
+                scoutingScore += 15f;
+                analystScore -= 15f;
+            }
+
+            // Competitor trait: +15% coaching, +5% scouting, -15% private
+            if (isCompetitor)
+            {
+                coachingScore += 15f;
+                scoutingScore += 5f;
+                privateScore -= 15f;
+            }
+
+            // Ensure no negative scores
+            coachingScore = Mathf.Max(coachingScore, 5f);
+            scoutingScore = Mathf.Max(scoutingScore, 5f);
+            analystScore = Mathf.Max(analystScore, 5f);
+            frontOfficeScore = Mathf.Max(frontOfficeScore, 5f);
+            privateScore = Mathf.Max(privateScore, 10f);
+
+            // Calculate total and normalize
+            float total = coachingScore + scoutingScore + analystScore + frontOfficeScore + privateScore;
+
+            // Roll for career path
+            float roll = UnityEngine.Random.value * total;
+
+            if (roll < coachingScore)
+            {
+                OnPlayerEnteredCoachingPipeline?.Invoke(player, PostPlayerCareerPath.Coaching);
+                return "Assistant Coach";
+            }
+            roll -= coachingScore;
+
+            if (roll < scoutingScore)
+            {
+                OnPlayerEnteredCoachingPipeline?.Invoke(player, PostPlayerCareerPath.Scouting);
+                return "Scout";
+            }
+            roll -= scoutingScore;
+
+            if (roll < analystScore)
+            {
+                OnPlayerEnteredCoachingPipeline?.Invoke(player, PostPlayerCareerPath.MediaAnalyst);
+                return "Television Analyst";
+            }
+            roll -= analystScore;
+
+            if (roll < frontOfficeScore)
+            {
+                OnPlayerEnteredCoachingPipeline?.Invoke(player, PostPlayerCareerPath.FrontOffice);
+                return "Front Office Advisor";
+            }
+
+            OnPlayerEnteredCoachingPipeline?.Invoke(player, PostPlayerCareerPath.PrivateLife);
+            return "Private Life";
+        }
+
+        /// <summary>
+        /// Fallback method using only legacy tier
+        /// </summary>
+        private string DeterminePostRetirementRoleByLegacy(LegacyTier legacy)
         {
             float roll = UnityEngine.Random.value;
 
-            if (roll < 0.25f) return "Television Analyst";
-            if (roll < 0.4f) return "Assistant Coach";
-            if (roll < 0.5f) return "Front Office Advisor";
-            if (roll < 0.6f) return "Player Development";
-            if (roll < 0.7f) return "Team Ambassador";
-            return "Private Life";
+            switch (legacy)
+            {
+                case LegacyTier.HallOfFame:
+                case LegacyTier.AllTimeTier:
+                    if (roll < 0.35f) return "Television Analyst";
+                    if (roll < 0.55f) return "Front Office Advisor";
+                    if (roll < 0.75f) return "Assistant Coach";
+                    return "Team Ambassador";
+
+                case LegacyTier.StarPlayer:
+                    if (roll < 0.25f) return "Assistant Coach";
+                    if (roll < 0.45f) return "Television Analyst";
+                    if (roll < 0.60f) return "Front Office Advisor";
+                    if (roll < 0.75f) return "Scout";
+                    return "Private Life";
+
+                case LegacyTier.SolidCareer:
+                case LegacyTier.RolePlayers:
+                    if (roll < 0.30f) return "Assistant Coach";
+                    if (roll < 0.50f) return "Scout";
+                    if (roll < 0.60f) return "Player Development";
+                    return "Private Life";
+
+                default:
+                    if (roll < 0.20f) return "Scout";
+                    if (roll < 0.35f) return "Assistant Coach";
+                    return "Private Life";
+            }
         }
+
+        /// <summary>
+        /// Get player data for attribute-based calculations
+        /// Override this to provide actual player lookup
+        /// </summary>
+        protected virtual PlayerCareerData GetPlayerData(string playerId)
+        {
+            // This will be populated by FormerPlayerCareerManager integration
+            return null;
+        }
+
+        // Event fired when a player enters the coaching/scouting pipeline
+        public event Action<PlayerCareerData, PostPlayerCareerPath> OnPlayerEnteredCoachingPipeline;
 
         private List<string> GetRivalTeams(string teamId)
         {
@@ -890,8 +1058,17 @@ namespace NBAHeadCoach.Core
         public float CurrentRating;
         public float PeakRating;
         public int CareerInjuries;
-        public int ConsecutiveLosing​Seasons;
+        public int ConsecutiveLosingSeasons;
         public float CareerEarnings;
         public bool OnContender;
+
+        // Attributes for career path determination
+        [Range(0, 100)] public int BasketballIQ;
+        [Range(0, 100)] public int Leadership;
+        [Range(0, 100)] public int WorkEthic;
+
+        // Position info
+        public Data.Position PrimaryPosition;
+        public Data.Position SecondaryPosition;
     }
 }

@@ -54,6 +54,17 @@ namespace NBAHeadCoach.Core.Data
         public int ContractYearsRemaining;
         public DateTime ContractStartDate;
 
+        // ==================== FORMER PLAYER INFO ====================
+        /// <summary>
+        /// Whether this scout was a former NBA player
+        /// </summary>
+        public bool IsFormerPlayer;
+
+        /// <summary>
+        /// Reference to original player ID if this scout is a former player
+        /// </summary>
+        public string FormerPlayerId;
+
         // ==================== STATE ====================
         public bool IsAvailable = true;  // Not on assignment
         public string CurrentAssignmentId;
@@ -212,6 +223,71 @@ namespace NBAHeadCoach.Core.Data
             scout.CharacterJudgment = 75 + rng.Next(25);
             scout.ExperienceYears = 15 + rng.Next(10);
             scout.AnnualSalary = scout.MarketValue + 50000;
+
+            return scout;
+        }
+
+        /// <summary>
+        /// Creates a scout from a former player's data with derived attributes.
+        /// Used by FormerPlayerScout when a former player becomes a scout.
+        /// </summary>
+        public static Scout CreateFromFormerPlayer(
+            string teamId,
+            string firstName,
+            string lastName,
+            string formerPlayerId,
+            int evaluationAccuracy,
+            int prospectEvaluation,
+            int proEvaluation,
+            int potentialAssessment,
+            int collegeConnections,
+            int internationalConnections,
+            int agentRelationships,
+            int workRate,
+            int attentionToDetail,
+            int characterJudgment,
+            ScoutSpecialization primarySpec,
+            ScoutSpecialization secondarySpec,
+            int experience,
+            int age)
+        {
+            var rng = new System.Random();
+
+            var scout = new Scout
+            {
+                ScoutId = $"SCOUT_{Guid.NewGuid().ToString().Substring(0, 8)}",
+                FirstName = firstName,
+                LastName = lastName,
+                TeamId = teamId,
+
+                // Mark as former player
+                IsFormerPlayer = true,
+                FormerPlayerId = formerPlayerId,
+
+                // Core attributes
+                EvaluationAccuracy = evaluationAccuracy,
+                ProspectEvaluation = prospectEvaluation,
+                ProEvaluation = proEvaluation,
+                PotentialAssessment = potentialAssessment,
+                CollegeConnections = collegeConnections,
+                InternationalConnections = internationalConnections,
+                AgentRelationships = agentRelationships,
+                WorkRate = workRate,
+                AttentionToDetail = attentionToDetail,
+                CharacterJudgment = characterJudgment,
+
+                // Specializations
+                PrimarySpecialization = primarySpec,
+                SecondarySpecialization = secondarySpec,
+
+                // Career
+                ExperienceYears = experience,
+                Age = age
+            };
+
+            // Set salary based on market value
+            scout.AnnualSalary = (int)(scout.MarketValue * (0.9f + rng.NextDouble() * 0.2f));
+            scout.ContractYearsRemaining = rng.Next(2, 4);
 
             return scout;
         }

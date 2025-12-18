@@ -129,6 +129,18 @@ namespace NBAHeadCoach.Core.Manager
             if (coach.LastFired != DateTime.MinValue && (DateTime.Now - coach.LastFired).TotalDays < 180)
                 interest -= 20;
 
+            // Former player bonus - teams like hiring former players
+            if (coach.IsFormerPlayer)
+            {
+                interest += 10;
+
+                // Extra bonus if they played for this team
+                if (coach.FormerTeams != null && coach.FormerTeams.Contains(TeamId))
+                {
+                    interest += 15;
+                }
+            }
+
             return Mathf.Clamp(interest, 0, 100);
         }
     }
@@ -927,6 +939,34 @@ namespace NBAHeadCoach.Core.Manager
                     opening.Status = JobOpeningStatus.InterviewPhase;
                 }
             }
+        }
+
+        /// <summary>
+        /// Get hiring bonus for a former player coach based on user relationship.
+        /// Returns a multiplier (e.g., 0.25 = 25% bonus) to add to interest.
+        /// </summary>
+        public float GetFormerPlayerHiringBonus(string formerPlayerId, string teamId)
+        {
+            if (FormerPlayerCareerManager.Instance == null)
+                return 0f;
+
+            return FormerPlayerCareerManager.Instance.GetHiringBonus(formerPlayerId, teamId);
+        }
+
+        /// <summary>
+        /// Calculate team interest with former player bonus included.
+        /// </summary>
+        public int GetTeamInterestWithFormerPlayerBonus(CoachingJobOpening opening, CoachCareer coach)
+        {
+            int baseInterest = opening.GetTeamInterest(coach);
+
+            if (coach.IsFormerPlayer && !string.IsNullOrEmpty(coach.FormerPlayerId))
+            {
+                float bonus = GetFormerPlayerHiringBonus(coach.FormerPlayerId, opening.TeamId);
+                baseInterest += (int)(baseInterest * bonus);
+            }
+
+            return Mathf.Clamp(baseInterest, 0, 100);
         }
     }
 }

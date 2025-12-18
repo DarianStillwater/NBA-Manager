@@ -92,6 +92,8 @@ namespace NBAHeadCoach.Core
         public RevenueManager RevenueManager => _revenueManager;
         private AdvanceScoutingManager _advanceScoutingManager;
         public AdvanceScoutingManager AdvanceScoutingManager => _advanceScoutingManager;
+        private FormerPlayerCareerManager _formerPlayerCareerManager;
+        public FormerPlayerCareerManager FormerPlayerCareerManager => _formerPlayerCareerManager;
 
         // MatchSimulationController uses its own singleton pattern
         public MatchSimulationController MatchSimulation => MatchSimulationController.Instance;
@@ -566,6 +568,7 @@ namespace NBAHeadCoach.Core
         public void RegisterMediaManager(MediaManager manager) => _mediaManager = manager;
         public void RegisterRevenueManager(RevenueManager manager) => _revenueManager = manager;
         public void RegisterAdvanceScoutingManager(AdvanceScoutingManager manager) => _advanceScoutingManager = manager;
+        public void RegisterFormerPlayerCareerManager(FormerPlayerCareerManager manager) => _formerPlayerCareerManager = manager;
 
         #endregion
 

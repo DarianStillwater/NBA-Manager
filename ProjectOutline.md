@@ -312,6 +312,7 @@ Individual possession resolution.
 | 11 | Scouting | ✅ | Advance scouting, scout development, game prep reports |
 | 12 | History & Records | ✅ | Season archives, franchise records, Hall of Fame |
 | 13 | Save System | ✅ | Complete with Ironman mode |
+| 14 | Former Player Careers | ✅ | Coaching progression, hiring bonuses, matchup notifications |
 
 **UI Panels**: ✅ All core panels implemented (Dashboard, Roster, Calendar, Standings, Trade, Draft, Pre/Post Game)
 

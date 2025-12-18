@@ -79,6 +79,17 @@ namespace NBAHeadCoach.Core.Data
         public DateTime ContractStartDate;
         public int BuyoutAmount;  // If fired early
 
+        // ==================== FORMER PLAYER INFO ====================
+        /// <summary>
+        /// Whether this coach was a former NBA player
+        /// </summary>
+        public bool IsFormerPlayer;
+
+        /// <summary>
+        /// Reference to original player ID if this coach is a former player
+        /// </summary>
+        public string FormerPlayerId;
+
         // ==================== COMPUTED PROPERTIES ====================
 
         /// <summary>
@@ -361,6 +372,108 @@ namespace NBAHeadCoach.Core.Data
             coach.GameManagement = Math.Min(100, coach.GameManagement + rng.Next(10, 20));
             coach.PlayerDevelopment = Math.Min(100, coach.PlayerDevelopment + rng.Next(10, 20));
             coach.Motivation = Math.Min(100, coach.Motivation + rng.Next(10, 20));
+
+            return coach;
+        }
+
+        /// <summary>
+        /// Creates a coach from a former player's data with derived attributes.
+        /// Used by FormerPlayerCoach when a former player is hired.
+        /// </summary>
+        public static Coach CreateFromFormerPlayer(
+            string teamId,
+            CoachPosition position,
+            string firstName,
+            string lastName,
+            string formerPlayerId,
+            int offensiveScheme,
+            int defensiveScheme,
+            int inGameAdjustments,
+            int playDesign,
+            int gameManagement,
+            int clockManagement,
+            int rotationManagement,
+            int playerDevelopment,
+            int guardDevelopment,
+            int bigManDevelopment,
+            int shootingCoaching,
+            int defenseCoaching,
+            int motivation,
+            int communication,
+            int manManagement,
+            int mediaHandling,
+            int scoutingAbility,
+            int talentEvaluation,
+            int experience,
+            int age,
+            int reputation,
+            CoachingStyle style,
+            CoachingPhilosophy offensivePhilosophy,
+            CoachingPhilosophy defensivePhilosophy,
+            List<CoachSpecialization> specializations)
+        {
+            var coach = new Coach
+            {
+                CoachId = $"COACH_{Guid.NewGuid().ToString().Substring(0, 8)}",
+                FirstName = firstName,
+                LastName = lastName,
+                TeamId = teamId,
+                Position = position,
+
+                // Mark as former player
+                IsFormerPlayer = true,
+                FormerPlayerId = formerPlayerId,
+
+                // Tactical
+                OffensiveScheme = offensiveScheme,
+                DefensiveScheme = defensiveScheme,
+                InGameAdjustments = inGameAdjustments,
+                PlayDesign = playDesign,
+
+                // Game Management
+                GameManagement = gameManagement,
+                ClockManagement = clockManagement,
+                RotationManagement = rotationManagement,
+
+                // Development
+                PlayerDevelopment = playerDevelopment,
+                GuardDevelopment = guardDevelopment,
+                BigManDevelopment = bigManDevelopment,
+                ShootingCoaching = shootingCoaching,
+                DefenseCoaching = defenseCoaching,
+
+                // Leadership
+                Motivation = motivation,
+                Communication = communication,
+                ManManagement = manManagement,
+                MediaHandling = mediaHandling,
+
+                // Scouting
+                ScoutingAbility = scoutingAbility,
+                TalentEvaluation = talentEvaluation,
+
+                // Career
+                ExperienceYears = experience,
+                Age = age,
+                CareerWins = 0,
+                CareerLosses = 0,
+                PlayoffAppearances = 0,
+                ChampionshipsWon = 0,
+                Reputation = reputation,
+
+                // Style
+                PrimaryStyle = style,
+                OffensivePhilosophy = offensivePhilosophy,
+                DefensivePhilosophy = defensivePhilosophy,
+
+                // Specializations
+                Specializations = specializations ?? new List<CoachSpecialization>()
+            };
+
+            // Set salary based on market value
+            var rng = new System.Random();
+            coach.AnnualSalary = (int)(coach.MarketValue * (0.9f + rng.NextDouble() * 0.2f));
+            coach.ContractYearsRemaining = rng.Next(2, 5);
 
             return coach;
         }

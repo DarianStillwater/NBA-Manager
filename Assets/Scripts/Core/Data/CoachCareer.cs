@@ -329,6 +329,11 @@ namespace NBAHeadCoach.Core.Data
         public bool IsAvailable;            // Looking for work
         public DateTime LastFired;          // When last fired (affects opportunities)
 
+        [Header("Former Player Info")]
+        public bool IsFormerPlayer;         // Whether this coach was a former NBA player
+        public string FormerPlayerId;       // Original player ID if former player
+        public List<string> FormerTeams;    // Teams played for as a player
+
         public string FullName => $"{FirstName} {LastName}";
 
         public float CareerWinPercentage => CareerWins + CareerLosses > 0
