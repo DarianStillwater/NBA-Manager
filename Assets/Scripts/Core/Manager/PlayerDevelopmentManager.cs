@@ -43,6 +43,28 @@ namespace NBAHeadCoach.Core.Manager
         public void SetPlayerDatabase(PlayerDatabase db) => _playerDatabase = db;
         public void SetCurrentSeason(int season) => _currentSeason = season;
 
+        /// <summary>
+        /// Initialize the manager for a new season
+        /// </summary>
+        public void InitializeForNewSeason(List<Team> teams)
+        {
+            if (teams == null) return;
+
+            // Process any initialization needed for new season
+            foreach (var team in teams)
+            {
+                if (team?.Roster == null) continue;
+
+                foreach (var player in team.Roster)
+                {
+                    // Age players at start of new season
+                    player.Age++;
+                }
+            }
+
+            Debug.Log($"[PlayerDevelopmentManager] Initialized for new season - {teams.Count} teams");
+        }
+
         // ==================== OFFSEASON DEVELOPMENT ====================
 
         /// <summary>

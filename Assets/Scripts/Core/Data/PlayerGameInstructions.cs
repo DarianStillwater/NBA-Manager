@@ -179,7 +179,7 @@ namespace NBAHeadCoach.Core.Data
         public bool PushInTransition = true;
 
         [Header("Off-Ball")]
-        public OffBallMovementLevel OffBallMovement = OffBallMovementLevel.Normal;
+        public PlayerOffBallMovement OffBallMovement = PlayerOffBallMovement.Normal;
         public bool SetScreensOffBall = true;
     }
 
@@ -242,7 +242,7 @@ namespace NBAHeadCoach.Core.Data
         None                    // Never touch ball outside scoring
     }
 
-    public enum OffBallMovementLevel
+    public enum PlayerOffBallMovement
     {
         Static,                 // Stand and space
         Limited,                // Minimal movement
@@ -286,7 +286,7 @@ namespace NBAHeadCoach.Core.Data
         public bool StayOnFeet = false;                         // Don't jump on pump fakes
 
         [Header("Help Defense")]
-        public HelpDefenseLevel HelpDefense = HelpDefenseLevel.Normal;
+        public PlayerHelpDefense HelpDefense = PlayerHelpDefense.Normal;
         public bool StuntAndRecover = true;
         public bool ProtectTheRim = false;
 
@@ -337,7 +337,7 @@ namespace NBAHeadCoach.Core.Data
         FlyBy                   // Run at shooter
     }
 
-    public enum HelpDefenseLevel
+    public enum PlayerHelpDefense
     {
         NoHelp,                 // Stay on man
         Light,                  // Minimal help
@@ -578,7 +578,7 @@ namespace NBAHeadCoach.Core.Data
                 case Position.ShootingGuard:
                 case Position.SmallForward:
                     instructions.Offense.CuttingFrequency = CuttingFrequency.Often;
-                    instructions.Offense.OffBallMovement = OffBallMovementLevel.Active;
+                    instructions.Offense.OffBallMovement = PlayerOffBallMovement.Active;
                     break;
             }
 

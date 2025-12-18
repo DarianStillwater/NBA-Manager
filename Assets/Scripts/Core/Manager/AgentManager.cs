@@ -159,6 +159,20 @@ namespace NBAHeadCoach.Core.Manager
             return null;
         }
 
+        /// <summary>
+        /// Alias for GetPlayerAgent for compatibility
+        /// </summary>
+        public Agent GetAgentForPlayer(string playerId) => GetPlayerAgent(playerId);
+
+        /// <summary>
+        /// Assigns a random agent to player and returns the agent
+        /// </summary>
+        public Agent AssignAgentToPlayer(string playerId, int playerOverall = 70)
+        {
+            AssignRandomAgent(playerId, playerOverall);
+            return GetPlayerAgent(playerId);
+        }
+
         public void AssignAgent(string playerId, string agentId)
         {
             _playerAgents[playerId] = agentId;
@@ -214,7 +228,7 @@ namespace NBAHeadCoach.Core.Manager
                 TeamId = teamId,
                 AgentId = agent.AgentId,
                 Type = type,
-                Status = NegotiationStatus.Initial,
+                Status = AgentNegotiationStatus.Initial,
                 StartDate = DateTime.Now,
                 Patience = 100 - agent.Aggression + 20, // Aggressive = less patience
                 MeetingsHeld = 0
@@ -227,16 +241,16 @@ namespace NBAHeadCoach.Core.Manager
             return negotiation;
         }
 
-        private ContractOffer CalculateInitialDemand(Agent agent, NegotiationType type)
+        private AgentContractOffer CalculateInitialDemand(Agent agent, NegotiationType type)
         {
             // Aggressive agents start higher
             float aggressionMultiplier = 1f + (agent.Aggression / 200f); // 1.0 - 1.5x
-            
+
             // Base values (would come from player evaluation in real implementation)
             long baseSalary = 10_000_000;
             int baseYears = 4;
-            
-            return new ContractOffer
+
+            return new AgentContractOffer
             {
                 AnnualSalary = (long)(baseSalary * aggressionMultiplier),
                 Years = baseYears,
@@ -249,10 +263,10 @@ namespace NBAHeadCoach.Core.Manager
         /// <summary>
         /// Makes a counter offer in a negotiation.
         /// </summary>
-        public NegotiationResult MakeOffer(string negotiationId, ContractOffer teamOffer)
+        public AgentNegotiationResult MakeOffer(string negotiationId, AgentContractOffer teamOffer)
         {
             if (!_activeNegotiations.TryGetValue(negotiationId, out var negotiation))
-                return new NegotiationResult { Success = false, Message = "Negotiation not found" };
+                return new AgentNegotiationResult { Success = false, Message = "Negotiation not found" };
             
             var agent = GetAgent(negotiation.AgentId);
             negotiation.TeamOffer = teamOffer;
@@ -266,8 +280,8 @@ namespace NBAHeadCoach.Core.Manager
             
             if (accepted)
             {
-                negotiation.Status = NegotiationStatus.Accepted;
-                return new NegotiationResult
+                negotiation.Status = AgentNegotiationStatus.Accepted;
+                return new AgentNegotiationResult
                 {
                     Success = true,
                     Message = $"{agent.Name} accepts the offer!",
@@ -281,8 +295,8 @@ namespace NBAHeadCoach.Core.Manager
             
             if (negotiation.Patience <= 0)
             {
-                negotiation.Status = NegotiationStatus.WalkedAway;
-                return new NegotiationResult
+                negotiation.Status = AgentNegotiationStatus.WalkedAway;
+                return new AgentNegotiationResult
                 {
                     Success = false,
                     Message = $"{agent.Name} has walked away from negotiations!"
@@ -291,9 +305,9 @@ namespace NBAHeadCoach.Core.Manager
             
             // Agent makes counter
             negotiation.AgentDemand = CalculateCounterOffer(negotiation, agent, teamOffer);
-            negotiation.Status = NegotiationStatus.CounterOffer;
-            
-            return new NegotiationResult
+            negotiation.Status = AgentNegotiationStatus.CounterOffer;
+
+            return new AgentNegotiationResult
             {
                 Success = false,
                 Message = $"{agent.Name} counters with ${negotiation.AgentDemand.AnnualSalary:N0}/year",
@@ -302,7 +316,7 @@ namespace NBAHeadCoach.Core.Manager
             };
         }
 
-        private float CalculateAcceptanceChance(Negotiation negotiation, Agent agent, ContractOffer offer)
+        private float CalculateAcceptanceChance(Negotiation negotiation, Agent agent, AgentContractOffer offer)
         {
             var demand = negotiation.AgentDemand;
             
@@ -328,17 +342,17 @@ namespace NBAHeadCoach.Core.Manager
             return Mathf.Clamp01(baseChance - 0.3f); // Needs ~85%+ match to accept
         }
 
-        private ContractOffer CalculateCounterOffer(Negotiation negotiation, Agent agent, ContractOffer offer)
+        private AgentContractOffer CalculateCounterOffer(Negotiation negotiation, Agent agent, AgentContractOffer offer)
         {
             var demand = negotiation.AgentDemand;
-            
+
             // Move slightly toward offer (but not all the way)
             float movementRate = (100 - agent.Aggression) / 200f + 0.1f; // 10-60% movement
-            
+
             long salaryDiff = demand.AnnualSalary - offer.AnnualSalary;
             long newSalary = demand.AnnualSalary - (long)(salaryDiff * movementRate);
-            
-            return new ContractOffer
+
+            return new AgentContractOffer
             {
                 AnnualSalary = Math.Max(offer.AnnualSalary, newSalary),
                 Years = demand.Years,
@@ -404,13 +418,86 @@ namespace NBAHeadCoach.Core.Manager
         public string Name;
         public string Agency;
         public bool IsSuperAgent;
-        
+
         public int Aggression;      // 0-100, how hard they push
         public int Loyalty;         // 0-100, preference for keeping player
         public int Reputation;      // 0-100, player trust
         public int ClientCount;
-        
+
         public List<string> PreferredMarkets = new List<string>(); // Team IDs
+
+        // Alias for compatibility
+        public string FullName => Name;
+
+        // Personality mapped from Aggression for compatibility with Data.Agent interface
+        public NBAHeadCoach.Core.Data.AgentPersonality Personality
+        {
+            get
+            {
+                if (Aggression >= 80) return NBAHeadCoach.Core.Data.AgentPersonality.Aggressive;
+                if (Loyalty >= 70) return NBAHeadCoach.Core.Data.AgentPersonality.LoyaltyFocused;
+                if (Aggression >= 50) return NBAHeadCoach.Core.Data.AgentPersonality.DramaProne;
+                return NBAHeadCoach.Core.Data.AgentPersonality.Reasonable;
+            }
+        }
+
+        /// <summary>
+        /// Get negotiation style based on agent personality
+        /// </summary>
+        public NBAHeadCoach.Core.Data.NegotiationStyle GetNegotiationStyle()
+        {
+            return NBAHeadCoach.Core.Data.NegotiationStyle.FromPersonality(Personality);
+        }
+
+        /// <summary>
+        /// Get relationship with a team (returns default for this simple agent)
+        /// </summary>
+        public NBAHeadCoach.Core.Data.AgentTeamRelationship GetTeamRelationship(string teamId)
+        {
+            return new NBAHeadCoach.Core.Data.AgentTeamRelationship
+            {
+                TeamId = teamId,
+                RelationshipScore = PreferredMarkets.Contains(teamId) ? 70 : 50,
+                SuccessfulDeals = 0,
+                FailedNegotiations = 0,
+                HasActiveClient = false,
+                LastInteraction = DateTime.MinValue
+            };
+        }
+
+        /// <summary>
+        /// Check if agent will leak to media
+        /// </summary>
+        public bool WillLeakToMedia(bool isHighProfile, bool stalled)
+        {
+            int chance = Aggression / 2;
+            if (isHighProfile) chance += 15;
+            if (stalled) chance += 20;
+            return UnityEngine.Random.Range(0, 100) < chance;
+        }
+
+        /// <summary>
+        /// Update relationship after negotiation
+        /// </summary>
+        public void UpdateRelationshipAfterNegotiation(string teamId, bool successful, bool playerSigned = false)
+        {
+            // Simple implementation - could track in a dictionary if needed
+        }
+
+        /// <summary>
+        /// Get salary expectation description for UI
+        /// </summary>
+        public string GetSalaryExpectationDescription(long baseSalary, string teamId = null)
+        {
+            float multiplier = 1f + (Aggression / 100f * 0.3f); // 1.0 to 1.3x based on aggression
+
+            // Preferred markets get a slight discount
+            if (teamId != null && PreferredMarkets.Contains(teamId))
+                multiplier -= 0.05f;
+
+            long expected = (long)(baseSalary * multiplier);
+            return $"${expected / 1_000_000:F1}M per year";
+        }
     }
 
     [Serializable]
@@ -421,14 +508,14 @@ namespace NBAHeadCoach.Core.Manager
         public string TeamId;
         public string AgentId;
         public NegotiationType Type;
-        public NegotiationStatus Status;
+        public AgentNegotiationStatus Status;
         public DateTime StartDate;
-        
+
         public int Patience;        // 0-100, walks away at 0
         public int MeetingsHeld;
-        
-        public ContractOffer AgentDemand;
-        public ContractOffer TeamOffer;
+
+        public AgentContractOffer AgentDemand;
+        public AgentContractOffer TeamOffer;
     }
 
     public enum NegotiationType
@@ -439,7 +526,7 @@ namespace NBAHeadCoach.Core.Manager
         TradeAndExtend
     }
 
-    public enum NegotiationStatus
+    public enum AgentNegotiationStatus
     {
         Initial,
         CounterOffer,
@@ -449,7 +536,7 @@ namespace NBAHeadCoach.Core.Manager
     }
 
     [Serializable]
-    public class ContractOffer
+    public class AgentContractOffer
     {
         public long AnnualSalary;
         public int Years;
@@ -461,12 +548,12 @@ namespace NBAHeadCoach.Core.Manager
         public float TradeKickerPercent;
     }
 
-    public class NegotiationResult
+    public class AgentNegotiationResult
     {
         public bool Success;
         public string Message;
-        public ContractOffer AcceptedTerms;
-        public ContractOffer CounterOffer;
+        public AgentContractOffer AcceptedTerms;
+        public AgentContractOffer CounterOffer;
         public int RemainingPatience;
     }
 }

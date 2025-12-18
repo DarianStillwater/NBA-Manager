@@ -410,7 +410,7 @@ namespace NBAHeadCoach.Core.Data
                 PlayerId = $"{teamId}_{last.ToUpper()}_{first.ToUpper()}".Replace(" ", "_").Replace("'", "").Replace(".", ""),
                 FirstName = first,
                 LastName = last,
-                JerseyNumber = jersey,
+                JerseyNumber = jersey.ToString(),
                 Position = pos,
                 Age = age,
                 HeightInches = height,
@@ -470,7 +470,8 @@ namespace NBAHeadCoach.Core.Data
     public class PlayerData
     {
         public string PlayerId, FirstName, LastName, TeamId;
-        public int JerseyNumber, Position, Age, HeightInches, WeightLbs;
+        public string JerseyNumber;
+        public int Position, Age, HeightInches, WeightLbs;
         
         // Offense
         public int Finishing_Rim, Finishing_PostMoves, Shot_Close, Shot_MidRange, Shot_Three;

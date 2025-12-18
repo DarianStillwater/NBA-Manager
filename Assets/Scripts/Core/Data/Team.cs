@@ -38,9 +38,124 @@ namespace NBAHeadCoach.Core.Data
         public float PointsPerGame;
         public float PointsAllowedPerGame;
 
+        // ==================== CONFERENCE / DIVISION ====================
+        public string Conference;  // "Eastern" or "Western"
+        public string Division;    // "Atlantic", "Central", "Southeast", "Northwest", "Pacific", "Southwest"
+
         // ==================== COMPUTED ====================
         public string FullName => $"{City} {Nickname}";
+        public string Name  // Alias for UI compatibility
+        {
+            get => Nickname;
+            set => Nickname = value;
+        }
         public float WinPercentage => (Wins + Losses) > 0 ? (float)Wins / (Wins + Losses) : 0f;
+        public string Arena => ArenaName;  // Alias for UI compatibility
+
+        // ==================== UI HELPER PROPERTIES ====================
+
+        /// <summary>
+        /// Starting lineup as int array for UI compatibility
+        /// Maps to roster indices
+        /// </summary>
+        public int[] StartingLineup
+        {
+            get
+            {
+                int[] lineup = new int[5];
+                for (int i = 0; i < 5; i++)
+                {
+                    if (i < StartingLineupIds.Length && !string.IsNullOrEmpty(StartingLineupIds[i]))
+                    {
+                        int idx = RosterPlayerIds.IndexOf(StartingLineupIds[i]);
+                        lineup[i] = idx >= 0 ? idx : 0;
+                    }
+                    else
+                    {
+                        lineup[i] = i < RosterPlayerIds.Count ? i : 0;
+                    }
+                }
+                return lineup;
+            }
+            set
+            {
+                if (value == null || value.Length != 5) return;
+                for (int i = 0; i < 5; i++)
+                {
+                    if (value[i] >= 0 && value[i] < RosterPlayerIds.Count)
+                    {
+                        StartingLineupIds[i] = RosterPlayerIds[value[i]];
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Get the team's primary strategy (offensive)
+        /// </summary>
+        public TeamStrategy Strategy
+        {
+            get => OffensiveStrategy;
+            set => OffensiveStrategy = value ?? new TeamStrategy();
+        }
+
+        // Internal cached roster for direct assignment
+        [NonSerialized]
+        private List<Player> _cachedRoster;
+
+        /// <summary>
+        /// Gets/sets the roster as Player objects.
+        /// Getter resolves from PlayerDatabase if no cached roster exists.
+        /// </summary>
+        public List<Player> Roster
+        {
+            get
+            {
+                if (_cachedRoster != null)
+                    return _cachedRoster;
+
+                var roster = new List<Player>();
+                var playerDb = NBAHeadCoach.Core.GameManager.Instance?.PlayerDatabase;
+                if (playerDb != null)
+                {
+                    foreach (var playerId in RosterPlayerIds)
+                    {
+                        if (playerDb.Players.TryGetValue(playerId, out var player))
+                        {
+                            roster.Add(player);
+                        }
+                    }
+                }
+                return roster;
+            }
+            set
+            {
+                _cachedRoster = value;
+                // Also update the ID list
+                RosterPlayerIds.Clear();
+                if (value != null)
+                {
+                    foreach (var player in value)
+                    {
+                        if (!string.IsNullOrEmpty(player?.PlayerId))
+                            RosterPlayerIds.Add(player.PlayerId);
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets a specific player from the roster by ID.
+        /// </summary>
+        public Player GetPlayer(string playerId)
+        {
+            var playerDb = NBAHeadCoach.Core.GameManager.Instance?.PlayerDatabase;
+            if (playerDb != null && playerDb.Players.TryGetValue(playerId, out var player))
+            {
+                return player;
+            }
+            return null;
+        }
 
         /// <summary>
         /// Gets the starting lineup player IDs in order: PG, SG, SF, PF, C
@@ -100,39 +215,6 @@ namespace NBAHeadCoach.Core.Data
         public void AdjustMomentum(float delta)
         {
             Momentum = Mathf.Clamp(Momentum + delta, 0f, 100f);
-        }
-    }
-
-    /// <summary>
-    /// Strategy sliders that affect simulation probabilities.
-    /// </summary>
-    [Serializable]
-    public class TeamStrategy
-    {
-        [Header("Pace & Style")]
-        [Range(1, 100)] public int Pace = 50;                    // Fast break vs half-court
-        [Range(1, 100)] public int ThreePointFrequency = 50;     // Shoot 3s vs attack paint
-        [Range(1, 100)] public int IsolationFrequency = 30;      // Iso plays vs motion offense
-        [Range(1, 100)] public int PickAndRollFrequency = 50;    // PnR vs other actions
-        [Range(1, 100)] public int PostUpFrequency = 30;         // Feed the post
-
-        [Header("Rebounding & Transition")]
-        [Range(1, 100)] public int CrashOffensiveBoards = 50;    // Send players to offensive glass
-        [Range(1, 100)] public int FastBreakAggressiveness = 50; // Push in transition
-
-        [Header("Defense")]
-        [Range(1, 100)] public int DefensiveAggression = 50;     // Press vs protect paint
-        [Range(1, 100)] public int TrapFrequency = 20;           // Double team ball handler
-        [Range(1, 100)] public int SwitchEverything = 30;        // Switch all screens
-
-        /// <summary>
-        /// Calculates expected possessions per game based on pace.
-        /// League average is about 100 possessions.
-        /// </summary>
-        public int GetExpectedPossessions()
-        {
-            // Pace 1 = 85 possessions, Pace 100 = 115 possessions
-            return Mathf.RoundToInt(Mathf.Lerp(85, 115, Pace / 100f));
         }
     }
 }

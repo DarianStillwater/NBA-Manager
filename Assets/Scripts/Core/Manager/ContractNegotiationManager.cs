@@ -174,16 +174,7 @@ namespace NBAHeadCoach.Core.Manager
         }
     }
 
-    /// <summary>
-    /// Bird rights types for contract signing
-    /// </summary>
-    public enum BirdRightsType
-    {
-        None,
-        NonBird,      // 1 year with team: 120% prev salary, 4 years max
-        EarlyBird,    // 2 years with team: avg salary or 175% prev, 4 years max
-        FullBird      // 3+ years with team: any amount to max, 5 years, 8% raises
-    }
+    // BirdRightsType is defined in NBAHeadCoach.Core.Data.LeagueCBA
 
     /// <summary>
     /// A single round in the negotiation process
@@ -673,7 +664,7 @@ namespace NBAHeadCoach.Core.Manager
             return messages[UnityEngine.Random.Range(0, messages.Length)];
         }
 
-        private string GenerateWalkawayMessage(Agent agent, NegotiationSession session)
+        private string GenerateWalkawayMessage(Agent agent, ContractOffer offer, NegotiationSession session)
         {
             return agent.Personality switch
             {

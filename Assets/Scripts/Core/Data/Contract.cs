@@ -44,7 +44,10 @@ namespace NBAHeadCoach.Core.Data
         
         /// <summary>Current season salary in dollars</summary>
         public long CurrentYearSalary;
-        
+
+        /// <summary>Alias for CurrentYearSalary for UI compatibility</summary>
+        public long AnnualSalary => CurrentYearSalary;
+
         /// <summary>Years remaining on contract (including current)</summary>
         public int YearsRemaining;
         

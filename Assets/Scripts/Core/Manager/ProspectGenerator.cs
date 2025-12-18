@@ -358,6 +358,11 @@ namespace NBAHeadCoach.Core.Manager
         
         // Scouting (0-100, higher = more accurate intel)
         public int ScoutingLevel;
+
+        /// <summary>
+        /// Overall rating alias for UI compatibility
+        /// </summary>
+        public int Overall => ProjectedOverall;
     }
 
     public enum ProspectTier
@@ -367,14 +372,5 @@ namespace NBAHeadCoach.Core.Manager
         FirstRound,  // Projected 15-30
         SecondRound, // Projected 31-60
         Undrafted    // Unlikely to be drafted
-    }
-
-    public enum Position
-    {
-        PointGuard,
-        ShootingGuard,
-        SmallForward,
-        PowerForward,
-        Center
     }
 }

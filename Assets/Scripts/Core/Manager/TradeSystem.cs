@@ -14,15 +14,30 @@ namespace NBAHeadCoach.Core.Manager
         private SalaryCapManager _capManager;
         private TradeValidator _validator;
         private PlayerDatabase _playerDatabase;
-        
+
         // Trade history for AI learning
         private List<TradeRecord> _tradeHistory = new List<TradeRecord>();
+
+        // Commissioner veto settings
+        private bool _commissionerVetoEnabled = true;
+        private float _vetoThreshold = -30f; // How lopsided before veto
+
+        public event Action<TradeProposal, string> OnTradeVetoed;
 
         public TradeSystem(SalaryCapManager capManager, PlayerDatabase playerDatabase)
         {
             _capManager = capManager;
             _playerDatabase = playerDatabase;
             _validator = new TradeValidator(capManager);
+        }
+
+        /// <summary>
+        /// Enable or disable commissioner veto
+        /// </summary>
+        public void SetCommissionerVeto(bool enabled, float threshold = -30f)
+        {
+            _commissionerVetoEnabled = enabled;
+            _vetoThreshold = threshold;
         }
 
         // ==================== TRADE PROPOSAL ====================
@@ -41,17 +56,17 @@ namespace NBAHeadCoach.Core.Manager
         public TradeResult ProposeTrade(TradeProposal proposal, bool executeIfValid = false)
         {
             var result = new TradeResult();
-            
+
             // 1. Validate the trade
             var validation = _validator.ValidateTrade(proposal);
             result.ValidationResult = validation;
-            
+
             if (!validation.IsValid)
             {
                 result.Status = TradeStatus.Invalid;
                 return result;
             }
-            
+
             // 2. Check if player consent is needed
             if (validation.RequiresPlayerConsent)
             {
@@ -59,7 +74,7 @@ namespace NBAHeadCoach.Core.Manager
                 result.PlayersNeedingConsent = validation.PlayersRequiringConsent;
                 return result;
             }
-            
+
             // 3. AI evaluation for non-user teams
             var aiTeams = GetAIControlledTeams(proposal);
             foreach (var teamId in aiTeams)
@@ -72,8 +87,21 @@ namespace NBAHeadCoach.Core.Manager
                     return result;
                 }
             }
-            
-            // 4. Execute if approved
+
+            // 4. Commissioner veto check for egregiously lopsided trades
+            if (_commissionerVetoEnabled)
+            {
+                var vetoResult = CheckCommissionerVeto(proposal);
+                if (vetoResult.IsVetoed)
+                {
+                    result.Status = TradeStatus.Vetoed;
+                    result.RejectionReason = vetoResult.VetoReason;
+                    OnTradeVetoed?.Invoke(proposal, vetoResult.VetoReason);
+                    return result;
+                }
+            }
+
+            // 5. Execute if approved
             if (executeIfValid)
             {
                 ExecuteTrade(proposal);
@@ -83,8 +111,169 @@ namespace NBAHeadCoach.Core.Manager
             {
                 result.Status = TradeStatus.Approved;
             }
-            
+
             return result;
+        }
+
+        // ==================== COMMISSIONER VETO ====================
+
+        /// <summary>
+        /// Check if commissioner would veto this trade for "basketball reasons"
+        /// </summary>
+        private CommissionerVetoResult CheckCommissionerVeto(TradeProposal proposal)
+        {
+            var result = new CommissionerVetoResult { IsVetoed = false };
+
+            // Calculate trade balance for each team
+            var teams = proposal.GetInvolvedTeams().ToList();
+            var balances = new Dictionary<string, float>();
+
+            foreach (var teamId in teams)
+            {
+                balances[teamId] = _validator.EstimateTradeBalance(proposal, teamId);
+            }
+
+            // Check if any team is getting fleeced beyond the threshold
+            float maxImbalance = 0f;
+            string losingTeam = null;
+            string winningTeam = null;
+
+            foreach (var (teamId, balance) in balances)
+            {
+                if (balance < _vetoThreshold && balance < maxImbalance)
+                {
+                    maxImbalance = balance;
+                    losingTeam = teamId;
+                }
+                if (balance > -_vetoThreshold && balance > maxImbalance)
+                {
+                    winningTeam = teamId;
+                }
+            }
+
+            // Veto if trade is egregiously one-sided
+            if (losingTeam != null && maxImbalance < _vetoThreshold)
+            {
+                // Check for additional veto factors
+                bool involvesStarPlayer = proposal.AllAssets
+                    .Any(a => a.Type == TradeAssetType.Player && a.Salary >= 30_000_000);
+
+                bool involvesMultiplePicks = proposal.AllAssets
+                    .Count(a => a.Type == TradeAssetType.DraftPick && a.IsFirstRound) >= 3;
+
+                // More likely to veto if involves star player or many picks going one way
+                float vetoChance = 0f;
+
+                if (maxImbalance < _vetoThreshold * 1.5f) vetoChance = 0.3f;
+                if (maxImbalance < _vetoThreshold * 2f) vetoChance = 0.6f;
+                if (maxImbalance < _vetoThreshold * 3f) vetoChance = 0.9f;
+
+                if (involvesStarPlayer) vetoChance += 0.2f;
+                if (involvesMultiplePicks) vetoChance += 0.15f;
+
+                if (UnityEngine.Random.value < vetoChance)
+                {
+                    result.IsVetoed = true;
+                    result.LosingTeam = losingTeam;
+                    result.WinningTeam = winningTeam;
+                    result.TradeImbalance = maxImbalance;
+                    result.VetoReason = GenerateVetoReason(proposal, losingTeam, maxImbalance,
+                        involvesStarPlayer, involvesMultiplePicks);
+                }
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Generate commissioner's explanation for veto
+        /// </summary>
+        private string GenerateVetoReason(
+            TradeProposal proposal,
+            string losingTeam,
+            float imbalance,
+            bool involvesStarPlayer,
+            bool involvesMultiplePicks)
+        {
+            var reasons = new List<string>();
+
+            reasons.Add("After careful review, the league has decided to void this trade for basketball reasons.");
+
+            if (involvesStarPlayer)
+            {
+                reasons.Add("The trade involves a franchise-level player moving for inadequate compensation.");
+            }
+
+            if (involvesMultiplePicks)
+            {
+                reasons.Add("The exchange of multiple first-round picks raises competitive balance concerns.");
+            }
+
+            if (imbalance < _vetoThreshold * 2f)
+            {
+                reasons.Add("The value disparity in this trade is significantly outside normal parameters.");
+            }
+
+            reasons.Add("This decision was made to protect the integrity of the league and competitive balance.");
+
+            return string.Join(" ", reasons);
+        }
+
+        /// <summary>
+        /// Get detailed analysis of why a trade might be vetoed
+        /// </summary>
+        public TradeVetoAnalysis AnalyzeVetoRisk(TradeProposal proposal)
+        {
+            var analysis = new TradeVetoAnalysis
+            {
+                TeamBalances = new Dictionary<string, float>()
+            };
+
+            foreach (var teamId in proposal.GetInvolvedTeams())
+            {
+                analysis.TeamBalances[teamId] = _validator.EstimateTradeBalance(proposal, teamId);
+            }
+
+            // Find most imbalanced
+            float worstBalance = analysis.TeamBalances.Values.Min();
+
+            if (worstBalance >= _vetoThreshold)
+            {
+                analysis.VetoRisk = VetoRiskLevel.None;
+                analysis.Explanation = "Trade appears balanced. No veto risk.";
+            }
+            else if (worstBalance >= _vetoThreshold * 1.5f)
+            {
+                analysis.VetoRisk = VetoRiskLevel.Low;
+                analysis.Explanation = "Trade is somewhat lopsided but likely to be approved.";
+            }
+            else if (worstBalance >= _vetoThreshold * 2f)
+            {
+                analysis.VetoRisk = VetoRiskLevel.Medium;
+                analysis.Explanation = "Trade has significant imbalance. Commissioner review possible.";
+            }
+            else
+            {
+                analysis.VetoRisk = VetoRiskLevel.High;
+                analysis.Explanation = "Trade is severely imbalanced. High risk of commissioner veto.";
+            }
+
+            // Check for specific red flags
+            bool hasStarPlayer = proposal.AllAssets
+                .Any(a => a.Type == TradeAssetType.Player && a.Salary >= 30_000_000);
+            bool hasMultiplePicks = proposal.AllAssets
+                .Count(a => a.Type == TradeAssetType.DraftPick && a.IsFirstRound) >= 3;
+
+            if (hasStarPlayer && worstBalance < _vetoThreshold)
+            {
+                analysis.RedFlags.Add("Star player being traded for below-market value");
+            }
+            if (hasMultiplePicks)
+            {
+                analysis.RedFlags.Add("Multiple first-round picks in transaction");
+            }
+
+            return analysis;
         }
 
         // ==================== AI TRADE EVALUATION ====================
@@ -388,12 +577,51 @@ namespace NBAHeadCoach.Core.Manager
         AwaitingPlayerConsent,
         Rejected,
         Approved,
-        Completed
+        Completed,
+        Vetoed              // Commissioner vetoed the trade
     }
 
     public class TradeRecord
     {
         public TradeProposal Proposal;
         public DateTime ExecutedDate;
+        public bool WasVetoed;
+        public string VetoReason;
+    }
+
+    // ==================== COMMISSIONER VETO TYPES ====================
+
+    /// <summary>
+    /// Result of commissioner veto check
+    /// </summary>
+    public class CommissionerVetoResult
+    {
+        public bool IsVetoed;
+        public string VetoReason;
+        public string LosingTeam;
+        public string WinningTeam;
+        public float TradeImbalance;
+    }
+
+    /// <summary>
+    /// Analysis of veto risk for a proposed trade
+    /// </summary>
+    public class TradeVetoAnalysis
+    {
+        public VetoRiskLevel VetoRisk;
+        public string Explanation;
+        public Dictionary<string, float> TeamBalances;
+        public List<string> RedFlags = new List<string>();
+    }
+
+    /// <summary>
+    /// Risk level for commissioner veto
+    /// </summary>
+    public enum VetoRiskLevel
+    {
+        None,       // Trade is balanced
+        Low,        // Slightly lopsided but should pass
+        Medium,     // May get scrutinized
+        High        // Likely to be vetoed
     }
 }

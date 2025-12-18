@@ -50,6 +50,44 @@ namespace NBAHeadCoach.Core.Data
         [Header("End of Game")]
         public EndOfGameStrategy CloseGameStrategy = new EndOfGameStrategy();
 
+        // ==================== UI COMPATIBILITY PROPERTIES ====================
+
+        /// <summary>
+        /// Pace as int (1-100) for UI compatibility. Maps to TargetPace.
+        /// </summary>
+        public int Pace
+        {
+            get => Mathf.RoundToInt((TargetPace - 80f) / 30f * 100f);  // 80-110 -> 0-100
+            set => TargetPace = 80f + (value / 100f * 30f);            // 0-100 -> 80-110
+        }
+
+        /// <summary>
+        /// Three point rate as float (0-1) for UI compatibility
+        /// </summary>
+        public float ThreePointRate
+        {
+            get => ThreePointFrequency / 100f;
+            set => ThreePointFrequency = Mathf.RoundToInt(Mathf.Clamp01(value) * 100);
+        }
+
+        /// <summary>
+        /// Pick and roll frequency - shortcut to OffensiveSystem.PickAndRollFrequency
+        /// </summary>
+        public int PickAndRollFrequency
+        {
+            get => OffensiveSystem?.PickAndRollFrequency ?? 30;
+            set { if (OffensiveSystem != null) OffensiveSystem.PickAndRollFrequency = value; }
+        }
+
+        /// <summary>
+        /// Defensive aggression (0-100) - maps to DefensiveSystem.OnBallPressure
+        /// </summary>
+        public int DefensiveAggression
+        {
+            get => DefensiveSystem?.OnBallPressure ?? 50;
+            set { if (DefensiveSystem != null) DefensiveSystem.OnBallPressure = value; }
+        }
+
         // ==================== FACTORY METHODS ====================
 
         public static TeamStrategy CreateDefault(string teamId)

@@ -15,11 +15,17 @@ namespace NBAHeadCoach.UI
         protected virtual void Awake()
         {
             _canvasGroup = GetComponent<CanvasGroup>();
-                
+
             // Only register if PanelId is set (may not be set yet if created via AddComponent)
             if (UIManager.Instance != null && !string.IsNullOrEmpty(PanelId))
                 UIManager.Instance.RegisterPanel(PanelId, this);
         }
+
+        /// <summary>
+        /// Initialize the panel. Override in derived classes for custom setup.
+        /// Called after Awake to set up UI elements and data.
+        /// </summary>
+        public virtual void Initialize() { }
 
         public virtual void Show()
         {

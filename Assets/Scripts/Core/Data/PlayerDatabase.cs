@@ -1,6 +1,8 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using UnityEngine;
 using NBAHeadCoach.Core.Data;
 
@@ -13,6 +15,7 @@ namespace NBAHeadCoach.Core.Data
     public class PlayerDatabase
     {
         private Dictionary<string, Player> _players = new Dictionary<string, Player>();
+        private Dictionary<string, Team> _teams = new Dictionary<string, Team>();
         private static readonly string BASE_DATA_PATH = Path.Combine(Application.streamingAssetsPath, "Data");
         private static readonly string MOD_PATH = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
@@ -20,7 +23,13 @@ namespace NBAHeadCoach.Core.Data
         );
 
         public IReadOnlyDictionary<string, Player> Players => _players;
+        public IReadOnlyDictionary<string, Team> Teams => _teams;
         public int PlayerCount => _players.Count;
+
+        /// <summary>
+        /// Gets all players as a list.
+        /// </summary>
+        public List<Player> GetAllPlayers() => new List<Player>(_players.Values);
 
         /// <summary>
         /// Adds a player to the database at runtime.
@@ -172,6 +181,174 @@ namespace NBAHeadCoach.Core.Data
             string json = JsonUtility.ToJson(wrapper, true);
             File.WriteAllText(filePath, json);
         }
+
+        // ==================== ASYNC LOADING ====================
+
+        /// <summary>
+        /// Loads all game data asynchronously (players and teams).
+        /// </summary>
+        public IEnumerator LoadAllDataAsync()
+        {
+            // Load players
+            LoadAllPlayers();
+            yield return null;
+
+            // Load teams
+            LoadAllTeams();
+            yield return null;
+
+            // Associate players with teams
+            AssignPlayersToTeams();
+            yield return null;
+
+            Debug.Log($"[PlayerDatabase] Loaded {_players.Count} players, {_teams.Count} teams");
+        }
+
+        /// <summary>
+        /// Loads all teams from JSON files.
+        /// </summary>
+        private void LoadAllTeams()
+        {
+            _teams.Clear();
+
+            string teamsPath = Path.Combine(BASE_DATA_PATH, "teams.json");
+            if (File.Exists(teamsPath))
+            {
+                try
+                {
+                    string json = File.ReadAllText(teamsPath);
+                    var wrapper = JsonUtility.FromJson<TeamListWrapper>(json);
+                    if (wrapper?.Teams != null)
+                    {
+                        foreach (var team in wrapper.Teams)
+                        {
+                            if (!string.IsNullOrEmpty(team.TeamId))
+                            {
+                                _teams[team.TeamId] = team;
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError($"Error loading teams: {ex.Message}");
+                }
+            }
+            else
+            {
+                Debug.LogWarning($"Teams file not found: {teamsPath}");
+                // Create default teams if needed
+                CreateDefaultTeams();
+            }
+        }
+
+        /// <summary>
+        /// Creates default NBA teams if no data file exists.
+        /// </summary>
+        private void CreateDefaultTeams()
+        {
+            var defaultTeams = new (string id, string city, string name, string conference, string division, string arena)[]
+            {
+                ("ATL", "Atlanta", "Hawks", "Eastern", "Southeast", "State Farm Arena"),
+                ("BOS", "Boston", "Celtics", "Eastern", "Atlantic", "TD Garden"),
+                ("BKN", "Brooklyn", "Nets", "Eastern", "Atlantic", "Barclays Center"),
+                ("CHA", "Charlotte", "Hornets", "Eastern", "Southeast", "Spectrum Center"),
+                ("CHI", "Chicago", "Bulls", "Eastern", "Central", "United Center"),
+                ("CLE", "Cleveland", "Cavaliers", "Eastern", "Central", "Rocket Mortgage FieldHouse"),
+                ("DAL", "Dallas", "Mavericks", "Western", "Southwest", "American Airlines Center"),
+                ("DEN", "Denver", "Nuggets", "Western", "Northwest", "Ball Arena"),
+                ("DET", "Detroit", "Pistons", "Eastern", "Central", "Little Caesars Arena"),
+                ("GSW", "Golden State", "Warriors", "Western", "Pacific", "Chase Center"),
+                ("HOU", "Houston", "Rockets", "Western", "Southwest", "Toyota Center"),
+                ("IND", "Indiana", "Pacers", "Eastern", "Central", "Gainbridge Fieldhouse"),
+                ("LAC", "Los Angeles", "Clippers", "Western", "Pacific", "Intuit Dome"),
+                ("LAL", "Los Angeles", "Lakers", "Western", "Pacific", "Crypto.com Arena"),
+                ("MEM", "Memphis", "Grizzlies", "Western", "Southwest", "FedExForum"),
+                ("MIA", "Miami", "Heat", "Eastern", "Southeast", "Kaseya Center"),
+                ("MIL", "Milwaukee", "Bucks", "Eastern", "Central", "Fiserv Forum"),
+                ("MIN", "Minnesota", "Timberwolves", "Western", "Northwest", "Target Center"),
+                ("NOP", "New Orleans", "Pelicans", "Western", "Southwest", "Smoothie King Center"),
+                ("NYK", "New York", "Knicks", "Eastern", "Atlantic", "Madison Square Garden"),
+                ("OKC", "Oklahoma City", "Thunder", "Western", "Northwest", "Paycom Center"),
+                ("ORL", "Orlando", "Magic", "Eastern", "Southeast", "Kia Center"),
+                ("PHI", "Philadelphia", "76ers", "Eastern", "Atlantic", "Wells Fargo Center"),
+                ("PHX", "Phoenix", "Suns", "Western", "Pacific", "Footprint Center"),
+                ("POR", "Portland", "Trail Blazers", "Western", "Northwest", "Moda Center"),
+                ("SAC", "Sacramento", "Kings", "Western", "Pacific", "Golden 1 Center"),
+                ("SAS", "San Antonio", "Spurs", "Western", "Southwest", "Frost Bank Center"),
+                ("TOR", "Toronto", "Raptors", "Eastern", "Atlantic", "Scotiabank Arena"),
+                ("UTA", "Utah", "Jazz", "Western", "Northwest", "Delta Center"),
+                ("WAS", "Washington", "Wizards", "Eastern", "Southeast", "Capital One Arena")
+            };
+
+            foreach (var t in defaultTeams)
+            {
+                _teams[t.id] = new Team
+                {
+                    TeamId = t.id,
+                    City = t.city,
+                    Nickname = t.name,
+                    Conference = t.conference,
+                    Division = t.division,
+                    ArenaName = t.arena,
+                    Roster = new List<Player>(),
+                    RosterPlayerIds = new List<string>(),
+                    Wins = 0,
+                    Losses = 0
+                };
+            }
+
+            Debug.Log($"[PlayerDatabase] Created {_teams.Count} default teams");
+        }
+
+        /// <summary>
+        /// Associates players with their teams based on TeamId.
+        /// </summary>
+        private void AssignPlayersToTeams()
+        {
+            // Clear existing rosters
+            foreach (var team in _teams.Values)
+            {
+                team.Roster = team.Roster ?? new List<Player>();
+                team.Roster.Clear();
+            }
+
+            // Assign players to teams
+            foreach (var player in _players.Values)
+            {
+                if (!string.IsNullOrEmpty(player.TeamId) && _teams.TryGetValue(player.TeamId, out var team))
+                {
+                    team.Roster.Add(player);
+                }
+            }
+        }
+
+        // ==================== TEAM ACCESS ====================
+
+        /// <summary>
+        /// Gets all teams as a list.
+        /// </summary>
+        public List<Team> GetAllTeams() => new List<Team>(_teams.Values);
+
+        /// <summary>
+        /// Gets a team by ID.
+        /// </summary>
+        public Team GetTeam(string teamId)
+        {
+            return _teams.TryGetValue(teamId, out var team) ? team : null;
+        }
+
+        /// <summary>
+        /// Gets all players on a specific team.
+        /// </summary>
+        public List<Player> GetPlayersByTeam(string teamId)
+        {
+            if (_teams.TryGetValue(teamId, out var team))
+            {
+                return team.Roster ?? new List<Player>();
+            }
+            return _players.Values.Where(p => p.TeamId == teamId).ToList();
+        }
     }
 
     /// <summary>
@@ -181,5 +358,14 @@ namespace NBAHeadCoach.Core.Data
     public class PlayerListWrapper
     {
         public List<Player> Players;
+    }
+
+    /// <summary>
+    /// Wrapper for JSON serialization of team lists.
+    /// </summary>
+    [Serializable]
+    public class TeamListWrapper
+    {
+        public List<Team> Teams;
     }
 }

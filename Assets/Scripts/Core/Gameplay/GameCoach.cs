@@ -449,7 +449,7 @@ namespace NBAHeadCoach.Core.Gameplay
             if (_playbook == null)
                 return new List<SetPlay>();
 
-            var state = new GameState
+            var state = new PlaySelectionState
             {
                 Quarter = _currentQuarter,
                 ClockSeconds = _gameClockSeconds,

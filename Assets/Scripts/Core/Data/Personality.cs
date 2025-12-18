@@ -284,11 +284,5 @@ namespace NBAHeadCoach.Core.Data
         TeamBall
     }
 
-    public enum CoachingStyle
-    {
-        Demanding,      // High expectations, criticism
-        Supportive,     // Positive reinforcement
-        HandsOff,       // Let players figure it out
-        PlayerDevelopment // Focus on growth
-    }
+    // Note: CoachingStyle enum is defined in Coach.cs
 }

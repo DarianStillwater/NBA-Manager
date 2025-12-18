@@ -244,7 +244,7 @@ namespace NBAHeadCoach.Core.Data
         /// <summary>
         /// Gets recommended plays for current game state.
         /// </summary>
-        public List<SetPlay> GetRecommendedPlays(GameState state)
+        public List<SetPlay> GetRecommendedPlays(PlaySelectionState state)
         {
             var recommended = new List<SetPlay>();
 
@@ -271,7 +271,7 @@ namespace NBAHeadCoach.Core.Data
                 .ToList();
         }
 
-        private PlaySituation DetermineSituation(GameState state)
+        private PlaySituation DetermineSituation(PlaySelectionState state)
         {
             // After timeout
             if (state.JustCalledTimeout)
@@ -547,7 +547,7 @@ namespace NBAHeadCoach.Core.Data
     /// <summary>
     /// Current game state for play selection.
     /// </summary>
-    public class GameState
+    public class PlaySelectionState
     {
         public int Quarter;
         public float ClockSeconds;

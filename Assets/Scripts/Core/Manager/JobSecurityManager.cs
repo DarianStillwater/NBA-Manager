@@ -45,6 +45,25 @@ namespace NBAHeadCoach.Core.Manager
         }
 
         /// <summary>
+        /// Initialize the manager for a new season
+        /// </summary>
+        public void InitializeForNewSeason(CoachCareer career, string teamId)
+        {
+            if (career == null) return;
+
+            // Register the coach if not already registered
+            if (!_coachCareers.ContainsKey(career.CoachId))
+            {
+                RegisterCoach(career);
+            }
+
+            // Reset season-specific data
+            _ownerMessages[career.CoachId]?.Clear();
+
+            Debug.Log($"[JobSecurityManager] Initialized for new season - Coach: {career.CoachId}, Team: {teamId}");
+        }
+
+        /// <summary>
         /// Set season expectations from owner
         /// </summary>
         public SeasonExpectations SetSeasonExpectations(

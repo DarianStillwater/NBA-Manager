@@ -275,6 +275,24 @@ namespace NBAHeadCoach.Core.Simulation
         public int AwayScore;
         public Dictionary<string, PlayerGameStats> PlayerStats = new Dictionary<string, PlayerGameStats>();
 
+        // Team references for UI compatibility
+        public Team HomeTeam;
+        public Team AwayTeam;
+
+        // Player stats lists for UI compatibility
+        public List<PlayerGameStats> HomePlayerStats = new List<PlayerGameStats>();
+        public List<PlayerGameStats> AwayPlayerStats = new List<PlayerGameStats>();
+
+        // Quarter scores for UI
+        public List<int> QuarterScoresHome = new List<int>();
+        public List<int> QuarterScoresAway = new List<int>();
+
+        // Overtime tracking
+        public bool WentToOvertime;
+        public int OvertimePeriods;
+
+        public BoxScore() { }
+
         public BoxScore(string homeId, string awayId)
         {
             HomeTeamId = homeId;
@@ -375,6 +393,7 @@ namespace NBAHeadCoach.Core.Simulation
     public class PlayerGameStats
     {
         public string PlayerId;
+        public string PlayerName;  // For UI display
         public int Minutes;
         public int Points;
         public int FieldGoalsMade;
@@ -391,6 +410,13 @@ namespace NBAHeadCoach.Core.Simulation
         public int Turnovers;
         public int PersonalFouls;
         public int PlusMinus;
+
+        // Aliases for UI compatibility
+        public int Rebounds => TotalRebounds;
+        public int FieldGoalsAttempted => TotalFGA;
+        public int ThreePointersMade => ThreePointMade;
+        public int ThreePointersAttempted => ThreePointAttempts;
+        public int FreeThrowsAttempted => FreeThrowAttempts;
 
         public int TotalRebounds => OffensiveRebounds + DefensiveRebounds;
         public int TotalFGA => FieldGoalAttempts + ThreePointAttempts;

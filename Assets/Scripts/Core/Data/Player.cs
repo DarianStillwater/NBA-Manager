@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 namespace NBAHeadCoach.Core.Data
@@ -17,15 +18,43 @@ namespace NBAHeadCoach.Core.Data
         public string PlayerId;
         public string FirstName;
         public string LastName;
-        public int JerseyNumber;
+        public string JerseyNumber;
         public Position Position;
-        public int Age;
+        public DateTime BirthDate;  // Store birthdate, calculate age dynamically
         public int YearsPro; // 0 = Rookie
         public float HeightInches; // e.g., 78 = 6'6"
         public float WeightLbs;
         public string SkinToneCode; // For 3D model customization (e.g., "TONE_03")
         public string HairStyle;
         public string TeamId;
+
+        /// <summary>
+        /// Calculates current age based on BirthDate and game's current date.
+        /// Falls back to system date if GameManager not available.
+        /// </summary>
+        public int Age
+        {
+            get
+            {
+                DateTime referenceDate = GameManager.Instance?.CurrentDate ?? DateTime.Now;
+                int age = referenceDate.Year - BirthDate.Year;
+                // Adjust if birthday hasn't occurred yet this year
+                if (BirthDate.Date > referenceDate.AddYears(-age))
+                    age--;
+                return Math.Max(0, age);
+            }
+        }
+
+        /// <summary>
+        /// Birthdate formatted as string (e.g., "September 14, 1998").
+        /// Matches official NBA bio format.
+        /// </summary>
+        public string BirthDateFormatted => BirthDate.ToString("MMMM d, yyyy");
+
+        /// <summary>
+        /// Birthdate in short format (e.g., "09/14/1998").
+        /// </summary>
+        public string BirthDateShort => BirthDate.ToString("MM/dd/yyyy");
 
         // ==================== HIDDEN POTENTIAL SYSTEM ====================
         [Header("Development (Hidden)")]
@@ -90,9 +119,39 @@ namespace NBAHeadCoach.Core.Data
         [Range(0, 100)] public float Energy;             // Depletes during play
         [Range(0, 100)] public float Morale;             // Affected by game events
         [Range(0, 100)] public float Form;               // Hot/cold streak
+
+        // ==================== INJURY STATE ====================
+        [Header("Injury Status")]
         public bool IsInjured;
-        public string InjuryType;
+        public InjuryType CurrentInjuryType;             // Enum-based injury type
+        public InjurySeverity CurrentInjurySeverity;     // Severity of current injury
         public int InjuryDaysRemaining;
+        public int OriginalInjuryDays;                   // Original recovery time
+        public DateTime InjuryDate;                      // When injury occurred
+
+        /// <summary>
+        /// History of injuries to each body part for re-injury risk calculation.
+        /// </summary>
+        public List<InjuryHistory> InjuryHistoryList = new List<InjuryHistory>();
+
+        /// <summary>
+        /// Recent minutes played for load management (last 7 days).
+        /// </summary>
+        public List<MinutesRecord> RecentMinutes = new List<MinutesRecord>();
+
+        /// <summary>
+        /// Legacy string property for backward compatibility.
+        /// </summary>
+        [Obsolete("Use CurrentInjuryType enum instead")]
+        public string InjuryType
+        {
+            get => CurrentInjuryType.ToString();
+            set
+            {
+                if (Enum.TryParse<InjuryType>(value, out var parsed))
+                    CurrentInjuryType = parsed;
+            }
+        }
 
         // ==================== DEVELOPMENT TRACKING ====================
         [Header("Development")]
@@ -103,6 +162,102 @@ namespace NBAHeadCoach.Core.Data
 
         // ==================== COMPUTED PROPERTIES ====================
         public string FullName => $"{FirstName} {LastName}";
+
+        /// <summary>
+        /// Height formatted as feet and inches (e.g., "6'2"" for 74 inches).
+        /// Matches official NBA bio format.
+        /// </summary>
+        public string HeightFormatted
+        {
+            get
+            {
+                int feet = (int)(HeightInches / 12);
+                int inches = (int)(HeightInches % 12);
+                return $"{feet}'{inches}\"";
+            }
+        }
+
+        /// <summary>
+        /// Height formatted with metric equivalent (e.g., "6'2\" (1.88m)").
+        /// </summary>
+        public string HeightWithMetric
+        {
+            get
+            {
+                int feet = (int)(HeightInches / 12);
+                int inches = (int)(HeightInches % 12);
+                float meters = HeightInches * 0.0254f;
+                return $"{feet}'{inches}\" ({meters:F2}m)";
+            }
+        }
+
+        /// <summary>
+        /// Alias for OverallRating for UI compatibility
+        /// </summary>
+        public int Overall => OverallRating;
+
+        /// <summary>
+        /// Position as string for UI compatibility
+        /// </summary>
+        public string PositionString => Position switch
+        {
+            Position.PointGuard => "PG",
+            Position.ShootingGuard => "SG",
+            Position.SmallForward => "SF",
+            Position.PowerForward => "PF",
+            Position.Center => "C",
+            _ => "??"
+        };
+
+        // ==================== UI ATTRIBUTE HELPERS ====================
+        // These provide simplified attribute access for UI panels
+
+        /// <summary>Simplified inside scoring for UI</summary>
+        public int InsideScoring => (Finishing_Rim + Finishing_PostMoves + Shot_Close) / 3;
+
+        /// <summary>Simplified mid-range scoring for UI</summary>
+        public int MidRangeScoring => Shot_MidRange;
+
+        /// <summary>Simplified three-point shooting for UI</summary>
+        public int ThreePointScoring => Shot_Three;
+
+        /// <summary>Simplified perimeter defense for UI</summary>
+        public int PerimeterDefense => Defense_Perimeter;
+
+        /// <summary>Simplified interior defense for UI</summary>
+        public int InteriorDefense => Defense_Interior;
+
+        /// <summary>Simplified rebounding for UI</summary>
+        public int Rebounding => DefensiveRebound;
+
+        /// <summary>Simplified athleticism for UI</summary>
+        public int Athleticism => (Speed + Acceleration + Vertical + Strength) / 4;
+
+        /// <summary>Free throw ability</summary>
+        public int FreeThrowAbility => FreeThrow;
+
+        // ==================== CONTRACT ACCESS ====================
+        // Contract is managed externally by SalaryCapManager, but we provide access here for UI
+
+        /// <summary>
+        /// Gets the player's current contract from SalaryCapManager.
+        /// Returns null if no contract found.
+        /// </summary>
+        public Contract CurrentContract
+        {
+            get
+            {
+                // Access via GameManager singleton
+                var salaryMgr = NBAHeadCoach.Core.GameManager.Instance?.SalaryCapManager;
+                return salaryMgr?.GetContract(PlayerId);
+            }
+        }
+
+        /// <summary>
+        /// Gets the player's annual salary (shortcut).
+        /// Returns 0 if no contract.
+        /// </summary>
+        public long AnnualSalary => CurrentContract?.CurrentYearSalary ?? 0;
 
         /// <summary>
         /// Position-weighted overall rating. Used internally for simulation.
@@ -189,6 +344,11 @@ namespace NBAHeadCoach.Core.Data
                 return baseDecline * injuryModifier * (0.5f + personalDecline);
             }
         }
+
+        /// <summary>
+        /// Potential alias for UI compatibility (maps to HiddenPotential).
+        /// </summary>
+        public int Potential => HiddenPotential;
 
         /// <summary>
         /// How much room for growth this player has.
@@ -343,6 +503,111 @@ namespace NBAHeadCoach.Core.Data
             Morale = Mathf.Clamp(Morale + amount, 0, 100);
         }
 
+        // ==================== INJURY METHODS ====================
+
+        /// <summary>
+        /// Get current injury status for game day availability.
+        /// </summary>
+        public InjuryStatus CurrentInjuryStatus
+        {
+            get
+            {
+                if (!IsInjured || InjuryDaysRemaining <= 0)
+                    return InjuryStatus.Healthy;
+                if (InjuryDaysRemaining >= 5)
+                    return InjuryStatus.Out;
+                if (InjuryDaysRemaining >= 3)
+                    return InjuryStatus.Doubtful;
+                if (InjuryDaysRemaining >= 1)
+                    return InjuryStatus.Questionable;
+                return InjuryStatus.Probable;
+            }
+        }
+
+        /// <summary>
+        /// Get total minutes played in the last N days.
+        /// </summary>
+        public int GetMinutesInLastDays(int days)
+        {
+            if (RecentMinutes == null) return 0;
+            var cutoff = GameManager.Instance?.CurrentDate.AddDays(-days) ?? DateTime.Now.AddDays(-days);
+            return RecentMinutes
+                .Where(r => r.Date >= cutoff)
+                .Sum(r => r.Minutes);
+        }
+
+        /// <summary>
+        /// Record minutes played for load management tracking.
+        /// </summary>
+        public void RecordMinutesPlayed(int minutes, DateTime date)
+        {
+            RecentMinutes ??= new List<MinutesRecord>();
+            RecentMinutes.Add(new MinutesRecord { Date = date, Minutes = minutes });
+
+            // Keep only last 14 days of data
+            var cutoff = date.AddDays(-14);
+            RecentMinutes.RemoveAll(r => r.Date < cutoff);
+        }
+
+        /// <summary>
+        /// Get re-injury risk modifier for a specific body part.
+        /// </summary>
+        public float GetReInjuryRisk(InjuryType injuryType)
+        {
+            if (InjuryHistoryList == null) return 0f;
+
+            float totalRisk = 0f;
+            foreach (var history in InjuryHistoryList)
+            {
+                if (InjuryRecoveryTables.AffectsSameArea(history.BodyPart, injuryType))
+                {
+                    totalRisk += history.ReInjuryRiskModifier;
+                }
+            }
+            return totalRisk;
+        }
+
+        /// <summary>
+        /// Add an injury to this player's history.
+        /// </summary>
+        public void AddInjuryToHistory(InjuryType type)
+        {
+            InjuryHistoryList ??= new List<InjuryHistory>();
+
+            var existing = InjuryHistoryList.FirstOrDefault(h =>
+                InjuryRecoveryTables.AffectsSameArea(h.BodyPart, type));
+
+            if (existing != null)
+            {
+                existing.TimesInjured++;
+                existing.LastInjuryDate = GameManager.Instance?.CurrentDate ?? DateTime.Now;
+            }
+            else
+            {
+                InjuryHistoryList.Add(new InjuryHistory
+                {
+                    BodyPart = type,
+                    TimesInjured = 1,
+                    LastInjuryDate = GameManager.Instance?.CurrentDate ?? DateTime.Now
+                });
+            }
+
+            // Also increment the legacy counter
+            InjuryHistoryCount++;
+        }
+
+        /// <summary>
+        /// Check if player can play (not Out status).
+        /// </summary>
+        public bool CanPlay => CurrentInjuryStatus != InjuryStatus.Out;
+
+        /// <summary>
+        /// Check if playing this player carries injury risk (Questionable/Doubtful).
+        /// </summary>
+        public bool HasInjuryRisk => CurrentInjuryStatus == InjuryStatus.Questionable ||
+                                      CurrentInjuryStatus == InjuryStatus.Doubtful ||
+                                      CurrentInjuryStatus == InjuryStatus.Probable;
+
         // ==================== HISTORY & AWARDS ====================
         public List<SeasonStats> CareerStats = new List<SeasonStats>();
         public List<AwardHistory> Awards = new List<AwardHistory>();
@@ -485,6 +750,74 @@ namespace NBAHeadCoach.Core.Data
     }
 
     /// <summary>
+    /// Utility methods for player-related formatting and conversions.
+    /// </summary>
+    public static class PlayerUtils
+    {
+        /// <summary>
+        /// Converts height in inches to feet/inches string (e.g., 74 → "6'2"").
+        /// </summary>
+        public static string FormatHeight(float heightInches)
+        {
+            int feet = (int)(heightInches / 12);
+            int inches = (int)(heightInches % 12);
+            return $"{feet}'{inches}\"";
+        }
+
+        /// <summary>
+        /// Converts height in inches to feet/inches with metric (e.g., 74 → "6'2\" (1.88m)").
+        /// </summary>
+        public static string FormatHeightWithMetric(float heightInches)
+        {
+            int feet = (int)(heightInches / 12);
+            int inches = (int)(heightInches % 12);
+            float meters = heightInches * 0.0254f;
+            return $"{feet}'{inches}\" ({meters:F2}m)";
+        }
+
+        /// <summary>
+        /// Parses a height string (e.g., "6'2\"" or "6-2") to total inches.
+        /// </summary>
+        public static float ParseHeight(string heightStr)
+        {
+            if (string.IsNullOrEmpty(heightStr)) return 0;
+
+            // Try "6'2"" format
+            var match = System.Text.RegularExpressions.Regex.Match(heightStr, @"(\d+)'(\d+)");
+            if (match.Success)
+            {
+                int feet = int.Parse(match.Groups[1].Value);
+                int inches = int.Parse(match.Groups[2].Value);
+                return feet * 12 + inches;
+            }
+
+            // Try "6-2" format
+            match = System.Text.RegularExpressions.Regex.Match(heightStr, @"(\d+)-(\d+)");
+            if (match.Success)
+            {
+                int feet = int.Parse(match.Groups[1].Value);
+                int inches = int.Parse(match.Groups[2].Value);
+                return feet * 12 + inches;
+            }
+
+            return 0;
+        }
+
+        /// <summary>
+        /// Formats weight for display (e.g., 215 → "215 lbs" or "215 lbs (98 kg)").
+        /// </summary>
+        public static string FormatWeight(float weightLbs, bool includeMetric = false)
+        {
+            if (includeMetric)
+            {
+                float kg = weightLbs * 0.453592f;
+                return $"{weightLbs:F0} lbs ({kg:F0} kg)";
+            }
+            return $"{weightLbs:F0} lbs";
+        }
+    }
+
+    /// <summary>
     /// Categorizes attributes for development purposes.
     /// </summary>
     public static class PlayerAttributeHelper
@@ -587,5 +920,17 @@ namespace NBAHeadCoach.Core.Data
 
         public int Change => NewValue - PreviousValue;
         public bool IsImprovement => Change > 0;
+    }
+
+    /// <summary>
+    /// Record of minutes played on a specific date for load management.
+    /// </summary>
+    [Serializable]
+    public class MinutesRecord
+    {
+        public DateTime Date;
+        public int Minutes;
+        public string GameId;         // Optional: reference to the game
+        public bool WasBackToBack;    // Was this a back-to-back game?
     }
 }
