@@ -73,7 +73,101 @@ namespace NBAHeadCoach.Core
             // Initialize standings
             InitializeStandings();
 
+            // Initialize player stats for the new season
+            InitializePlayerSeasonStats(season);
+
             Debug.Log($"[SeasonController] Initialized {season}-{season + 1} season with {_schedule.Count} games");
+        }
+
+        /// <summary>
+        /// Transitions from the current season to a new season.
+        /// Archives current stats, clears game logs, and prepares for new season.
+        /// </summary>
+        public void TransitionToNewSeason(int newSeason)
+        {
+            Debug.Log($"[SeasonController] Transitioning to new season: {newSeason}");
+
+            // Archive and clean up all player stats from the completed season
+            ArchivePlayerSeasonStats();
+
+            // Clear completed games list for new season
+            _completedGames.Clear();
+
+            // Initialize the new season
+            InitializeSeason(newSeason);
+
+            OnSeasonEnd?.Invoke();
+        }
+
+        /// <summary>
+        /// Archives current season stats to career history and clears game logs.
+        /// Called at the end of each season before transitioning.
+        /// </summary>
+        private void ArchivePlayerSeasonStats()
+        {
+            var allPlayers = _gameManager.PlayerDatabase?.GetAllPlayers();
+            if (allPlayers == null) return;
+
+            int archivedCount = 0;
+            int removedCount = 0;
+
+            foreach (var player in allPlayers)
+            {
+                // Skip players with no current season stats
+                if (player.CurrentSeasonStats == null) continue;
+
+                // Only archive if player played any games
+                if (player.CurrentSeasonStats.GamesPlayed > 0)
+                {
+                    // Use the Player's archive method to clear game logs (stats remain in CareerStats)
+                    player.ArchiveCurrentSeason();
+                    archivedCount++;
+                }
+                else
+                {
+                    // Player didn't play - remove the empty season entry from career stats
+                    // (CurrentSeasonStats is read-only, so we remove from CareerStats directly)
+                    if (player.CareerStats != null && player.CareerStats.Count > 0)
+                    {
+                        var lastSeason = player.CareerStats[player.CareerStats.Count - 1];
+                        if (lastSeason.GamesPlayed == 0)
+                        {
+                            player.CareerStats.RemoveAt(player.CareerStats.Count - 1);
+                            removedCount++;
+                        }
+                    }
+                }
+
+                // Increment years pro for all active players
+                player.YearsPro++;
+
+                // Reset development tracking
+                player.MinutesPlayedThisSeason = 0;
+                player.GamesPlayedThisSeason = 0;
+            }
+
+            Debug.Log($"[SeasonController] Archived season stats for {archivedCount} players, removed {removedCount} empty seasons");
+        }
+
+        /// <summary>
+        /// Initializes fresh season stats for all players.
+        /// Called at the start of each new season.
+        /// </summary>
+        private void InitializePlayerSeasonStats(int season)
+        {
+            var allPlayers = _gameManager.PlayerDatabase?.GetAllPlayers();
+            if (allPlayers == null) return;
+
+            foreach (var player in allPlayers)
+            {
+                // Create new season stats if player doesn't have one
+                if (player.CurrentSeasonStats == null || player.CurrentSeasonStats.Year != season)
+                {
+                    player.StartNewSeason(season, player.TeamId);
+                }
+            }
+
+            Debug.Log($"[SeasonController] Initialized season stats for {allPlayers.Count} players for season {season}");
         }
 
         /// <summary>
@@ -396,9 +490,9 @@ namespace NBAHeadCoach.Core
         /// </summary>
         private bool HasGameOnDate(string teamId, DateTime date)
         {
-            if (_calendar?.AllEvents == null) return false;
+            if (_schedule == null) return false;
 
-            return _calendar.AllEvents.Any(e =>
+            return _schedule.Any(e =>
                 e.Type == CalendarEventType.Game &&
                 e.Date.Date == date.Date &&
                 (e.HomeTeamId == teamId || e.AwayTeamId == teamId));

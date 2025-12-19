@@ -318,6 +318,7 @@ Individual possession resolution.
 | 13 | Save System | ✅ | Complete with Ironman mode |
 | 14 | Former Player Careers | ✅ | Coaching progression, hiring bonuses, matchup notifications |
 | 15 | Unified Career System | ✅ | Coach↔GM transitions, non-player retirement, cross-track careers |
+| 16 | Architecture Consolidation | ✅ | Facade pattern, panel registry, shared UI components |
 
 **UI Panels**: ✅ All core panels implemented (Dashboard, Roster, Calendar, Standings, Trade, Draft, Pre/Post Game)
 
@@ -1441,6 +1442,120 @@ Each question shows 3-4 response options with tone indicators.
 - `ProcessAllNonPlayerRetirements()` for end-of-season batch processing
 - `OnNonPlayerRetirementAnnounced` event for news integration
 
+### 16. ARCHITECTURE CONSOLIDATION ✅ COMPLETE
+
+**Implementation Files**:
+- `Core/Manager/StaffManagementManager.cs` - Central facade for all staff operations
+- `UI/GameSceneController.cs` - Panel registry and navigation
+- `UI/Components/AttributeDisplayFactory.cs` - Shared UI component factory
+- `UI/BasePanel.cs` - Base panel class with Show/Hide lifecycle
+
+#### Manager Layer: Facade Pattern
+
+**Problem Solved**: Multiple staff managers (CoachingStaffManager, ScoutingManager, StaffHiringManager) had overlapping responsibilities and duplicate free agent pools.
+
+**Solution**: StaffManagementManager acts as the single entry point (facade):
+
+```
+StaffManagementManager (Facade - Singleton)
+├── CoachingStaffManager (coach data storage, quality calculations)
+├── ScoutingManager (scout data, assignments, reports)
+└── StaffHiringManager (free agent pools, negotiations)
+```
+
+**Key Design Decisions**:
+- Fired staff routes through StaffHiringManager (single free agent pool)
+- StaffManagementManager wraps and initializes other managers
+- UI panels call facade methods: `GetCoachingStaff()`, `FireCoach()`, etc.
+- Save/load aggregates data from all wrapped managers
+
+#### UI Layer: Panel Registry Pattern
+
+**Problem Solved**: Duplicate navigation code, individual Show* methods for each panel, fragmented navigation.
+
+**Solution**: GameSceneController maintains panel registry:
+
+```csharp
+private Dictionary<string, GameObject> _panelRegistry;
+private Dictionary<string, BasePanel> _panelComponents;
+
+public void ShowPanel(string panelId)
+{
+    HideAllPanels();
+    _panelRegistry[panelId].SetActive(true);
+    _panelComponents[panelId]?.Show();
+    RefreshPanel(panelId);
+}
+```
+
+**Benefits**:
+- Unified `ShowPanel(panelId)` navigation
+- BasePanel.Show()/Hide() called automatically
+- Panel-specific refresh logic centralized
+- Legacy Show* methods retained for compatibility
+
+#### Shared UI Components: AttributeDisplayFactory
+
+**Problem Solved**: Duplicate code in StaffPanel, StaffHiringPanel for rating colors and attribute rows.
+
+**Solution**: Static factory class with shared methods:
+
+```csharp
+public static class AttributeDisplayFactory
+{
+    public static Color GetRatingColor(int rating);
+    public static GameObject CreateAttributeRow(Transform parent, string name, int value);
+    public static void PopulateAttributeContainer(Transform container, Dictionary<string, int> attrs);
+    public static void ApplyRatingColor(Text text, int rating);
+}
+```
+
+**Color Thresholds**:
+- Elite (85+): Green
+- Good (75-84): Blue
+- Average (65-74): Yellow
+- Below Average (<65): Gray
+
+#### Save/Load Integration
+
+**Staff System Save Data**:
+```csharp
+[Serializable]
+public class StaffManagementSaveData
+{
+    public CoachingStaffSaveData CoachingData;
+    public ScoutingSaveData ScoutingData;
+}
+```
+
+**Personality System Save Data**:
+```csharp
+[Serializable]
+public class PersonalitySystemSaveData
+{
+    public List<PlayerPersonalitySaveState> PlayerPersonalities;
+    public Dictionary<string, float> TeamChemistry;
+}
+```
+
+#### Files Modified/Created
+
+| File | Change |
+|------|--------|
+| `StaffManagementManager.cs` | Facade implementation with wrapped managers |
+| `CoachingStaffManager.cs` | Save/load support, removed internal pool |
+| `ScoutingManager.cs` | Save/load support |
+| `StaffHiringManager.cs` | Centralized fired staff handling |
+| `PersonalityManager.cs` | Save/load integration |
+| `GameSceneController.cs` | Panel registry pattern |
+| `BasePanel.cs` | Removed UIManager dependency |
+| `StaffPanel.cs` | Uses facade + AttributeDisplayFactory |
+| `StaffHiringPanel.cs` | Uses AttributeDisplayFactory |
+| `TabGroup.cs` | Direct BasePanel.Show() calls |
+| `AttributeDisplayFactory.cs` | NEW - Shared UI factory |
+
+**Deleted**: `UIManager.cs` (consolidated into GameSceneController)
+
 #### Auto-Save Behavior
 
 **Standard Mode**:
@@ -2012,4 +2127,4 @@ Recent Games (last 5-10):
 ---
 
 *Last Updated: December 19, 2025*
-*Version: Design Document v1.7 (Unified Career System - Coach↔GM Transitions & Non-Player Retirement)*
+*Version: Design Document v1.8 (Architecture Consolidation - Facade Pattern, Panel Registry, Shared UI Components)*

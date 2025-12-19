@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using NBAHeadCoach.Core;
@@ -28,6 +29,7 @@ namespace NBAHeadCoach.UI
         [SerializeField] private Button _scheduleButton;
         [SerializeField] private Button _standingsButton;
         [SerializeField] private Button _inboxButton;
+        [SerializeField] private Button _staffButton;
 
         [Header("Action Buttons")]
         [SerializeField] private Button _advanceDayButton;
@@ -43,6 +45,7 @@ namespace NBAHeadCoach.UI
         [SerializeField] private GameObject _inboxPanel;
         [SerializeField] private GameObject _preGamePanel;
         [SerializeField] private GameObject _postGamePanel;
+        [SerializeField] private GameObject _staffPanel;
 
         [Header("Panel Components")]
         [SerializeField] private DashboardPanel _dashboardPanelComponent;
@@ -52,8 +55,14 @@ namespace NBAHeadCoach.UI
         [SerializeField] private InboxPanel _inboxPanelComponent;
         [SerializeField] private PreGamePanel _preGamePanelComponent;
         [SerializeField] private PostGamePanel _postGamePanelComponent;
+        [SerializeField] private StaffPanel _staffPanelComponent;
 
         private GameManager _gameManager;
+
+        // Panel registry for unified navigation
+        private Dictionary<string, GameObject> _panelRegistry = new Dictionary<string, GameObject>();
+        private Dictionary<string, BasePanel> _panelComponents = new Dictionary<string, BasePanel>();
+        private string _currentPanelId;
 
         private void Start()
         {
@@ -82,12 +91,37 @@ namespace NBAHeadCoach.UI
             }
 
             // Setup UI
+            RegisterPanels();
             SetupButtonListeners();
             SetupPanelEvents();
             RefreshUI();
 
             // Show dashboard by default
-            ShowDashboard();
+            ShowPanel("Dashboard");
+        }
+
+        private void RegisterPanels()
+        {
+            RegisterPanel("Dashboard", _dashboardPanel, _dashboardPanelComponent);
+            RegisterPanel("Roster", _rosterPanel, _rosterPanelComponent);
+            RegisterPanel("Schedule", _schedulePanel, _calendarPanelComponent);
+            RegisterPanel("Standings", _standingsPanel, _standingsPanelComponent);
+            RegisterPanel("Inbox", _inboxPanel, _inboxPanelComponent);
+            RegisterPanel("Staff", _staffPanel, _staffPanelComponent);
+            RegisterPanel("PreGame", _preGamePanel, _preGamePanelComponent);
+            RegisterPanel("PostGame", _postGamePanel, _postGamePanelComponent);
+        }
+
+        private void RegisterPanel(string id, GameObject panelObject, BasePanel component)
+        {
+            if (panelObject != null)
+            {
+                _panelRegistry[id] = panelObject;
+            }
+            if (component != null)
+            {
+                _panelComponents[id] = component;
+            }
         }
 
         private void SetupPanelEvents()
@@ -154,6 +188,7 @@ namespace NBAHeadCoach.UI
             AddButtonListener(_scheduleButton, ShowSchedule);
             AddButtonListener(_standingsButton, ShowStandings);
             AddButtonListener(_inboxButton, ShowInbox);
+            AddButtonListener(_staffButton, ShowStaff);
 
             // Actions
             AddButtonListener(_advanceDayButton, OnAdvanceDayClicked);
@@ -202,104 +237,81 @@ namespace NBAHeadCoach.UI
 
         #region Panel Navigation
 
+        /// <summary>
+        /// Shows a panel by ID using the unified panel registry.
+        /// </summary>
+        public void ShowPanel(string panelId)
+        {
+            HideAllPanels();
+
+            if (_panelRegistry.TryGetValue(panelId, out var panel))
+            {
+                panel.SetActive(true);
+                _currentPanelId = panelId;
+
+                // Call Show() on component if available (handles CanvasGroup)
+                if (_panelComponents.TryGetValue(panelId, out var component))
+                {
+                    component.Show();
+                }
+
+                // Panel-specific refresh logic
+                RefreshPanel(panelId);
+            }
+            else
+            {
+                Debug.LogWarning($"[GameSceneController] Panel '{panelId}' not found in registry");
+            }
+        }
+
+        /// <summary>
+        /// Gets the currently active panel ID.
+        /// </summary>
+        public string CurrentPanelId => _currentPanelId;
+
         private void HideAllPanels()
         {
-            SetPanelActive(_dashboardPanel, false);
-            SetPanelActive(_rosterPanel, false);
-            SetPanelActive(_schedulePanel, false);
-            SetPanelActive(_standingsPanel, false);
-            SetPanelActive(_inboxPanel, false);
-            SetPanelActive(_preGamePanel, false);
-            SetPanelActive(_postGamePanel, false);
-        }
-
-        private void SetPanelActive(GameObject panel, bool active)
-        {
-            if (panel != null)
-                panel.SetActive(active);
-        }
-
-        private void ShowDashboard()
-        {
-            HideAllPanels();
-            SetPanelActive(_dashboardPanel, true);
-            RefreshDashboard();
-        }
-
-        private void ShowRoster()
-        {
-            HideAllPanels();
-            SetPanelActive(_rosterPanel, true);
-            RefreshRoster();
-        }
-
-        private void ShowSchedule()
-        {
-            HideAllPanels();
-            SetPanelActive(_schedulePanel, true);
-            RefreshSchedule();
-        }
-
-        private void ShowStandings()
-        {
-            HideAllPanels();
-            SetPanelActive(_standingsPanel, true);
-            RefreshStandings();
-        }
-
-        private void ShowInbox()
-        {
-            HideAllPanels();
-            SetPanelActive(_inboxPanel, true);
-            RefreshInbox();
-        }
-
-        private void ShowPreGame()
-        {
-            HideAllPanels();
-            SetPanelActive(_preGamePanel, true);
-        }
-
-        private void ShowPostGame()
-        {
-            HideAllPanels();
-            SetPanelActive(_postGamePanel, true);
-        }
-
-        #endregion
-
-        #region Panel Refresh Methods
-
-        private void RefreshDashboard()
-        {
-            if (_dashboardPanelComponent != null)
+            foreach (var kvp in _panelRegistry)
             {
-                _dashboardPanelComponent.RefreshDashboard();
+                if (kvp.Value != null)
+                {
+                    kvp.Value.SetActive(false);
+                }
+
+                // Call Hide() on component if available
+                if (_panelComponents.TryGetValue(kvp.Key, out var component))
+                {
+                    component.Hide();
+                }
             }
         }
 
-        private void RefreshRoster()
+        private void RefreshPanel(string panelId)
         {
-            if (_rosterPanelComponent != null)
+            switch (panelId)
             {
-                _rosterPanelComponent.RefreshList();
+                case "Dashboard":
+                    _dashboardPanelComponent?.RefreshDashboard();
+                    break;
+                case "Roster":
+                    _rosterPanelComponent?.RefreshList();
+                    break;
+                case "Staff":
+                    _staffPanelComponent?.RefreshStaffList();
+                    break;
+                // Schedule, Standings, Inbox refresh on show via BasePanel.OnShown()
             }
         }
 
-        private void RefreshSchedule()
-        {
-            // Calendar panel refreshes on show
-        }
-
-        private void RefreshStandings()
-        {
-            // Standings panel refreshes on show
-        }
-
-        private void RefreshInbox()
-        {
-            // Inbox panel refreshes on show
-        }
+        // Legacy methods for backward compatibility
+        private void ShowDashboard() => ShowPanel("Dashboard");
+        private void ShowRoster() => ShowPanel("Roster");
+        private void ShowSchedule() => ShowPanel("Schedule");
+        private void ShowStandings() => ShowPanel("Standings");
+        private void ShowInbox() => ShowPanel("Inbox");
+        private void ShowStaff() => ShowPanel("Staff");
+        private void ShowPreGame() => ShowPanel("PreGame");
+        private void ShowPostGame() => ShowPanel("PostGame");
 
         #endregion
 

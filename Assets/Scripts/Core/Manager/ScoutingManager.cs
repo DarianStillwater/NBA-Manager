@@ -468,6 +468,93 @@ namespace NBAHeadCoach.Core.Manager
 
             return scouts.OrderByDescending(s => s.OverallRating).ToList();
         }
+
+        // ==================== SAVE/LOAD ====================
+
+        /// <summary>
+        /// Creates save data for scouting system.
+        /// </summary>
+        public ScoutingSaveData CreateSaveData()
+        {
+            var data = new ScoutingSaveData();
+
+            // Save team scouts
+            foreach (var kvp in _teamScouts)
+            {
+                data.TeamScouts[kvp.Key] = kvp.Value.ToList();
+            }
+
+            // Save active assignments
+            data.ActiveAssignments = _activeAssignments.Values.ToList();
+
+            // Save scouting reports
+            foreach (var kvp in _teamReports)
+            {
+                data.TeamReports[kvp.Key] = kvp.Value.ToList();
+            }
+
+            // Save scouting history
+            data.ScoutingHistory = _scoutingHistory.Values.ToList();
+
+            return data;
+        }
+
+        /// <summary>
+        /// Restores scouting system from save data.
+        /// </summary>
+        public void LoadSaveData(ScoutingSaveData data)
+        {
+            if (data == null) return;
+
+            _teamScouts.Clear();
+            _activeAssignments.Clear();
+            _teamReports.Clear();
+            _scoutingHistory.Clear();
+
+            // Restore team scouts
+            foreach (var kvp in data.TeamScouts)
+            {
+                _teamScouts[kvp.Key] = kvp.Value;
+            }
+
+            // Restore active assignments
+            if (data.ActiveAssignments != null)
+            {
+                foreach (var assignment in data.ActiveAssignments)
+                {
+                    _activeAssignments[assignment.ScoutId] = assignment;
+                }
+            }
+
+            // Restore reports
+            foreach (var kvp in data.TeamReports)
+            {
+                _teamReports[kvp.Key] = kvp.Value;
+            }
+
+            // Restore history
+            if (data.ScoutingHistory != null)
+            {
+                foreach (var history in data.ScoutingHistory)
+                {
+                    _scoutingHistory[history.PlayerId] = history;
+                }
+            }
+
+            Debug.Log($"[ScoutingManager] Loaded {_teamScouts.Count} team scouts, {_activeAssignments.Count} assignments");
+        }
+    }
+
+    /// <summary>
+    /// Save data for scouting system.
+    /// </summary>
+    [Serializable]
+    public class ScoutingSaveData
+    {
+        public Dictionary<string, List<Scout>> TeamScouts = new Dictionary<string, List<Scout>>();
+        public List<ScoutAssignment> ActiveAssignments = new List<ScoutAssignment>();
+        public Dictionary<string, List<ScoutingReport>> TeamReports = new Dictionary<string, List<ScoutingReport>>();
+        public List<ScoutingHistory> ScoutingHistory = new List<ScoutingHistory>();
     }
 
     // ==================== SUPPORTING CLASSES ====================

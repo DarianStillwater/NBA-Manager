@@ -203,6 +203,27 @@ namespace NBAHeadCoach.Core.AI
                 value *= tradeStatus.GetAskingPriceMultiplier();
             }
 
+            // === Former Player GM Bonuses ===
+            if (frontOffice.IsFormerPlayer && frontOffice.FormerPlayerTraits != null)
+            {
+                // Position scouting bonus: Former player GMs evaluate their position better
+                // +10-20% value bonus for players at the GM's position
+                int positionBonus = frontOffice.GetPositionScoutingBonus(player.PrimaryPosition);
+                if (positionBonus > 0)
+                {
+                    // Position bonus increases perceived value (better evaluation)
+                    value *= (1f + positionBonus / 100f);
+                }
+
+                // Former teammate preference bonus: GMs value their former teammates more
+                // +15% value for acquiring former teammates
+                float teammateBonus = frontOffice.GetFormerTeammateSigningBonus(asset.PlayerId);
+                if (teammateBonus > 0)
+                {
+                    value *= (1f + teammateBonus);
+                }
+            }
+
             return value;
         }
 

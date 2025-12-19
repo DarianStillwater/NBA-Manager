@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 namespace NBAHeadCoach.Core.Data
@@ -38,7 +40,15 @@ namespace NBAHeadCoach.Core.Data
         public int Blocks;
         public int Turnovers;
         public int PersonalFouls;
-        
+
+        // Plus/Minus tracking
+        public int TotalPlusMinus;
+
+        // ==================== GAME LOGS ====================
+        // Individual game records - only kept for current season
+        [Header("Game Logs")]
+        public List<GameLog> GameLogs = new List<GameLog>();
+
         // ==================== ADVANCED METRICS ====================
         // These are calculated at end of season or periodically
         
@@ -78,6 +88,7 @@ namespace NBAHeadCoach.Core.Data
         public float SPG => GamesPlayed > 0 ? (float)Steals / GamesPlayed : 0;
         public float BPG => GamesPlayed > 0 ? (float)Blocks / GamesPlayed : 0;
         public float TPG => GamesPlayed > 0 ? (float)Turnovers / GamesPlayed : 0;
+        public float AvgPlusMinus => GamesPlayed > 0 ? (float)TotalPlusMinus / GamesPlayed : 0;
         
         // ==================== COMPUTED PERCENTAGES ====================
         
@@ -137,7 +148,7 @@ namespace NBAHeadCoach.Core.Data
             {
                 EffectiveFGPct = (FG_Made + 0.5f * ThreeP_Made) / FG_Attempts;
             }
-            
+
             // True Shooting Percentage
             // PTS / (2 * (FGA + 0.44 * FTA))
             float tsa = FG_Attempts + 0.44f * FT_Attempts;
@@ -145,6 +156,150 @@ namespace NBAHeadCoach.Core.Data
             {
                 TrueShootingPct = Points / (2 * tsa);
             }
+        }
+
+        // ==================== GAME LOG METHODS ====================
+
+        /// <summary>
+        /// Adds a game from a GameLog object and updates season totals.
+        /// </summary>
+        public void AddGameFromLog(GameLog log)
+        {
+            if (log == null) return;
+
+            // Add the game log to the list
+            GameLogs.Add(log);
+
+            // Update totals
+            GamesPlayed++;
+            if (log.Started) GamesStarted++;
+            MinutesPlayed += log.Minutes;
+
+            Points += log.Points;
+            FG_Made += log.FGM;
+            FG_Attempts += log.FGA;
+            ThreeP_Made += log.ThreePM;
+            ThreeP_Attempts += log.ThreePA;
+            FT_Made += log.FTM;
+            FT_Attempts += log.FTA;
+
+            OffensiveRebounds += log.ORB;
+            DefensiveRebounds += log.DRB;
+            Assists += log.Assists;
+            Steals += log.Steals;
+            Blocks += log.Blocks;
+            Turnovers += log.Turnovers;
+            PersonalFouls += log.PersonalFouls;
+            TotalPlusMinus += log.PlusMinus;
+
+            // Recalculate simple advanced stats
+            CalculateSimpleAdvanced();
+        }
+
+        /// <summary>
+        /// Get the most recent game log.
+        /// </summary>
+        public GameLog GetLastGame()
+        {
+            return GameLogs.Count > 0 ? GameLogs[GameLogs.Count - 1] : null;
+        }
+
+        /// <summary>
+        /// Get the most recent N games.
+        /// </summary>
+        public List<GameLog> GetRecentGames(int count)
+        {
+            if (GameLogs.Count == 0) return new List<GameLog>();
+
+            int startIndex = Math.Max(0, GameLogs.Count - count);
+            return GameLogs.Skip(startIndex).ToList();
+        }
+
+        /// <summary>
+        /// Get all playoff games from this season.
+        /// </summary>
+        public List<GameLog> GetPlayoffGames()
+        {
+            return GameLogs.Where(g => g.IsPlayoff).ToList();
+        }
+
+        /// <summary>
+        /// Get all regular season games from this season.
+        /// </summary>
+        public List<GameLog> GetRegularSeasonGames()
+        {
+            return GameLogs.Where(g => !g.IsPlayoff).ToList();
+        }
+
+        /// <summary>
+        /// Clear all game logs (called at season end to save space).
+        /// Totals and averages are preserved.
+        /// </summary>
+        public void ClearGameLogs()
+        {
+            GameLogs.Clear();
+        }
+
+        /// <summary>
+        /// Get win/loss record from game logs.
+        /// </summary>
+        public (int wins, int losses) GetRecord()
+        {
+            int wins = GameLogs.Count(g => g.Won);
+            int losses = GameLogs.Count - wins;
+            return (wins, losses);
+        }
+
+        /// <summary>
+        /// Creates a copy of this SeasonStats without game logs (for archiving).
+        /// </summary>
+        public SeasonStats CreateArchiveCopy()
+        {
+            var copy = new SeasonStats(Year, TeamId)
+            {
+                GamesPlayed = this.GamesPlayed,
+                GamesStarted = this.GamesStarted,
+                MinutesPlayed = this.MinutesPlayed,
+                FG_Made = this.FG_Made,
+                FG_Attempts = this.FG_Attempts,
+                ThreeP_Made = this.ThreeP_Made,
+                ThreeP_Attempts = this.ThreeP_Attempts,
+                FT_Made = this.FT_Made,
+                FT_Attempts = this.FT_Attempts,
+                Points = this.Points,
+                OffensiveRebounds = this.OffensiveRebounds,
+                DefensiveRebounds = this.DefensiveRebounds,
+                Assists = this.Assists,
+                Steals = this.Steals,
+                Blocks = this.Blocks,
+                Turnovers = this.Turnovers,
+                PersonalFouls = this.PersonalFouls,
+                TotalPlusMinus = this.TotalPlusMinus,
+                // Advanced stats
+                PER = this.PER,
+                TrueShootingPct = this.TrueShootingPct,
+                EffectiveFGPct = this.EffectiveFGPct,
+                ThreePAr = this.ThreePAr,
+                FTr = this.FTr,
+                OrbPct = this.OrbPct,
+                DrbPct = this.DrbPct,
+                TrbPct = this.TrbPct,
+                AstPct = this.AstPct,
+                StlPct = this.StlPct,
+                BlkPct = this.BlkPct,
+                TovPct = this.TovPct,
+                UsgPct = this.UsgPct,
+                OffensiveWinShares = this.OffensiveWinShares,
+                DefensiveWinShares = this.DefensiveWinShares,
+                WinShares = this.WinShares,
+                WinSharesPer48 = this.WinSharesPer48,
+                OffensiveBPM = this.OffensiveBPM,
+                DefensiveBPM = this.DefensiveBPM,
+                BoxPlusMinus = this.BoxPlusMinus,
+                VORP = this.VORP
+                // GameLogs intentionally NOT copied
+            };
+            return copy;
         }
     }
 }

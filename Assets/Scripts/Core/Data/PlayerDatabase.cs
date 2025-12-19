@@ -43,6 +43,87 @@ namespace NBAHeadCoach.Core.Data
         }
 
         /// <summary>
+        /// Registers a generated player (drafted rookie, etc.) with ID collision prevention.
+        /// Sets the IsGenerated flag and ensures a unique ID.
+        /// </summary>
+        public void RegisterGeneratedPlayer(Player player)
+        {
+            if (player == null) return;
+
+            player.IsGenerated = true;
+
+            // Ensure unique ID - if collision, add suffix
+            string baseId = player.PlayerId;
+            if (string.IsNullOrEmpty(baseId))
+            {
+                // Generate ID from name if not set
+                baseId = $"{player.FirstName.ToLower()}_{player.LastName.ToLower()}".Replace(" ", "_");
+                player.PlayerId = baseId;
+            }
+
+            // Handle ID collision
+            if (_players.ContainsKey(player.PlayerId))
+            {
+                int suffix = 1;
+                string newId = $"{baseId}_{suffix}";
+                while (_players.ContainsKey(newId))
+                {
+                    suffix++;
+                    newId = $"{baseId}_{suffix}";
+                }
+                player.PlayerId = newId;
+                Debug.Log($"[PlayerDatabase] ID collision resolved: {baseId} -> {newId}");
+            }
+
+            _players[player.PlayerId] = player;
+            Debug.Log($"[PlayerDatabase] Registered generated player: {player.FullName} ({player.PlayerId})");
+        }
+
+        /// <summary>
+        /// Checks if a player with the given ID exists in the database.
+        /// </summary>
+        public bool HasPlayer(string playerId)
+        {
+            return !string.IsNullOrEmpty(playerId) && _players.ContainsKey(playerId);
+        }
+
+        /// <summary>
+        /// Gets all generated players (not from base database).
+        /// </summary>
+        public List<Player> GetGeneratedPlayers()
+        {
+            return _players.Values.Where(p => p.IsGenerated).ToList();
+        }
+
+        /// <summary>
+        /// Removes a player from the database.
+        /// </summary>
+        public bool RemovePlayer(string playerId)
+        {
+            if (string.IsNullOrEmpty(playerId)) return false;
+            return _players.Remove(playerId);
+        }
+
+        /// <summary>
+        /// Clears all generated players from the database.
+        /// Used when starting a new game to reset to base roster.
+        /// </summary>
+        public void ClearGeneratedPlayers()
+        {
+            var generatedIds = _players.Values
+                .Where(p => p.IsGenerated)
+                .Select(p => p.PlayerId)
+                .ToList();
+
+            foreach (var id in generatedIds)
+            {
+                _players.Remove(id);
+            }
+
+            Debug.Log($"[PlayerDatabase] Cleared {generatedIds.Count} generated players");
+        }
+
+        /// <summary>
         /// Loads all players from base data and applies any mods.
         /// </summary>
         public void LoadAllPlayers()

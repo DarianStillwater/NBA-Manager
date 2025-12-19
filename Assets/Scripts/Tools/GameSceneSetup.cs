@@ -204,11 +204,6 @@ namespace NBAHeadCoach.Tools
 
             canvasGO.AddComponent<GraphicRaycaster>();
 
-            // Create UIManager
-            var uiManagerGO = new GameObject("UIManager");
-            var uiManager = uiManagerGO.AddComponent<UI.UIManager>();
-            uiManager.MainCanvas = canvasGO.transform;
-
             // ===== TOP HEADER BAR =====
             var headerBar = CreateUIElement("HeaderBar", canvasGO.transform);
             var headerBarRect = headerBar.GetComponent<RectTransform>();

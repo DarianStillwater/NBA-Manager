@@ -60,6 +60,12 @@ namespace NBAHeadCoach.Core
         [Header("Unified Career System")]
         public UnifiedCareerSaveData UnifiedCareers;
 
+        [Header("Staff Management")]
+        public StaffManagementSaveData StaffManagement;
+
+        [Header("Personality System")]
+        public PersonalitySystemSaveData PersonalityData;
+
         /// <summary>
         /// Create a display-friendly summary of the save
         /// </summary>
@@ -1000,6 +1006,63 @@ namespace NBAHeadCoach.Core
             }
 
             return stats;
+        }
+    }
+
+    /// <summary>
+    /// Save data for the personality system.
+    /// </summary>
+    [Serializable]
+    public class PersonalitySystemSaveData
+    {
+        public List<PlayerPersonalitySaveState> PlayerPersonalities = new List<PlayerPersonalitySaveState>();
+        public Dictionary<string, float> TeamChemistry = new Dictionary<string, float>();
+    }
+
+    /// <summary>
+    /// Save state for a single player's personality.
+    /// </summary>
+    [Serializable]
+    public class PlayerPersonalitySaveState
+    {
+        public string PlayerId;
+        public PersonalityTrait PrimaryTrait;
+        public List<PersonalityTrait> SecondaryTraits = new List<PersonalityTrait>();
+        public int Morale;
+        public int MoraleTrend;
+        public PlayerRole ExpectedRole;
+        public int PreferredMarketSize;
+        public PlaystylePreference PreferredPlaystyle;
+
+        public static PlayerPersonalitySaveState CreateFrom(string playerId, Personality personality)
+        {
+            if (personality == null) return null;
+
+            return new PlayerPersonalitySaveState
+            {
+                PlayerId = playerId,
+                PrimaryTrait = personality.PrimaryTrait,
+                SecondaryTraits = new List<PersonalityTrait>(personality.SecondaryTraits),
+                Morale = personality.Morale,
+                MoraleTrend = personality.MoraleTrend,
+                ExpectedRole = personality.ExpectedRole,
+                PreferredMarketSize = personality.PreferredMarketSize,
+                PreferredPlaystyle = personality.PreferredPlaystyle
+            };
+        }
+
+        public Personality ToPersonality()
+        {
+            return new Personality
+            {
+                PrimaryTrait = PrimaryTrait,
+                SecondaryTraits = new List<PersonalityTrait>(SecondaryTraits),
+                Morale = Morale,
+                MoraleTrend = MoraleTrend,
+                ExpectedRole = ExpectedRole,
+                PreferredMarketSize = PreferredMarketSize,
+                PreferredPlaystyle = PreferredPlaystyle
+            };
         }
     }
 }

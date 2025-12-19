@@ -90,6 +90,29 @@ namespace NBAHeadCoach.Core.Data
         /// </summary>
         public string FormerPlayerId;
 
+        // ==================== STAFF ASSIGNMENT ====================
+        /// <summary>
+        /// Current task type assigned to this coach (for coordinators/assistants).
+        /// </summary>
+        public CoachTaskType CurrentTask = CoachTaskType.Unassigned;
+
+        /// <summary>
+        /// List of player IDs assigned to this coach for development (for assistant coaches).
+        /// Capacity based on PlayerDevelopment rating: 1 + (PlayerDevelopment / 30), max 4.
+        /// </summary>
+        public List<string> AssignedPlayerIds = new List<string>();
+
+        /// <summary>
+        /// Whether this coach is available for hiring (not on a team).
+        /// </summary>
+        public bool IsAvailable => string.IsNullOrEmpty(TeamId);
+
+        /// <summary>
+        /// Get the maximum number of players this coach can develop.
+        /// Based on PlayerDevelopment rating: 1 + (rating / 30), max 4.
+        /// </summary>
+        public int DevelopmentCapacity => Math.Min(4, 1 + (PlayerDevelopment / 30));
+
         // ==================== COMPUTED PROPERTIES ====================
 
         /// <summary>

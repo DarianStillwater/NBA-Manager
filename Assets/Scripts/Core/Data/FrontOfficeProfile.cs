@@ -226,6 +226,12 @@ namespace NBAHeadCoach.Core.Data
         public int TradesLost;                // Trades that backfired
         public int YearsInPosition;
 
+        [Header("Former Player")]
+        public bool IsFormerPlayer;
+        public string FormerPlayerId;
+        public string FormerPlayerGMId;
+        public FormerPlayerGMTraits FormerPlayerTraits;
+
         // === Computed Properties ===
 
         /// <summary>
@@ -307,6 +313,74 @@ namespace NBAHeadCoach.Core.Data
                 TradeType.TankMove => CurrentSituation == TeamSituation.Rebuilding,
                 _ => true
             };
+        }
+
+        // === Former Player GM Methods ===
+
+        /// <summary>
+        /// Get signing bonus for former teammates (+15%)
+        /// </summary>
+        public float GetFormerTeammateSigningBonus(string playerId)
+        {
+            if (!IsFormerPlayer || FormerPlayerTraits == null)
+                return 0f;
+
+            return FormerPlayerTraits.GetFormerTeammateSigningBonus(playerId);
+        }
+
+        /// <summary>
+        /// Get position-specific scouting bonus (+10-20 for GM's position)
+        /// </summary>
+        public int GetPositionScoutingBonus(Position position)
+        {
+            if (!IsFormerPlayer || FormerPlayerTraits == null)
+                return 0;
+
+            return FormerPlayerTraits.GetPositionScoutingBonus(position);
+        }
+
+        /// <summary>
+        /// Get leak modifier based on former player's media presence
+        /// </summary>
+        public int GetFormerPlayerLeakModifier()
+        {
+            if (!IsFormerPlayer || FormerPlayerTraits == null)
+                return 0;
+
+            return FormerPlayerTraits.GetMediaPresenceLeakModifier();
+        }
+
+        /// <summary>
+        /// Get free agent attraction bonus for high profile former player GMs
+        /// </summary>
+        public float GetFreeAgentAttractionBonus()
+        {
+            if (!IsFormerPlayer || FormerPlayerTraits == null)
+                return 0f;
+
+            return FormerPlayerTraits.GetFreeAgentAttractionBonus();
+        }
+
+        /// <summary>
+        /// Check if this GM has a connection to a specific player (former teammate)
+        /// </summary>
+        public bool HasConnectionToPlayer(string playerId)
+        {
+            if (!IsFormerPlayer || FormerPlayerTraits == null)
+                return false;
+
+            return FormerPlayerTraits.FormerTeammateIds?.Contains(playerId) ?? false;
+        }
+
+        /// <summary>
+        /// Check if this GM played for a specific team
+        /// </summary>
+        public bool PlayedForTeam(string teamId)
+        {
+            if (!IsFormerPlayer || FormerPlayerTraits == null)
+                return false;
+
+            return FormerPlayerTraits.FormerTeamIds?.Contains(teamId) ?? false;
         }
 
         // === Factory Methods ===

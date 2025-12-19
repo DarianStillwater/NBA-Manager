@@ -38,11 +38,11 @@ namespace NBAHeadCoach.UI.Components
             _selectedTab.Select();
             ResetTabs();
             button.SetColor(TabSelectedColor);
-            
-            // Switch Panel Logic
+
+            // Switch Panel Logic - call Show() directly on the target panel
             if (button.TargetPanel != null)
             {
-                UIManager.Instance.ShowPanel(button.TargetPanel);
+                button.TargetPanel.Show();
             }
         }
 

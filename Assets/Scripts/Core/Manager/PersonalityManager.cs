@@ -283,14 +283,14 @@ namespace NBAHeadCoach.Core.Manager
         public float GetMentorshipBonus(string youngPlayerId, List<string> rosterPlayerIds)
         {
             float bonus = 0f;
-            
+
             foreach (var playerId in rosterPlayerIds)
             {
                 if (playerId == youngPlayerId) continue;
-                
+
                 var personality = GetPersonality(playerId);
                 if (personality == null) continue;
-                
+
                 if (personality.HasTrait(PersonalityTrait.Mentor))
                 {
                     // Good chemistry = better mentorship
@@ -298,8 +298,67 @@ namespace NBAHeadCoach.Core.Manager
                     bonus += 0.1f + (chemistry * 0.1f);
                 }
             }
-            
+
             return Mathf.Clamp(bonus, 0f, 0.3f); // Max 30% development bonus
+        }
+
+        // ==================== SAVE/LOAD ====================
+
+        /// <summary>
+        /// Creates save data for the personality system.
+        /// </summary>
+        public PersonalitySystemSaveData CreateSaveData()
+        {
+            var data = new PersonalitySystemSaveData
+            {
+                TeamChemistry = new Dictionary<string, float>(_teamChemistry)
+            };
+
+            foreach (var kvp in _playerPersonalities)
+            {
+                var saveState = PlayerPersonalitySaveState.CreateFrom(kvp.Key, kvp.Value);
+                if (saveState != null)
+                {
+                    data.PlayerPersonalities.Add(saveState);
+                }
+            }
+
+            Debug.Log($"[PersonalityManager] Saved {data.PlayerPersonalities.Count} personalities");
+            return data;
+        }
+
+        /// <summary>
+        /// Restores personality system from save data.
+        /// </summary>
+        public void LoadSaveData(PersonalitySystemSaveData data)
+        {
+            if (data == null) return;
+
+            _playerPersonalities.Clear();
+            _teamChemistry.Clear();
+
+            // Restore personalities
+            if (data.PlayerPersonalities != null)
+            {
+                foreach (var state in data.PlayerPersonalities)
+                {
+                    if (state != null && !string.IsNullOrEmpty(state.PlayerId))
+                    {
+                        _playerPersonalities[state.PlayerId] = state.ToPersonality();
+                    }
+                }
+            }
+
+            // Restore team chemistry
+            if (data.TeamChemistry != null)
+            {
+                foreach (var kvp in data.TeamChemistry)
+                {
+                    _teamChemistry[kvp.Key] = kvp.Value;
+                }
+            }
+
+            Debug.Log($"[PersonalityManager] Loaded {_playerPersonalities.Count} personalities");
         }
     }
 }

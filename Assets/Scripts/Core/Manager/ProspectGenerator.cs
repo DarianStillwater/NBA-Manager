@@ -363,6 +363,121 @@ namespace NBAHeadCoach.Core.Manager
         /// Overall rating alias for UI compatibility
         /// </summary>
         public int Overall => ProjectedOverall;
+
+        /// <summary>
+        /// Converts this draft prospect to a full Player object for the roster.
+        /// Maps simplified prospect attributes to detailed player attributes.
+        /// </summary>
+        public Player ToPlayer(string teamId, int draftRound, int draftPick, int draftYear)
+        {
+            var rng = new System.Random(ProspectId?.GetHashCode() ?? 0);
+
+            // Calculate birthdate from age (assuming draft is in June)
+            var draftDate = new DateTime(draftYear, 6, 20);
+            var birthYear = draftDate.Year - Age;
+            var birthMonth = rng.Next(1, 13);
+            var birthDay = rng.Next(1, 29);
+            var birthDate = new DateTime(birthYear, birthMonth, birthDay);
+
+            var player = new Player
+            {
+                // Identity
+                PlayerId = $"draft_{draftYear}_{ProspectId ?? $"{FirstName}_{LastName}".ToLower().Replace(" ", "_")}",
+                FirstName = this.FirstName,
+                LastName = this.LastName,
+                Position = this.Position,
+                TeamId = teamId,
+                BirthDate = birthDate,
+                YearsPro = 0, // Rookie
+
+                // Physical
+                HeightInches = this.Height,
+                WeightLbs = this.Weight,
+                Nationality = this.Country ?? "USA",
+                College = this.College,
+
+                // Draft info
+                DraftYear = draftYear,
+                DraftRound = draftRound,
+                DraftPick = draftPick,
+                DraftedByTeamId = teamId,
+                IsGenerated = true,
+
+                // Development potential
+                HiddenPotential = this.Potential,
+                PeakAge = 25 + rng.Next(6), // Peak between 25-30
+                DeclineRate = 30 + rng.Next(40), // Decline rate 30-70
+                InjuryProneness = 20 + rng.Next(40), // Injury proneness 20-60
+
+                // Map Scoring to offensive attributes
+                Finishing_Rim = Clamp(Scoring + rng.Next(-10, 11)),
+                Finishing_PostMoves = Clamp(Scoring - 15 + rng.Next(-5, 6)), // Rookies usually weaker post
+                Shot_Close = Clamp(Scoring + rng.Next(-8, 9)),
+                Shot_MidRange = Clamp(Scoring + rng.Next(-10, 11)),
+
+                // Map Shooting to shooting attributes
+                Shot_Three = Clamp(Shooting + rng.Next(-8, 9)),
+                FreeThrow = Clamp(Shooting + 5 + rng.Next(-5, 6)), // FT usually slightly higher
+
+                // Map Playmaking to playmaking attributes
+                Passing = Clamp(Playmaking + rng.Next(-8, 9)),
+                BallHandling = Clamp(Playmaking + rng.Next(-10, 11)),
+                OffensiveIQ = Clamp(BBIQ + rng.Next(-5, 6)),
+
+                // Map Defense to defensive attributes
+                Defense_Perimeter = Clamp(Defense + rng.Next(-8, 9)),
+                Defense_Interior = Clamp(Defense - 5 + rng.Next(-8, 9)), // Interior usually develops later
+                Defense_PostDefense = Clamp(Defense - 10 + rng.Next(-5, 6)),
+                Steal = Clamp(Defense - 5 + rng.Next(-10, 11)),
+                Block = Clamp(Defense - 5 + rng.Next(-10, 11)),
+                DefensiveIQ = Clamp(BBIQ - 5 + rng.Next(-5, 6)), // Defensive IQ develops with experience
+
+                // Map Rebounding
+                DefensiveRebound = Clamp(Rebounding + rng.Next(-8, 9)),
+
+                // Map Athleticism to physical attributes
+                Speed = Clamp(Athleticism + rng.Next(-8, 9)),
+                SpeedWithBall = Clamp(Athleticism - 5 + rng.Next(-5, 6)),
+                Acceleration = Clamp(Athleticism + rng.Next(-10, 11)),
+                Vertical = Clamp(Athleticism + rng.Next(-8, 9)),
+                Strength = Clamp(Athleticism - 15 + rng.Next(-5, 6)), // Rookies usually need to bulk up
+                Stamina = Clamp(70 + rng.Next(-10, 11)), // Most rookies have decent stamina
+                Durability = Clamp(65 + rng.Next(-15, 16)),
+                Wingspan = Clamp(this.Wingspan > 0 ? (this.Wingspan - this.Height + 50) : 50 + rng.Next(-10, 11)),
+
+                // Map BBIQ to mental attributes
+                BasketballIQ = Clamp(BBIQ + rng.Next(-5, 6)),
+                Clutch = Clamp(50 + rng.Next(-20, 21)), // Unknown clutch until proven
+                Consistency = Clamp(50 + rng.Next(-15, 16)), // Rookies tend to be inconsistent
+                WorkEthic = Clamp(60 + rng.Next(-20, 21)),
+                Coachability = Clamp(65 + rng.Next(-15, 16)),
+
+                // Personality from prospect
+                Ego = this.Personality?.Ego ?? (30 + rng.Next(40)),
+                Leadership = this.Personality?.Leadership ?? (30 + rng.Next(30)),
+                Composure = this.Personality?.Composure ?? (40 + rng.Next(30)),
+                Aggression = this.Personality?.Aggression ?? (40 + rng.Next(40)),
+
+                // Initial state
+                Energy = 100,
+                Morale = 75,
+                Form = 50,
+
+                // No injuries
+                IsInjured = false,
+
+                // Empty career (fresh start)
+                CareerStats = new List<SeasonStats>(),
+                CurrentSeasonStats = null // Will be initialized when season starts
+            };
+
+            return player;
+        }
+
+        private static int Clamp(int value)
+        {
+            return Math.Max(25, Math.Min(99, value)); // Keep attributes between 25-99
+        }
     }
 
     public enum ProspectTier

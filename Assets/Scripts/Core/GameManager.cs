@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using NBAHeadCoach.Core.Data;
@@ -86,6 +87,8 @@ namespace NBAHeadCoach.Core
         public TrainingCampManager TrainingCampManager => _trainingCampManager;
         private MoraleChemistryManager _moraleChemistryManager;
         public MoraleChemistryManager MoraleChemistryManager => _moraleChemistryManager;
+        private PersonalityManager _personalityManager;
+        public PersonalityManager PersonalityManager => _personalityManager;
         private MediaManager _mediaManager;
         public MediaManager MediaManager => _mediaManager;
         private RevenueManager _revenueManager;
@@ -153,6 +156,7 @@ namespace NBAHeadCoach.Core
             SeasonController = new SeasonController(this);
             MatchController = new MatchFlowController(this);
             SaveLoad = new SaveLoadManager();
+            _personalityManager = new PersonalityManager();
 
             // Load player/team data
             StartCoroutine(LoadGameData());
@@ -333,6 +337,16 @@ namespace NBAHeadCoach.Core
             _jobSecurityManager?.InitializeForNewSeason(_career, _playerTeamId);
             _developmentManager?.InitializeForNewSeason(_allTeams);
 
+            // Initialize staff management (coaches and scouts for all teams)
+            var staffManager = StaffManagementManager.Instance;
+            if (staffManager != null)
+            {
+                staffManager.SetPlayerDatabase(PlayerDatabase);
+                staffManager.SetUserTeam(_playerTeamId);
+                var teamIds = _allTeams.Select(t => t.TeamId).ToList();
+                staffManager.InitializeAllTeamStaff(teamIds);
+            }
+
             // Generate initial draft class for upcoming draft
             var draftGen = DraftClassGenerator.Instance;
             draftGen?.GenerateDraftClass(_currentSeason + 1);
@@ -397,6 +411,20 @@ namespace NBAHeadCoach.Core
             {
                 _playoffManager?.RestoreFromSave(data.PlayoffData);
             }
+
+            // Restore staff management state
+            var staffManager = StaffManagementManager.Instance;
+            if (staffManager != null && data.StaffManagement != null)
+            {
+                staffManager.SetPlayerDatabase(PlayerDatabase);
+                staffManager.LoadSaveData(data.StaffManagement);
+            }
+
+            // Restore personality data
+            if (data.PersonalityData != null)
+            {
+                _personalityManager?.LoadSaveData(data.PersonalityData);
+            }
         }
 
         /// <summary>
@@ -415,7 +443,9 @@ namespace NBAHeadCoach.Core
                 TeamStates = CreateTeamStates(),
                 PlayerStates = CreatePlayerStates(),
                 CalendarData = SeasonController.CreateCalendarSaveData(),
-                PlayoffData = _playoffManager?.CreateSaveData()
+                PlayoffData = _playoffManager?.CreateSaveData(),
+                StaffManagement = StaffManagementManager.Instance?.GetSaveData(),
+                PersonalityData = _personalityManager?.CreateSaveData()
             };
         }
 

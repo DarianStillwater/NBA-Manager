@@ -13,25 +13,38 @@ namespace NBAHeadCoach.Core.Manager
     {
         private ProspectGenerator _prospectGenerator;
         private SalaryCapManager _capManager;
-        
+        private PlayerDatabase _playerDatabase;
+
         // Current draft class
         private List<DraftProspect> _prospects = new List<DraftProspect>();
         private List<DraftSelection> _draftResults = new List<DraftSelection>();
-        
+
         // Draft order (teamIds in pick order)
         private List<string> _firstRoundOrder = new List<string>();
         private List<string> _secondRoundOrder = new List<string>();
-        
+
+        // Current draft year (set when draft class is generated)
+        private int _currentDraftYear;
+
         // Lottery odds (for non-playoff teams, 14 teams)
         private static readonly float[] LotteryOdds = {
             14.0f, 14.0f, 14.0f, 12.5f, 10.5f, 9.0f, 7.5f,
             6.0f, 4.5f, 3.0f, 2.0f, 1.5f, 1.0f, 0.5f
         };
 
-        public DraftSystem(SalaryCapManager capManager, int? seed = null)
+        public DraftSystem(SalaryCapManager capManager, PlayerDatabase playerDatabase = null, int? seed = null)
         {
             _capManager = capManager;
+            _playerDatabase = playerDatabase;
             _prospectGenerator = new ProspectGenerator(seed);
+        }
+
+        /// <summary>
+        /// Sets the player database reference (can be done after construction).
+        /// </summary>
+        public void SetPlayerDatabase(PlayerDatabase playerDatabase)
+        {
+            _playerDatabase = playerDatabase;
         }
 
         // ==================== DRAFT CLASS ====================
@@ -41,6 +54,7 @@ namespace NBAHeadCoach.Core.Manager
         /// </summary>
         public List<DraftProspect> GenerateDraftClass(int year)
         {
+            _currentDraftYear = year;
             _prospects = _prospectGenerator.GenerateDraftClass(year);
             _draftResults.Clear();
             return _prospects;
@@ -160,7 +174,7 @@ namespace NBAHeadCoach.Core.Manager
         // ==================== DRAFTING ====================
 
         /// <summary>
-        /// Executes a draft pick.
+        /// Executes a draft pick. Converts the prospect to a Player and registers in the database.
         /// </summary>
         public DraftSelection MakePick(int pickNumber, string teamId, string prospectId)
         {
@@ -170,27 +184,52 @@ namespace NBAHeadCoach.Core.Manager
                 Debug.LogError($"Prospect {prospectId} not found");
                 return null;
             }
-            
+
             // Remove from available prospects
             _prospects.RemoveAll(p => p.ProspectId == prospectId);
-            
+
+            // Determine round
+            int round = pickNumber <= 30 ? 1 : 2;
+
             // Create selection record
             var selection = new DraftSelection
             {
                 PickNumber = pickNumber,
-                Round = pickNumber <= 30 ? 1 : 2,
+                Round = round,
                 TeamId = teamId,
                 Prospect = prospect
             };
-            
+
             _draftResults.Add(selection);
-            
-            // Create rookie contract
-            var contract = Contract.CreateRookieScale(prospectId, teamId, pickNumber);
+
+            // Convert prospect to Player and register in database
+            var player = prospect.ToPlayer(teamId, round, pickNumber, _currentDraftYear);
+            selection.DraftedPlayer = player;
+
+            if (_playerDatabase != null)
+            {
+                _playerDatabase.RegisterGeneratedPlayer(player);
+                Debug.Log($"[DraftSystem] Registered drafted player: {player.FullName} ({player.PlayerId})");
+
+                // Add to team roster
+                var team = _playerDatabase.GetTeam(teamId);
+                if (team != null)
+                {
+                    team.Roster ??= new List<Player>();
+                    team.Roster.Add(player);
+                }
+            }
+            else
+            {
+                Debug.LogWarning("[DraftSystem] PlayerDatabase not set - drafted player not registered");
+            }
+
+            // Create rookie contract using the new player ID
+            var contract = Contract.CreateRookieScale(player.PlayerId, teamId, pickNumber);
             _capManager?.RegisterContract(contract);
-            
+
             Debug.Log($"Pick {pickNumber}: {teamId} selects {prospect.FullName} ({prospect.Position})");
-            
+
             return selection;
         }
 
@@ -279,6 +318,7 @@ namespace NBAHeadCoach.Core.Manager
         public int Round;
         public string TeamId;
         public DraftProspect Prospect;
+        public Player DraftedPlayer; // The converted player (null until pick is made)
     }
 
     [Serializable]

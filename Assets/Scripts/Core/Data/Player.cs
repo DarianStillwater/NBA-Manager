@@ -27,6 +27,18 @@ namespace NBAHeadCoach.Core.Data
         public string SkinToneCode; // For 3D model customization (e.g., "TONE_03")
         public string HairStyle;
         public string TeamId;
+        public string Nationality;
+        public string College;
+
+        // Draft information
+        public int DraftYear;
+        public int DraftRound;  // 1 or 2, 0 if undrafted
+        public int DraftPick;   // Overall pick number, 0 if undrafted
+        public string DraftedByTeamId;
+
+        // Flag for players generated during gameplay (drafted rookies, etc.)
+        // Used to distinguish from base database players for save/load
+        public bool IsGenerated;
 
         /// <summary>
         /// Calculates current age based on BirthDate and game's current date.
@@ -618,6 +630,111 @@ namespace NBAHeadCoach.Core.Data
             {
                 if (CareerStats == null || CareerStats.Count == 0) return null;
                 return CareerStats[CareerStats.Count - 1];
+            }
+        }
+
+        // ==================== CAREER & GAME LOG HELPERS ====================
+
+        /// <summary>
+        /// Get the most recent game log from current season.
+        /// </summary>
+        public GameLog GetLastGame()
+        {
+            return CurrentSeasonStats?.GetLastGame();
+        }
+
+        /// <summary>
+        /// Get the most recent N games from current season.
+        /// </summary>
+        public List<GameLog> GetRecentGames(int count)
+        {
+            return CurrentSeasonStats?.GetRecentGames(count) ?? new List<GameLog>();
+        }
+
+        /// <summary>
+        /// Get all game logs from current season.
+        /// </summary>
+        public List<GameLog> GetCurrentSeasonGameLogs()
+        {
+            return CurrentSeasonStats?.GameLogs ?? new List<GameLog>();
+        }
+
+        /// <summary>
+        /// Calculate career averages across all seasons.
+        /// </summary>
+        public (float ppg, float rpg, float apg, float spg, float bpg, float fgPct, float threePct) GetCareerAverages()
+        {
+            if (CareerStats == null || CareerStats.Count == 0)
+                return (0, 0, 0, 0, 0, 0, 0);
+
+            int totalGames = CareerStats.Sum(s => s.GamesPlayed);
+            if (totalGames == 0)
+                return (0, 0, 0, 0, 0, 0, 0);
+
+            float totalPoints = CareerStats.Sum(s => s.Points);
+            float totalRebounds = CareerStats.Sum(s => s.TotalRebounds);
+            float totalAssists = CareerStats.Sum(s => s.Assists);
+            float totalSteals = CareerStats.Sum(s => s.Steals);
+            float totalBlocks = CareerStats.Sum(s => s.Blocks);
+            float totalFGM = CareerStats.Sum(s => s.FG_Made);
+            float totalFGA = CareerStats.Sum(s => s.FG_Attempts);
+            float totalThreePM = CareerStats.Sum(s => s.ThreeP_Made);
+            float totalThreePA = CareerStats.Sum(s => s.ThreeP_Attempts);
+
+            return (
+                ppg: totalPoints / totalGames,
+                rpg: totalRebounds / totalGames,
+                apg: totalAssists / totalGames,
+                spg: totalSteals / totalGames,
+                bpg: totalBlocks / totalGames,
+                fgPct: totalFGA > 0 ? totalFGM / totalFGA : 0,
+                threePct: totalThreePA > 0 ? totalThreePM / totalThreePA : 0
+            );
+        }
+
+        /// <summary>
+        /// Get career totals.
+        /// </summary>
+        public (int games, int points, int rebounds, int assists, int steals, int blocks) GetCareerTotals()
+        {
+            if (CareerStats == null || CareerStats.Count == 0)
+                return (0, 0, 0, 0, 0, 0);
+
+            return (
+                games: CareerStats.Sum(s => s.GamesPlayed),
+                points: CareerStats.Sum(s => s.Points),
+                rebounds: CareerStats.Sum(s => s.TotalRebounds),
+                assists: CareerStats.Sum(s => s.Assists),
+                steals: CareerStats.Sum(s => s.Steals),
+                blocks: CareerStats.Sum(s => s.Blocks)
+            );
+        }
+
+        /// <summary>
+        /// Get number of seasons played.
+        /// </summary>
+        public int SeasonsPlayed => CareerStats?.Count ?? 0;
+
+        /// <summary>
+        /// Initialize a new season stats entry for this player.
+        /// </summary>
+        public void StartNewSeason(int year, string teamId)
+        {
+            if (CareerStats == null)
+                CareerStats = new List<SeasonStats>();
+
+            CareerStats.Add(new SeasonStats(year, teamId));
+        }
+
+        /// <summary>
+        /// Archive the current season (clear game logs to save space).
+        /// Call this at season end before starting a new season.
+        /// </summary>
+        public void ArchiveCurrentSeason()
+        {
+            if (CurrentSeasonStats != null)
+            {
+                CurrentSeasonStats.ClearGameLogs();
             }
         }
 

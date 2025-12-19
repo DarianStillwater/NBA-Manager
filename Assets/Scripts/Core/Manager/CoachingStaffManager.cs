@@ -138,6 +138,8 @@ namespace NBAHeadCoach.Core.Manager
 
         /// <summary>
         /// Fires a coach from a team.
+        /// Note: Does NOT add to free agent pool - caller (StaffManagementManager) should
+        /// route to StaffHiringManager's pool instead.
         /// </summary>
         public (bool success, string message) FireCoach(string teamId, string coachId)
         {
@@ -156,10 +158,9 @@ namespace NBAHeadCoach.Core.Manager
             staff.Remove(coach);
             _coachesById.Remove(coachId);
 
-            // Add to free agents
+            // Clear team assignment (but don't add to internal pool - use StaffHiringManager)
             coach.TeamId = null;
             coach.ContractYearsRemaining = 0;
-            _freeAgentCoaches.Add(coach);
 
             Debug.Log($"[CoachingStaffManager] {teamId} fired {coach.FullName}");
             return (true, $"Released {coach.FullName}.");
@@ -502,6 +503,68 @@ namespace NBAHeadCoach.Core.Manager
 
             return coaches.OrderByDescending(c => c.OverallRating).ToList();
         }
+
+        // ==================== SAVE/LOAD ====================
+
+        /// <summary>
+        /// Creates save data for all coaching staff.
+        /// </summary>
+        public CoachingStaffSaveData CreateSaveData()
+        {
+            var data = new CoachingStaffSaveData();
+
+            // Save team staffs
+            foreach (var kvp in _teamStaffs)
+            {
+                data.TeamCoaches[kvp.Key] = kvp.Value.ToList();
+            }
+
+            // Save free agents
+            data.FreeAgentCoaches = _freeAgentCoaches.ToList();
+
+            return data;
+        }
+
+        /// <summary>
+        /// Restores coaching staff from save data.
+        /// </summary>
+        public void LoadSaveData(CoachingStaffSaveData data)
+        {
+            if (data == null) return;
+
+            _teamStaffs.Clear();
+            _coachesById.Clear();
+            _freeAgentCoaches.Clear();
+
+            // Restore team staffs
+            foreach (var kvp in data.TeamCoaches)
+            {
+                _teamStaffs[kvp.Key] = kvp.Value;
+                foreach (var coach in kvp.Value)
+                {
+                    _coachesById[coach.CoachId] = coach;
+                }
+            }
+
+            // Restore free agents
+            _freeAgentCoaches = data.FreeAgentCoaches ?? new List<Coach>();
+            foreach (var coach in _freeAgentCoaches)
+            {
+                _coachesById[coach.CoachId] = coach;
+            }
+
+            Debug.Log($"[CoachingStaffManager] Loaded {_teamStaffs.Count} team staffs, {_freeAgentCoaches.Count} free agents");
+        }
+    }
+
+    /// <summary>
+    /// Save data for coaching staff system.
+    /// </summary>
+    [Serializable]
+    public class CoachingStaffSaveData
+    {
+        public Dictionary<string, List<Coach>> TeamCoaches = new Dictionary<string, List<Coach>>();
+        public List<Coach> FreeAgentCoaches = new List<Coach>();
     }
 
     /// <summary>

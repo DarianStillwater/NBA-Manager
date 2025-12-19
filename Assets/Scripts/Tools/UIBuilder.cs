@@ -33,8 +33,6 @@ namespace NBAHeadCoach.Tools
             // Cleanup
             var old = GameObject.Find("MainCanvas");
             if (old != null) DestroyImmediate(old);
-            old = GameObject.Find("UIManager");
-            if (old != null) DestroyImmediate(old);
 
             // Canvas
             GameObject canvasObj = new GameObject("MainCanvas", typeof(RectTransform));
@@ -54,11 +52,6 @@ namespace NBAHeadCoach.Tools
                 es.AddComponent<UnityEngine.EventSystems.EventSystem>();
                 es.AddComponent<UnityEngine.EventSystems.StandaloneInputModule>();
             }
-
-            // UIManager
-            var mgrObj = new GameObject("UIManager");
-            UIManager mgr = mgrObj.AddComponent<UIManager>();
-            mgr.MainCanvas = canvas.transform;
 
             // ========== BACKGROUND ==========
             GameObject bg = CreatePanel("Background", canvas.transform, V2(0, 0), V2(1, 1));

@@ -69,6 +69,17 @@ namespace NBAHeadCoach.Core.Data
         public bool IsAvailable = true;  // Not on assignment
         public string CurrentAssignmentId;
 
+        /// <summary>
+        /// Current task type assigned to this scout.
+        /// </summary>
+        public ScoutTaskType CurrentTaskType = ScoutTaskType.Unassigned;
+
+        // ==================== COMPATIBILITY ALIASES ====================
+        // These provide alternate names for UI and external references
+        public int EvaluatingAbility => EvaluationAccuracy;
+        public int CollegeKnowledge => CollegeConnections;
+        public int InternationalKnowledge => InternationalConnections;
+
         // ==================== COMPUTED PROPERTIES ====================
 
         /// <summary>
