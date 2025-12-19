@@ -17,6 +17,15 @@
 4. Navigate seasons (82 games → playoffs → offseason)
 5. Build coaching legacy across multiple careers
 
+### Design Philosophy: No Visible Attributes
+
+> **Critical Design Decision**: Player attributes (shooting, defense, speed, etc.) are NEVER shown as numbers to the user. All attributes exist internally to drive simulation, but players learn about talent through:
+> - **Statistics**: Box scores, shooting percentages, per-game averages
+> - **Scouting Reports**: Text-based descriptions ("Elite three-point shooter", "Struggles against physical defenders")
+> - **Game Observation**: Watch how players perform in simulated games
+>
+> This creates a realistic "eye test" experience where coaches evaluate players like real NBA coaches do - through observation and professional scouting, not spreadsheet numbers.
+
 ---
 
 ## PROJECT STRUCTURE
@@ -148,13 +157,19 @@ Individual possession resolution.
 
 **Bio**: Name, Age, Height, Weight, Position, College, Nationality, Draft info
 
-**Visible Attributes** (0-99):
+**Attributes** (ALL HIDDEN - 0-99 scale, internal only):
+> **Design Philosophy**: Players never see raw attribute numbers. All attributes drive simulation and are revealed ONLY through text-based scouting reports. This creates a more realistic "eye test" experience where coaches evaluate players through observation and scouting, not spreadsheets.
+
 - Offense: InsideScoring, MidRange, ThreePoint, FreeThrow, Passing, BallHandling
 - Defense: PerimeterDefense, InteriorDefense, Stealing, Blocking
 - Physical: Speed, Strength, Stamina, Rebounding, Athleticism
+- Intangibles: WorkEthic, Consistency, Durability, Leadership, Clutch, Basketball IQ, Coachability, Loyalty
 
-**Hidden Attributes** (revealed via scouting):
-- WorkEthic, Consistency, Durability, Leadership, Clutch, Basketball IQ, Coachability, Loyalty
+**How Attributes Are Revealed**:
+- Scouting reports describe abilities in text form ("Elite three-point shooter", "Struggles against physical defenders")
+- Game performance reveals tendencies through box scores and play-by-play
+- Scout quality affects accuracy of text descriptions
+- No numerical ratings shown anywhere in UI
 
 **Development System**:
 - Development Phase: Rising → Peak → Veteran → Decline
@@ -313,7 +328,7 @@ Individual possession resolution.
 | 8 | Media System | ✅ | Press conferences with consequences, headlines |
 | 9 | AI Adaptation | ✅ | In-game learning, pattern detection, counter-strategies |
 | 10 | Financial System | ✅ | Full revenue model, game-by-game income, projections |
-| 11 | Scouting | ✅ | Advance scouting, scout development, game prep reports |
+| 11 | Scouting | ✅ | Text-based reports only, no numerical attributes shown |
 | 12 | History & Records | ✅ | Season archives, franchise records, Hall of Fame |
 | 13 | Save System | ✅ | Complete with Ironman mode |
 | 14 | Former Player Careers | ✅ | Coaching progression, hiring bonuses, matchup notifications |
@@ -1175,26 +1190,36 @@ Each question shows 3-4 response options with tone indicators.
 - Owner weighs cost vs benefit
 - Success builds trust for future asks
 
-### 11. SCOUTING 🔶 PARTIAL
+### 11. SCOUTING ✅ COMPLETE
 
-#### Tiered Scouting Reports
+> **Core Design**: Scouting reports are TEXT-ONLY. No numerical attributes are ever shown to the user. This is the ONLY way to learn about player abilities beyond watching their stats in games.
+
+#### Tiered Scouting Reports (Text-Based)
 
 **Basic Report** (free, instant):
-- Physical measurements
-- College/overseas stats
-- Position and basic skills
+- Physical measurements (height, weight, wingspan)
+- College/overseas stats (numbers from their history)
+- Position and role description
 
 **Detailed Report** (requires scout assignment):
-- Strengths and weaknesses summary
-- "Elite shooter, struggles against physical defenders"
-- "Good motor, needs to add strength"
+- Strengths and weaknesses in prose form:
+  - "Elite shooter with deep range and quick release"
+  - "Struggles defending quicker guards on the perimeter"
+  - "High motor player who never takes plays off"
 - Player comparison: "Plays like a young Draymond Green"
+- Tendencies: "Prefers going left", "First option in clutch situations"
 
 **Full Report** (extended scouting):
 - Everything above plus:
-- Projection/ceiling estimate: "Projects as starter" / "All-Star potential"
-- Fit analysis for your team
-- Character concerns or highlights
+- Projection/ceiling estimate: "Projects as a solid starter" / "All-Star potential if shooting develops"
+- Team fit analysis: "Would thrive in an up-tempo system"
+- Character assessment: "Gym rat with excellent work ethic" / "Some maturity concerns"
+- Injury history concerns if applicable
+
+**Report Accuracy**:
+- Scout quality determines how accurate descriptions are
+- Low-quality scouts may miss weaknesses or overrate strengths
+- Multiple scouts on same player gives more reliable picture
 
 #### Scout Staff System
 
@@ -2039,11 +2064,13 @@ public void RestoreFromSave(ManagerState state) { ... }
 
 ## PLAYER CARD UI SPECIFICATION
 
+> **Key Design Principle**: NO ATTRIBUTE NUMBERS are shown anywhere. Players evaluate talent through statistics (box scores) and text-based scouting reports only.
+
 ### Layout: Split View
 ```
 +---------------------------+--------------------------------+
 |      LEFT SIDE            |         RIGHT SIDE             |
-|      (Bio/Overview)       |         (Stats Tabs)           |
+|      (Bio/Overview)       |     (Stats + Scouting Tabs)    |
 +---------------------------+--------------------------------+
 ```
 
@@ -2069,34 +2096,28 @@ public void RestoreFromSave(ManagerState state) { ... }
 - Depth chart position (e.g., "PG #2")
 
 **Team Context Section:**
-- Morale indicator (emoji + label)
-- Chemistry with teammates (bar or rating)
+- Morale indicator (emoji + label: Happy/Content/Unhappy)
 - Playing time trend (↑ increasing / → stable / ↓ decreasing)
 
 **Scouting Summary:**
-- 2-3 line summary from scouting report
-- "View Full Report" button → opens scouting panel
+- 2-3 line text summary from scouting report
+- "View Full Report" button → opens full scouting report
 
-### Right Side - Stats (Sub-tabs)
+### Right Side - Tabs
 
-**Tab 1: Current Season**
+**Tab 1: Current Season Stats**
 ```
 Season Summary Row:
 GP/GS | MPG | PPG | RPG | APG | SPG | BPG | TPG
-FG% | 3P% | FT% | PER | TS% | USG% | +/-
-
-Visual indicators: color bars showing vs league average
-- Green = above average
-- Gray = average
-- Red = below average
+FG% | 3P% | FT% | TS% | USG%
 ```
 
-**Tab 2: Career**
+**Tab 2: Career Stats**
 ```
 Career Totals Row (summary):
 GP | PPG | RPG | APG | SPG | BPG | FG% | 3P%
 
-Season-by-Season Table (condensed):
+Season-by-Season Table:
 | Year | Team | GP | PPG | RPG | APG | FG% |
 Click row → expands to show ALL stats for that season
 ```
@@ -2108,13 +2129,24 @@ Recent Games (last 5-10):
 "View All Games" button → expands to full season list
 ```
 
+**Tab 4: Scouting Report** (TEXT ONLY)
+```
+Full text-based scouting report:
+- Strengths (prose description)
+- Weaknesses (prose description)
+- Player comparison
+- Projection/ceiling
+- Character/work ethic notes
+
+NO numerical ratings - only descriptive text
+```
+
 ### Action Buttons
 - **Set Role** → Starter / Bench dropdown
-- **Development Focus** → Opens focus assignment
+- **Development Focus** → Opens focus assignment (text-based feedback)
 - **Minutes Limit** → Set max minutes per game
 - **DNP-Rest** → Toggle rest for next game
 - **Request Trade** → Initiates trade finder for this player
-- **Full Scouting Report** → Opens detailed scouting panel
 
 ---
 
