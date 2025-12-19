@@ -275,11 +275,23 @@ namespace NBAHeadCoach.Core
         [SerializeField, Range(0f, 1f)] private float legendFarewellTourChance = 0.9f;
         [SerializeField, Range(0f, 1f)] private float starFarewellTourChance = 0.5f;
 
+        [Header("Non-Player Retirement Settings")]
+        [SerializeField] private int nonPlayerRetirementAgeStart = 55;
+        [SerializeField] private int nonPlayerRetirementAgeEnd = 68;
+        [SerializeField] private int nonPlayerForcedRetirementAge = 70;
+        [SerializeField] private int maxUnemployedYearsBeforeForced = 3;
+
+        [Header("Non-Player Retirement Tracking")]
+        [SerializeField] private List<NonPlayerRetirementAnnouncement> nonPlayerRetirements = new List<NonPlayerRetirementAnnouncement>();
+
         // Events
         public event Action<RetirementAnnouncement> OnRetirementAnnounced;
         public event Action<FarewellTourGame> OnFarewellGameCompleted;
         public event Action<RetirementCeremony> OnRetirementCeremonyHeld;
         public event Action<RetirementPackage> OnRetirementComplete;
+
+        // Non-Player Retirement Events
+        public event Action<NonPlayerRetirementAnnouncement> OnNonPlayerRetirementAnnounced;
 
         private void Awake()
         {
@@ -1025,6 +1037,168 @@ namespace NBAHeadCoach.Core
         public List<RetirementPackage> GetHallOfFamers()
         {
             return completedRetirements.Where(r => r.LegacyTier == LegacyTier.HallOfFame).ToList();
+        }
+
+        // ==================== NON-PLAYER RETIREMENT METHODS ====================
+
+        /// <summary>
+        /// Evaluate retirement factors for a non-player (coach, GM, scout, etc.)
+        /// </summary>
+        public NonPlayerRetirementFactors EvaluateNonPlayerRetirement(UnifiedCareerProfile profile)
+        {
+            if (profile == null || profile.CurrentTrack == UnifiedCareerTrack.Retired)
+                return null;
+
+            return NonPlayerRetirementFactors.CalculateFor(profile);
+        }
+
+        /// <summary>
+        /// Process potential retirement for a non-player
+        /// Returns true if the person retired
+        /// </summary>
+        public bool ProcessNonPlayerRetirement(UnifiedCareerProfile profile, int currentYear)
+        {
+            if (profile == null || profile.CurrentTrack == UnifiedCareerTrack.Retired)
+                return false;
+
+            var factors = EvaluateNonPlayerRetirement(profile);
+
+            // Forced retirement: 3+ years unemployed
+            if (profile.YearsUnemployed >= maxUnemployedYearsBeforeForced)
+            {
+                RetireNonPlayer(profile, currentYear, NonPlayerRetirementReason.Unemployment, true);
+                return true;
+            }
+
+            // Forced retirement: above maximum age
+            if (profile.CurrentAge >= nonPlayerForcedRetirementAge)
+            {
+                RetireNonPlayer(profile, currentYear, NonPlayerRetirementReason.Age, true);
+                return true;
+            }
+
+            // Only evaluate voluntary retirement if above minimum age
+            if (profile.CurrentAge < nonPlayerRetirementAgeStart)
+                return false;
+
+            // Roll for voluntary retirement
+            float roll = UnityEngine.Random.value;
+            if (roll < factors.FinalRetirementChance)
+            {
+                RetireNonPlayer(profile, currentYear, factors.PrimaryReason, false);
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Force retirement for a non-player
+        /// </summary>
+        public NonPlayerRetirementAnnouncement RetireNonPlayer(
+            UnifiedCareerProfile profile,
+            int currentYear,
+            NonPlayerRetirementReason reason,
+            bool isForced)
+        {
+            if (profile == null || profile.CurrentTrack == UnifiedCareerTrack.Retired)
+                return null;
+
+            // Generate announcement
+            var announcement = NonPlayerRetirementAnnouncement.Generate(profile, currentYear, reason, isForced);
+
+            // Update profile
+            profile.HandleRetirement(currentYear, reason.ToString());
+
+            // Track the retirement
+            nonPlayerRetirements.Add(announcement);
+
+            // Fire event
+            OnNonPlayerRetirementAnnounced?.Invoke(announcement);
+
+            Debug.Log($"[RetirementManager] Non-player retired: {profile.PersonName} ({reason}, forced={isForced})");
+
+            return announcement;
+        }
+
+        /// <summary>
+        /// Evaluate all non-players for potential retirement at end of season
+        /// Works with UnifiedCareerManager to process all profiles
+        /// </summary>
+        public List<NonPlayerRetirementAnnouncement> ProcessAllNonPlayerRetirements(
+            List<UnifiedCareerProfile> profiles,
+            int currentYear)
+        {
+            var newRetirements = new List<NonPlayerRetirementAnnouncement>();
+
+            foreach (var profile in profiles.ToList())
+            {
+                if (profile.CurrentTrack == UnifiedCareerTrack.Retired)
+                    continue;
+
+                // Only evaluate those in retirement age range or unemployed
+                bool inRetirementAgeRange = profile.CurrentAge >= nonPlayerRetirementAgeStart;
+                bool longTermUnemployed = profile.YearsUnemployed >= maxUnemployedYearsBeforeForced;
+                bool overMaxAge = profile.CurrentAge >= nonPlayerForcedRetirementAge;
+
+                if (!inRetirementAgeRange && !longTermUnemployed && !overMaxAge)
+                    continue;
+
+                var factors = EvaluateNonPlayerRetirement(profile);
+
+                // Check for forced retirement
+                if (longTermUnemployed)
+                {
+                    var announcement = RetireNonPlayer(profile, currentYear, NonPlayerRetirementReason.Unemployment, true);
+                    if (announcement != null)
+                        newRetirements.Add(announcement);
+                    continue;
+                }
+
+                if (overMaxAge)
+                {
+                    var announcement = RetireNonPlayer(profile, currentYear, NonPlayerRetirementReason.Age, true);
+                    if (announcement != null)
+                        newRetirements.Add(announcement);
+                    continue;
+                }
+
+                // Voluntary retirement roll
+                if (inRetirementAgeRange)
+                {
+                    float roll = UnityEngine.Random.value;
+                    if (roll < factors.FinalRetirementChance)
+                    {
+                        var announcement = RetireNonPlayer(profile, currentYear, factors.PrimaryReason, false);
+                        if (announcement != null)
+                            newRetirements.Add(announcement);
+                    }
+                }
+            }
+
+            return newRetirements;
+        }
+
+        /// <summary>
+        /// Get all non-player retirement announcements
+        /// </summary>
+        public List<NonPlayerRetirementAnnouncement> GetNonPlayerRetirements()
+        {
+            return new List<NonPlayerRetirementAnnouncement>(nonPlayerRetirements);
+        }
+
+        /// <summary>
+        /// Get non-player retirement settings
+        /// </summary>
+        public NonPlayerRetirementSettings GetNonPlayerRetirementSettings()
+        {
+            return new NonPlayerRetirementSettings
+            {
+                RetirementAgeStart = nonPlayerRetirementAgeStart,
+                RetirementAgeEnd = nonPlayerRetirementAgeEnd,
+                ForcedRetirementAge = nonPlayerForcedRetirementAge,
+                MaxUnemployedYearsBeforeForced = maxUnemployedYearsBeforeForced
+            };
         }
     }
 

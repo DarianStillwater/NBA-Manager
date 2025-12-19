@@ -264,6 +264,10 @@ Individual possession resolution.
 | ContractNegotiationManager | `Manager/ContractNegotiationManager.cs` | Contract offers, negotiation |
 | ScoutingManager | `Manager/ScoutingManager.cs` | Scouting assignments |
 | ScoutingReportGenerator | `Manager/ScoutingReportGenerator.cs` | Text-based reports |
+| UnifiedCareerManager | `Manager/UnifiedCareerManager.cs` | Cross-track careers, transitions, non-player retirement |
+| GMJobSecurityManager | `Manager/GMJobSecurityManager.cs` | GM hiring/firing, FO progression |
+| FormerPlayerCareerManager | `Manager/FormerPlayerCareerManager.cs` | Former player coaching pipeline |
+| RetirementManager | `Manager/RetirementManager.cs` | Player & non-player retirement |
 
 ### Needs Implementation/Enhancement
 
@@ -313,6 +317,7 @@ Individual possession resolution.
 | 12 | History & Records | ✅ | Season archives, franchise records, Hall of Fame |
 | 13 | Save System | ✅ | Complete with Ironman mode |
 | 14 | Former Player Careers | ✅ | Coaching progression, hiring bonuses, matchup notifications |
+| 15 | Unified Career System | ✅ | Coach↔GM transitions, non-player retirement, cross-track careers |
 
 **UI Panels**: ✅ All core panels implemented (Dashboard, Roster, Calendar, Standings, Trade, Draft, Pre/Post Game)
 
@@ -1327,7 +1332,7 @@ Each question shows 3-4 response options with tone indicators.
 - COY awards
 - Playoff success rate
 
-### 13. SAVE SYSTEM ✅ COMPLETE (Ironman Mode ❌)
+### 13. SAVE SYSTEM ✅ COMPLETE
 
 #### Save Slots
 
@@ -1360,6 +1365,81 @@ Each question shows 3-4 response options with tone indicators.
 - Special Ironman badge on career
 - Achievements only available in Ironman
 - Bragging rights for completing seasons/championships
+
+### 14. FORMER PLAYER CAREERS ✅ COMPLETE
+
+**Implementation Files**:
+- `Core/Data/FormerPlayerCoach.cs` - Coaching career data
+- `Core/Data/FormerPlayerGM.cs` - Front office career data
+- `Core/Manager/FormerPlayerCareerManager.cs` - Coaching pipeline management
+
+#### Coaching Pipeline
+- Players retire and enter coaching: Assistant Coach → Position Coach → Coordinator → Head Coach
+- Former player bonuses when coaching (name recognition, player connections)
+- User coaching history tracking (players you coached who became coaches)
+- Matchup notifications when facing former players
+
+### 15. UNIFIED CAREER SYSTEM ✅ COMPLETE
+
+**Implementation Files**:
+- `Core/Data/UnifiedCareerProfile.cs` - Central career data structure
+- `Core/Data/CareerTransitionRequirements.cs` - Transition rules and eligibility
+- `Core/Data/NonPlayerRetirementData.cs` - Non-player retirement factors
+- `Core/Manager/UnifiedCareerManager.cs` - Central manager for cross-track careers
+
+#### Career Tracks & Transitions
+
+**Two Career Tracks**:
+- **Coaching Track**: Assistant Coach → Position Coach → Coordinator → Head Coach
+- **Front Office Track**: Scout → Assistant GM → General Manager
+
+**Cross-Track Transitions** (with requirements):
+| From | To | Min Years | Min Rep | Performance |
+|------|-----|-----------|---------|-------------|
+| Head Coach | General Manager | 3 | 65 | 2+ playoffs, 50%+ wins |
+| General Manager | Head Coach | 2 | 60 | 1+ playoff |
+| Scout | Assistant Coach | 2 | 40 | Open position |
+| Coordinator | Assistant GM | 2 | 50 | Open position |
+| Assistant GM | Coordinator | 2 | 50 | Open position |
+
+**Rules**:
+- One role only - must resign to switch tracks
+- Both experience AND performance requirements for track switches
+- Unified profile tracks career across both tracks
+
+#### Non-Player Retirement System
+
+**Retirement Triggers**:
+- **Age-based**: Evaluation starts at 55, probability increases through 68
+- **Forced retirement**: 3 years unemployed OR age 70+
+- **Voluntary**: Based on weighted factors (age, success, health, wealth)
+
+**Retirement Factors** (weighted):
+- Age factor: 35% weight
+- Unemployment factor: 30% weight
+- Recent success factor: 20% weight (reduces retirement chance)
+- Health factor: 10% weight (random)
+- Wealth factor: 5% weight (long career = can afford to retire)
+
+**Retirement Announcements**:
+- News-style headlines generated automatically
+- Career summary statement
+- Track achievements across both coaching and FO roles
+
+#### Integration Points
+
+**FormerPlayerCareerManager Integration**:
+- Creates UnifiedCareerProfile when coaching progression starts
+- Calls UnifiedCareerManager.ProcessEndOfSeason()
+
+**GMJobSecurityManager Integration**:
+- Creates UnifiedCareerProfile when FO progression starts
+- Notifies UnifiedCareerManager on GM firing/hiring
+
+**RetirementManager Integration**:
+- New `EvaluateNonPlayerRetirement()` method
+- `ProcessAllNonPlayerRetirements()` for end-of-season batch processing
+- `OnNonPlayerRetirementAnnounced` event for news integration
 
 #### Auto-Save Behavior
 
@@ -1799,6 +1879,130 @@ public void RestoreFromSave(ManagerState state) { ... }
 
 ---
 
+## PLAYER DATA & CAREER STATS SYSTEM
+
+### Data Architecture
+
+**Separation of Concerns:**
+- **Base Data** (`players.json`): Biographical info + attributes only, never modified during gameplay
+- **Runtime State** (Player objects): Modified during gameplay (energy, morale, injuries, stats)
+- **Save State** (PlayerSaveState): Captures runtime changes + full career history
+
+### Game Log System
+
+**GameLog Class** (`Core/Data/GameLog.cs`):
+- Individual game performance records
+- Tracks: date, opponent, home/away, all box score stats, game result
+- Only kept for **current season** - wiped at season end to keep saves small
+
+**Retention Policy:**
+- Current season: Full game logs available
+- Past seasons: Only `SeasonStats` totals/averages persist
+- Career: `List<SeasonStats>` with one entry per season played
+
+### Career Stats Persistence
+
+**What gets saved:**
+- Full `List<SeasonStats>` for career history
+- Current season includes `List<GameLog>` (cleared at season end)
+- All totals and computed averages per season
+
+**Save/Load Flow:**
+- On Save: `PlayerSaveState.CreateFrom(player)` captures full career
+- On Load: Apply `PlayerSaveState` including career history to base players
+- On New Game: Fresh from `players.json` + mods, no career history
+
+### Generated Players (Rookies)
+
+**Integration:**
+- Generated rookies become regular `Player` objects in same database
+- `PlayerDatabase.RegisterGeneratedPlayer()` handles ID collision prevention
+- Career stats start fresh from draft year
+- Survive save/load cycles identically to base roster players
+
+---
+
+## PLAYER CARD UI SPECIFICATION
+
+### Layout: Split View
+```
++---------------------------+--------------------------------+
+|      LEFT SIDE            |         RIGHT SIDE             |
+|      (Bio/Overview)       |         (Stats Tabs)           |
++---------------------------+--------------------------------+
+```
+
+### Left Side - Bio & Overview
+
+**Bio Section:**
+- Player photo/avatar placeholder
+- Name, Position, Jersey #
+- Age, Height, Weight
+- Team name + logo
+- Years in league, Nationality
+- Draft info (Year, Round, Pick, Team)
+
+**Contract Section:**
+- Current salary
+- Years remaining
+- Contract type (Standard, Rookie, Vet Min, etc.)
+- Agent name
+
+**Status Section:**
+- Current injury status (if injured: type + expected return)
+- Role: Starter / Rotation / Bench / Out of Rotation
+- Depth chart position (e.g., "PG #2")
+
+**Team Context Section:**
+- Morale indicator (emoji + label)
+- Chemistry with teammates (bar or rating)
+- Playing time trend (↑ increasing / → stable / ↓ decreasing)
+
+**Scouting Summary:**
+- 2-3 line summary from scouting report
+- "View Full Report" button → opens scouting panel
+
+### Right Side - Stats (Sub-tabs)
+
+**Tab 1: Current Season**
+```
+Season Summary Row:
+GP/GS | MPG | PPG | RPG | APG | SPG | BPG | TPG
+FG% | 3P% | FT% | PER | TS% | USG% | +/-
+
+Visual indicators: color bars showing vs league average
+- Green = above average
+- Gray = average
+- Red = below average
+```
+
+**Tab 2: Career**
+```
+Career Totals Row (summary):
+GP | PPG | RPG | APG | SPG | BPG | FG% | 3P%
+
+Season-by-Season Table (condensed):
+| Year | Team | GP | PPG | RPG | APG | FG% |
+Click row → expands to show ALL stats for that season
+```
+
+**Tab 3: Game Log**
+```
+Recent Games (last 5-10):
+| Date  | vs  | MIN | PTS | REB | AST | Result |
+"View All Games" button → expands to full season list
+```
+
+### Action Buttons
+- **Set Role** → Starter / Bench dropdown
+- **Development Focus** → Opens focus assignment
+- **Minutes Limit** → Set max minutes per game
+- **DNP-Rest** → Toggle rest for next game
+- **Request Trade** → Initiates trade finder for this player
+- **Full Scouting Report** → Opens detailed scouting panel
+
+---
+
 ## TESTING STRATEGY
 
 - **Unit Tests**: Injury rates, award voting, chemistry formulas
@@ -1807,5 +2011,5 @@ public void RestoreFromSave(ManagerState state) { ... }
 
 ---
 
-*Last Updated: December 18, 2024*
-*Version: Design Document v1.5 (Phase 4 Complete - AI Adaptation, Revenue, Scouting, Ironman)*
+*Last Updated: December 19, 2025*
+*Version: Design Document v1.7 (Unified Career System - Coach↔GM Transitions & Non-Player Retirement)*

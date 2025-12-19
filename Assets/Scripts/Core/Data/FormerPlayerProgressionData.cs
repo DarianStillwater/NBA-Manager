@@ -120,6 +120,7 @@ namespace NBAHeadCoach.Core.Data
         public string ProgressionId;
         public string FormerPlayerId;
         public string FormerPlayerName;
+        public string UnifiedProfileId;  // Link to UnifiedCareerProfile for cross-track transitions
 
         [Header("Career Path")]
         public PostPlayerCareerPath CareerPath;
@@ -148,6 +149,9 @@ namespace NBAHeadCoach.Core.Data
         [Header("Performance")]
         public float ProgressionScore;        // How well they're doing (affects promotion speed)
         public int PromotionChanceBonus;      // Accumulated bonus from good performance
+        [Range(0, 100)]
+        public int Reputation;                // Overall reputation (for unified career system)
+        public int YearEnteredCoaching;       // Year they started coaching
 
         [Header("Playing Career")]
         public PlayerCareerReference PlayingCareer;

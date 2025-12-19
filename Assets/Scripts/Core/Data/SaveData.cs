@@ -53,6 +53,13 @@ namespace NBAHeadCoach.Core
         [Header("Awards")]
         public Dictionary<int, SeasonAwards> AwardsHistory = new Dictionary<int, SeasonAwards>();
 
+        [Header("Former Player Careers")]
+        public FormerPlayerCareerSaveData FormerPlayerCareers;
+        public GMJobSecuritySaveData GMJobSecurity;
+
+        [Header("Unified Career System")]
+        public UnifiedCareerSaveData UnifiedCareers;
+
         /// <summary>
         /// Create a display-friendly summary of the save
         /// </summary>
@@ -182,12 +189,21 @@ namespace NBAHeadCoach.Core
         public int Overall;
         public int Potential;
 
-        // Stats
+        // Stats (legacy - kept for backwards compatibility)
         public float PointsPerGame;
         public float ReboundsPerGame;
         public float AssistsPerGame;
 
-        public static PlayerSaveState CreateFrom(Player player)
+        // Full career stats history
+        public List<SeasonStatsSaveState> CareerStats = new List<SeasonStatsSaveState>();
+
+        // Flag for generated players (not in base database)
+        public bool IsGeneratedPlayer;
+
+        // Full player data for generated players (needed to recreate them on load)
+        public GeneratedPlayerData GeneratedData;
+
+        public static PlayerSaveState CreateFrom(Player player, int currentSeason = 0)
         {
             if (player == null) return null;
 
@@ -205,7 +221,8 @@ namespace NBAHeadCoach.Core
                 OriginalInjuryDays = player.OriginalInjuryDays,
                 InjuryDate = player.InjuryDate,
                 Overall = player.Overall,
-                Potential = player.Potential
+                Potential = player.Potential,
+                IsGeneratedPlayer = player.IsGenerated
             };
 
             // Save injury history
@@ -224,6 +241,38 @@ namespace NBAHeadCoach.Core
                     .Select(m => MinutesRecordSaveState.CreateFrom(m))
                     .Where(m => m != null)
                     .ToList();
+            }
+
+            // Save career stats
+            if (player.CareerStats != null && player.CareerStats.Count > 0)
+            {
+                for (int i = 0; i < player.CareerStats.Count; i++)
+                {
+                    var seasonStats = player.CareerStats[i];
+                    // Only include game logs for current season (last entry)
+                    bool isCurrentSeason = (i == player.CareerStats.Count - 1) &&
+                                           (currentSeason == 0 || seasonStats.Year == currentSeason);
+                    var saveState = SeasonStatsSaveState.CreateFrom(seasonStats, isCurrentSeason);
+                    if (saveState != null)
+                    {
+                        state.CareerStats.Add(saveState);
+                    }
+                }
+
+                // Set legacy stats from current season for backwards compatibility
+                var current = player.CurrentSeasonStats;
+                if (current != null)
+                {
+                    state.PointsPerGame = current.PPG;
+                    state.ReboundsPerGame = current.RPG;
+                    state.AssistsPerGame = current.APG;
+                }
+            }
+
+            // For generated players, save full player data for recreation
+            if (player.IsGenerated)
+            {
+                state.GeneratedData = GeneratedPlayerData.CreateFrom(player);
             }
 
             return state;
@@ -261,6 +310,190 @@ namespace NBAHeadCoach.Core
                     .Where(m => m != null)
                     .ToList();
             }
+
+            // Restore career stats
+            if (CareerStats != null && CareerStats.Count > 0)
+            {
+                player.CareerStats = CareerStats
+                    .Select(s => s.ToSeasonStats())
+                    .Where(s => s != null)
+                    .ToList();
+            }
+        }
+
+        /// <summary>
+        /// Create a Player object from a generated player save state.
+        /// Used when loading saves with players not in the base database.
+        /// </summary>
+        public Player CreateGeneratedPlayer()
+        {
+            if (!IsGeneratedPlayer || GeneratedData == null) return null;
+            return GeneratedData.ToPlayer();
+        }
+    }
+
+    /// <summary>
+    /// Complete player data for generated players (drafted rookies, etc.)
+    /// Allows recreation of players not in the base database.
+    /// </summary>
+    [Serializable]
+    public class GeneratedPlayerData
+    {
+        // Identity
+        public string PlayerId;
+        public string FirstName;
+        public string LastName;
+        public int JerseyNumber;
+        public Data.Position Position;
+        public DateTime BirthDate;
+        public int HeightInches;
+        public int WeightLbs;
+        public string Nationality;
+        public string College;
+
+        // Draft info
+        public int DraftYear;
+        public int DraftRound;
+        public int DraftPick;
+        public string DraftedByTeamId;
+
+        // All attributes (stored individually for full recreation)
+        public int Finishing_Rim, Finishing_PostMoves;
+        public int Shot_Close, Shot_MidRange, Shot_Three, FreeThrow;
+        public int Passing, BallHandling, OffensiveIQ, SpeedWithBall;
+        public int Defense_Perimeter, Defense_Interior, Defense_PostDefense;
+        public int Steal, Block, DefensiveIQ, DefensiveRebound;
+        public int Speed, Acceleration, Strength, Vertical, Stamina, Durability, Wingspan;
+        public int BasketballIQ, Clutch, Consistency, WorkEthic, Coachability;
+        public int Ego, Leadership, Composure, Aggression;
+
+        // Hidden development attributes
+        public int HiddenPotential;
+        public int PeakAge;
+        public int DeclineRate;
+        public int InjuryProneness;
+
+        public static GeneratedPlayerData CreateFrom(Player player)
+        {
+            if (player == null) return null;
+
+            return new GeneratedPlayerData
+            {
+                PlayerId = player.PlayerId,
+                FirstName = player.FirstName,
+                LastName = player.LastName,
+                JerseyNumber = player.JerseyNumber,
+                Position = player.Position,
+                BirthDate = player.BirthDate,
+                HeightInches = player.HeightInches,
+                WeightLbs = player.WeightLbs,
+                Nationality = player.Nationality,
+                College = player.College,
+                DraftYear = player.DraftYear,
+                DraftRound = player.DraftRound,
+                DraftPick = player.DraftPick,
+                DraftedByTeamId = player.DraftedByTeamId,
+                // Attributes
+                Finishing_Rim = player.Finishing_Rim,
+                Finishing_PostMoves = player.Finishing_PostMoves,
+                Shot_Close = player.Shot_Close,
+                Shot_MidRange = player.Shot_MidRange,
+                Shot_Three = player.Shot_Three,
+                FreeThrow = player.FreeThrow,
+                Passing = player.Passing,
+                BallHandling = player.BallHandling,
+                OffensiveIQ = player.OffensiveIQ,
+                SpeedWithBall = player.SpeedWithBall,
+                Defense_Perimeter = player.Defense_Perimeter,
+                Defense_Interior = player.Defense_Interior,
+                Defense_PostDefense = player.Defense_PostDefense,
+                Steal = player.Steal,
+                Block = player.Block,
+                DefensiveIQ = player.DefensiveIQ,
+                DefensiveRebound = player.DefensiveRebound,
+                Speed = player.Speed,
+                Acceleration = player.Acceleration,
+                Strength = player.Strength,
+                Vertical = player.Vertical,
+                Stamina = player.Stamina,
+                Durability = player.Durability,
+                Wingspan = player.Wingspan,
+                BasketballIQ = player.BasketballIQ,
+                Clutch = player.Clutch,
+                Consistency = player.Consistency,
+                WorkEthic = player.WorkEthic,
+                Coachability = player.Coachability,
+                Ego = player.Ego,
+                Leadership = player.Leadership,
+                Composure = player.Composure,
+                Aggression = player.Aggression,
+                HiddenPotential = player.HiddenPotential,
+                PeakAge = player.PeakAge,
+                DeclineRate = player.DeclineRate,
+                InjuryProneness = player.InjuryProneness
+            };
+        }
+
+        public Player ToPlayer()
+        {
+            var player = new Player
+            {
+                PlayerId = PlayerId,
+                FirstName = FirstName,
+                LastName = LastName,
+                JerseyNumber = JerseyNumber,
+                Position = Position,
+                BirthDate = BirthDate,
+                HeightInches = HeightInches,
+                WeightLbs = WeightLbs,
+                Nationality = Nationality,
+                College = College,
+                DraftYear = DraftYear,
+                DraftRound = DraftRound,
+                DraftPick = DraftPick,
+                DraftedByTeamId = DraftedByTeamId,
+                IsGenerated = true,
+                // Attributes
+                Finishing_Rim = Finishing_Rim,
+                Finishing_PostMoves = Finishing_PostMoves,
+                Shot_Close = Shot_Close,
+                Shot_MidRange = Shot_MidRange,
+                Shot_Three = Shot_Three,
+                FreeThrow = FreeThrow,
+                Passing = Passing,
+                BallHandling = BallHandling,
+                OffensiveIQ = OffensiveIQ,
+                SpeedWithBall = SpeedWithBall,
+                Defense_Perimeter = Defense_Perimeter,
+                Defense_Interior = Defense_Interior,
+                Defense_PostDefense = Defense_PostDefense,
+                Steal = Steal,
+                Block = Block,
+                DefensiveIQ = DefensiveIQ,
+                DefensiveRebound = DefensiveRebound,
+                Speed = Speed,
+                Acceleration = Acceleration,
+                Strength = Strength,
+                Vertical = Vertical,
+                Stamina = Stamina,
+                Durability = Durability,
+                Wingspan = Wingspan,
+                BasketballIQ = BasketballIQ,
+                Clutch = Clutch,
+                Consistency = Consistency,
+                WorkEthic = WorkEthic,
+                Coachability = Coachability,
+                Ego = Ego,
+                Leadership = Leadership,
+                Composure = Composure,
+                Aggression = Aggression,
+                HiddenPotential = HiddenPotential,
+                PeakAge = PeakAge,
+                DeclineRate = DeclineRate,
+                InjuryProneness = InjuryProneness
+            };
+
+            return player;
         }
     }
 
@@ -530,6 +763,243 @@ namespace NBAHeadCoach.Core
                 Minutes = Minutes,
                 WasBackToBack = WasBackToBack
             };
+        }
+    }
+
+    /// <summary>
+    /// Serializable game log for saving individual game performances.
+    /// Only used for current season - past seasons don't save game logs.
+    /// </summary>
+    [Serializable]
+    public class GameLogSaveState
+    {
+        public string GameId;
+        public DateTime Date;
+        public string OpponentTeamId;
+        public bool IsHome;
+        public bool IsPlayoff;
+        public int PlayoffRound;
+
+        public int Minutes;
+        public bool Started;
+        public int Points;
+        public int FGM, FGA;
+        public int ThreePM, ThreePA;
+        public int FTM, FTA;
+        public int ORB, DRB;
+        public int Assists, Steals, Blocks;
+        public int Turnovers, PersonalFouls;
+        public int PlusMinus;
+
+        public int TeamScore, OpponentScore;
+        public bool WasOvertime;
+        public int OvertimePeriods;
+
+        public static GameLogSaveState CreateFrom(Data.GameLog log)
+        {
+            if (log == null) return null;
+
+            return new GameLogSaveState
+            {
+                GameId = log.GameId,
+                Date = log.Date,
+                OpponentTeamId = log.OpponentTeamId,
+                IsHome = log.IsHome,
+                IsPlayoff = log.IsPlayoff,
+                PlayoffRound = log.PlayoffRound,
+                Minutes = log.Minutes,
+                Started = log.Started,
+                Points = log.Points,
+                FGM = log.FGM,
+                FGA = log.FGA,
+                ThreePM = log.ThreePM,
+                ThreePA = log.ThreePA,
+                FTM = log.FTM,
+                FTA = log.FTA,
+                ORB = log.ORB,
+                DRB = log.DRB,
+                Assists = log.Assists,
+                Steals = log.Steals,
+                Blocks = log.Blocks,
+                Turnovers = log.Turnovers,
+                PersonalFouls = log.PersonalFouls,
+                PlusMinus = log.PlusMinus,
+                TeamScore = log.TeamScore,
+                OpponentScore = log.OpponentScore,
+                WasOvertime = log.WasOvertime,
+                OvertimePeriods = log.OvertimePeriods
+            };
+        }
+
+        public Data.GameLog ToGameLog()
+        {
+            return Data.GameLog.Create(
+                GameId, Date, OpponentTeamId, IsHome, IsPlayoff, PlayoffRound,
+                Minutes, Started, Points, FGM, FGA, ThreePM, ThreePA,
+                FTM, FTA, ORB, DRB, Assists, Steals, Blocks, Turnovers,
+                PersonalFouls, PlusMinus, TeamScore, OpponentScore,
+                WasOvertime, OvertimePeriods
+            );
+        }
+    }
+
+    /// <summary>
+    /// Serializable season statistics for career history persistence.
+    /// Game logs only included for current season.
+    /// </summary>
+    [Serializable]
+    public class SeasonStatsSaveState
+    {
+        public int Year;
+        public string TeamId;
+
+        // Totals
+        public int GamesPlayed;
+        public int GamesStarted;
+        public int MinutesPlayed;
+        public int Points;
+        public int FG_Made, FG_Attempts;
+        public int ThreeP_Made, ThreeP_Attempts;
+        public int FT_Made, FT_Attempts;
+        public int OffensiveRebounds, DefensiveRebounds;
+        public int Assists, Steals, Blocks;
+        public int Turnovers, PersonalFouls;
+        public int TotalPlusMinus;
+
+        // Advanced stats
+        public float PER, TrueShootingPct, EffectiveFGPct;
+        public float ThreePAr, FTr;
+        public float OrbPct, DrbPct, TrbPct;
+        public float AstPct, StlPct, BlkPct, TovPct, UsgPct;
+        public float OffensiveWinShares, DefensiveWinShares, WinShares, WinSharesPer48;
+        public float OffensiveBPM, DefensiveBPM, BoxPlusMinus, VORP;
+
+        // Game logs - only populated for current season
+        public List<GameLogSaveState> GameLogs = new List<GameLogSaveState>();
+
+        /// <summary>
+        /// Create save state from SeasonStats.
+        /// </summary>
+        /// <param name="stats">The season stats to save</param>
+        /// <param name="includeGameLogs">True for current season, false for past seasons</param>
+        public static SeasonStatsSaveState CreateFrom(Data.SeasonStats stats, bool includeGameLogs)
+        {
+            if (stats == null) return null;
+
+            var state = new SeasonStatsSaveState
+            {
+                Year = stats.Year,
+                TeamId = stats.TeamId,
+                GamesPlayed = stats.GamesPlayed,
+                GamesStarted = stats.GamesStarted,
+                MinutesPlayed = stats.MinutesPlayed,
+                Points = stats.Points,
+                FG_Made = stats.FG_Made,
+                FG_Attempts = stats.FG_Attempts,
+                ThreeP_Made = stats.ThreeP_Made,
+                ThreeP_Attempts = stats.ThreeP_Attempts,
+                FT_Made = stats.FT_Made,
+                FT_Attempts = stats.FT_Attempts,
+                OffensiveRebounds = stats.OffensiveRebounds,
+                DefensiveRebounds = stats.DefensiveRebounds,
+                Assists = stats.Assists,
+                Steals = stats.Steals,
+                Blocks = stats.Blocks,
+                Turnovers = stats.Turnovers,
+                PersonalFouls = stats.PersonalFouls,
+                TotalPlusMinus = stats.TotalPlusMinus,
+                // Advanced
+                PER = stats.PER,
+                TrueShootingPct = stats.TrueShootingPct,
+                EffectiveFGPct = stats.EffectiveFGPct,
+                ThreePAr = stats.ThreePAr,
+                FTr = stats.FTr,
+                OrbPct = stats.OrbPct,
+                DrbPct = stats.DrbPct,
+                TrbPct = stats.TrbPct,
+                AstPct = stats.AstPct,
+                StlPct = stats.StlPct,
+                BlkPct = stats.BlkPct,
+                TovPct = stats.TovPct,
+                UsgPct = stats.UsgPct,
+                OffensiveWinShares = stats.OffensiveWinShares,
+                DefensiveWinShares = stats.DefensiveWinShares,
+                WinShares = stats.WinShares,
+                WinSharesPer48 = stats.WinSharesPer48,
+                OffensiveBPM = stats.OffensiveBPM,
+                DefensiveBPM = stats.DefensiveBPM,
+                BoxPlusMinus = stats.BoxPlusMinus,
+                VORP = stats.VORP
+            };
+
+            // Only include game logs for current season
+            if (includeGameLogs && stats.GameLogs != null)
+            {
+                state.GameLogs = stats.GameLogs
+                    .Select(g => GameLogSaveState.CreateFrom(g))
+                    .Where(g => g != null)
+                    .ToList();
+            }
+
+            return state;
+        }
+
+        public Data.SeasonStats ToSeasonStats()
+        {
+            var stats = new Data.SeasonStats(Year, TeamId)
+            {
+                GamesPlayed = GamesPlayed,
+                GamesStarted = GamesStarted,
+                MinutesPlayed = MinutesPlayed,
+                Points = Points,
+                FG_Made = FG_Made,
+                FG_Attempts = FG_Attempts,
+                ThreeP_Made = ThreeP_Made,
+                ThreeP_Attempts = ThreeP_Attempts,
+                FT_Made = FT_Made,
+                FT_Attempts = FT_Attempts,
+                OffensiveRebounds = OffensiveRebounds,
+                DefensiveRebounds = DefensiveRebounds,
+                Assists = Assists,
+                Steals = Steals,
+                Blocks = Blocks,
+                Turnovers = Turnovers,
+                PersonalFouls = PersonalFouls,
+                TotalPlusMinus = TotalPlusMinus,
+                // Advanced
+                PER = PER,
+                TrueShootingPct = TrueShootingPct,
+                EffectiveFGPct = EffectiveFGPct,
+                ThreePAr = ThreePAr,
+                FTr = FTr,
+                OrbPct = OrbPct,
+                DrbPct = DrbPct,
+                TrbPct = TrbPct,
+                AstPct = AstPct,
+                StlPct = StlPct,
+                BlkPct = BlkPct,
+                TovPct = TovPct,
+                UsgPct = UsgPct,
+                OffensiveWinShares = OffensiveWinShares,
+                DefensiveWinShares = DefensiveWinShares,
+                WinShares = WinShares,
+                WinSharesPer48 = WinSharesPer48,
+                OffensiveBPM = OffensiveBPM,
+                DefensiveBPM = DefensiveBPM,
+                BoxPlusMinus = BoxPlusMinus,
+                VORP = VORP
+            };
+
+            // Restore game logs if present
+            if (GameLogs != null && GameLogs.Count > 0)
+            {
+                stats.GameLogs = GameLogs
+                    .Select(g => g.ToGameLog())
+                    .Where(g => g != null)
+                    .ToList();
+            }
+
+            return stats;
         }
     }
 }

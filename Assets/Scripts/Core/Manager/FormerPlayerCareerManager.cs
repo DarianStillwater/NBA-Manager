@@ -28,6 +28,9 @@ namespace NBAHeadCoach.Core.Manager
         [SerializeField] private string userCoachId;
         [SerializeField] private List<UserCoachingRelationship> userCoachingHistory = new List<UserCoachingRelationship>();
 
+        [Header("Unified Career Integration")]
+        [SerializeField] private bool useUnifiedCareerManager = true;
+
         // Events
         public event Action<FormerPlayerCoach> OnFormerPlayerBecameCoach;
         public event Action<FormerPlayerScout> OnFormerPlayerBecameScout;
@@ -68,7 +71,7 @@ namespace NBAHeadCoach.Core.Manager
         }
 
         /// <summary>
-        /// Handle a player entering the coaching/scouting pipeline from retirement
+        /// Handle a player entering the coaching/scouting/front office pipeline from retirement
         /// </summary>
         private void HandlePlayerEnteredPipeline(PlayerCareerData playerData, PostPlayerCareerPath path)
         {
@@ -79,6 +82,22 @@ namespace NBAHeadCoach.Core.Manager
             else if (path == PostPlayerCareerPath.Scouting)
             {
                 CreateScoutingCareer(playerData);
+            }
+            else if (path == PostPlayerCareerPath.FrontOffice)
+            {
+                // Delegate to GMJobSecurityManager for front office track
+                if (GMJobSecurityManager.Instance != null)
+                {
+                    bool wasCoachedByUser = CheckIfCoachedByUser(playerData.PlayerId);
+                    int seasonsUnderUser = GetSeasonsUnderUser(playerData.PlayerId);
+                    GMJobSecurityManager.Instance.CreateFrontOfficeProgression(
+                        playerData,
+                        wasCoachedByUser,
+                        seasonsUnderUser,
+                        wasCoachedByUser ? userCoachingHistory.FirstOrDefault(h => h.PlayerId == playerData.PlayerId)?.TeamId : null
+                    );
+                    Debug.Log($"[FormerPlayerCareer] {playerData.FullName} entered front office pipeline");
+                }
             }
         }
 
@@ -117,6 +136,25 @@ namespace NBAHeadCoach.Core.Manager
 
             activeProgressions.Add(progression);
             formerPlayerCoaches.Add(formerPlayerCoach);
+
+            // Create unified career profile
+            if (useUnifiedCareerManager && UnifiedCareerManager.Instance != null)
+            {
+                var unifiedProfile = UnifiedCareerProfile.CreateForCoaching(
+                    playerData.FullName,
+                    currentYear,
+                    playerData.Age + 1,  // Retired players typically take a year before coaching
+                    true,
+                    playerData.PlayerId,
+                    PlayerCareerReference.FromPlayerCareerData(playerData)
+                );
+                unifiedProfile.FormerPlayerCoachId = formerPlayerCoach.FormerPlayerCoachId;
+                unifiedProfile.CurrentTeamId = teamId;
+                unifiedProfile.CurrentTeamName = progression.CurrentTeamName;
+                progression.UnifiedProfileId = unifiedProfile.ProfileId;
+
+                UnifiedCareerManager.Instance.RegisterProfile(unifiedProfile);
+            }
 
             Debug.Log($"[FormerPlayerCareer] {playerData.FullName} entered coaching pipeline as Assistant Coach");
             OnFormerPlayerBecameCoach?.Invoke(formerPlayerCoach);
@@ -175,6 +213,18 @@ namespace NBAHeadCoach.Core.Manager
 
             // Check for job changes
             ProcessJobChanges();
+
+            // Process front office career progressions
+            if (GMJobSecurityManager.Instance != null)
+            {
+                GMJobSecurityManager.Instance.ProcessEndOfSeason(year);
+            }
+
+            // Process unified career manager (handles cross-track transitions and retirements)
+            if (useUnifiedCareerManager && UnifiedCareerManager.Instance != null)
+            {
+                UnifiedCareerManager.Instance.ProcessEndOfSeason(year);
+            }
 
             Debug.Log($"[FormerPlayerCareer] End of season {year}: {activeProgressions.Count} coaches, {formerPlayerScouts.Count} scouts in pipeline");
         }
