@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using NBAHeadCoach.Core.Data;
+using NBAHeadCoach.Core.Util;
 
 namespace NBAHeadCoach.Core.Manager
 {
@@ -112,13 +113,20 @@ namespace NBAHeadCoach.Core.Manager
             var ratings = GenerateRatings(tier);
             var potential = GeneratePotential(tier);
             
-            bool isInternational = _rng.NextDouble() < 0.15; // 15% international
+            // Determine if international (15% chance)
+            bool isInternational = _rng.NextDouble() < 0.15;
+            
+            // Generate culturally appropriate name based on nationality
+            Nationality nameNationality = isInternational 
+                ? GetNationalityForCountry(InternationalCountries[_rng.Next(InternationalCountries.Length)])
+                : Nationality.Random;
+            var generatedName = NameGenerator.GeneratePlayerName(nameNationality);
             
             var prospect = new DraftProspect
             {
                 DraftYear = draftYear,
-                FirstName = FirstNames[_rng.Next(FirstNames.Length)],
-                LastName = LastNames[_rng.Next(LastNames.Length)],
+                FirstName = generatedName.FirstName,
+                LastName = generatedName.LastName,
                 Position = position,
                 SecondaryPosition = GetSecondaryPosition(position),
                 Age = GenerateAge(isInternational),
@@ -130,7 +138,9 @@ namespace NBAHeadCoach.Core.Manager
                 
                 // Background
                 College = isInternational ? null : CollegeNames[_rng.Next(CollegeNames.Length)],
-                Country = isInternational ? InternationalCountries[_rng.Next(InternationalCountries.Length)] : "USA",
+                Country = isInternational 
+                    ? GetCountryFromNationality(generatedName.Nationality) 
+                    : "USA",
                 IsInternational = isInternational,
                 
                 // Tier and potential
@@ -305,6 +315,50 @@ namespace NBAHeadCoach.Core.Manager
                 ratings.bbiq * 0.10f;
             
             return Mathf.RoundToInt(overall);
+        }
+
+        // ==================== NATIONALITY HELPERS ====================
+
+        private Nationality GetNationalityForCountry(string country)
+        {
+            return country switch
+            {
+                "France" => Nationality.European_French,
+                "Spain" => Nationality.European_Spanish,
+                "Serbia" => Nationality.European_Serbian,
+                "Slovenia" => Nationality.European_Serbian, // Similar naming patterns
+                "Germany" => Nationality.European_German,
+                "Greece" => Nationality.European_Greek,
+                "Australia" => Nationality.Australian,
+                "New Zealand" => Nationality.Australian,
+                "Canada" => Nationality.Canadian,
+                "Nigeria" => Nationality.African_Nigerian,
+                "Cameroon" => Nationality.African_Cameroonian,
+                "Brazil" or "Argentina" or "Dominican Republic" or "Puerto Rico" => Nationality.LatinAmerican,
+                "Turkey" or "Lithuania" or "Croatia" or "Italy" => Nationality.European_Spanish, // Mediterranean region
+                "Japan" => Nationality.AmericanGeneral, // Fallback
+                _ => Nationality.AmericanGeneral
+            };
+        }
+
+        private string GetCountryFromNationality(Nationality nationality)
+        {
+            return nationality switch
+            {
+                Nationality.European_French => "France",
+                Nationality.European_Spanish => "Spain",
+                Nationality.European_Serbian => "Serbia",
+                Nationality.European_German => "Germany",
+                Nationality.European_Greek => "Greece",
+                Nationality.Australian => "Australia",
+                Nationality.Canadian => "Canada",
+                Nationality.African_Nigerian => "Nigeria",
+                Nationality.African_Cameroonian => "Cameroon",
+                Nationality.LatinAmerican => InternationalCountries
+                    .Where(c => c is "Brazil" or "Argentina" or "Dominican Republic" or "Puerto Rico")
+                    .ElementAt(_rng.Next(4)),
+                _ => "USA"
+            };
         }
     }
 

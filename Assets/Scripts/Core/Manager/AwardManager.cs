@@ -351,7 +351,7 @@ namespace NBAHeadCoach.Core.Manager
             // COY often goes to coaches who exceeded expectations
             // Score = (Actual Wins - Projected Wins) * 2 + Total Wins * 0.5
 
-            string winnerId = null;
+            string winnerTeamId = null;
             float bestScore = float.MinValue;
 
             foreach (var kvp in teams)
@@ -378,16 +378,27 @@ namespace NBAHeadCoach.Core.Manager
                 if (score > bestScore)
                 {
                     bestScore = score;
-                    winnerId = team.TeamId;
+                    winnerTeamId = team.TeamId;
                 }
             }
 
-            if (winnerId != null)
+            if (winnerTeamId != null)
             {
-                Debug.Log($"[AwardManager] COY: Coach of {winnerId} (Score: {bestScore:F1})");
+                // Find the Head Coach for this team using PersonnelManager
+                var staff = PersonnelManager.Instance?.GetTeamStaff(winnerTeamId);
+                var coach = staff?.FirstOrDefault(s => s.CurrentRole == UnifiedRole.HeadCoach);
+
+                if (coach != null)
+                {
+                    coach.AddAward(year, AwardType.CoachOfYear, winnerTeamId);
+                    Debug.Log($"[AwardManager] COY: {coach.PersonName} of {winnerTeamId} (Score: {bestScore:F1})");
+                    return coach.ProfileId;
+                }
+                
+                Debug.Log($"[AwardManager] COY: Coach of {winnerTeamId} (Score: {bestScore:F1}) - Profile not found");
             }
 
-            return winnerId;
+            return null;
         }
 
         #endregion
@@ -440,9 +451,6 @@ namespace NBAHeadCoach.Core.Manager
             return mvp;
         }
 
-        /// <summary>
-        /// Award NBA Championship to all players on winning team
-        /// </summary>
         public static void AwardChampionship(int year, Team championTeam, List<Player> players)
         {
             if (championTeam == null) return;
@@ -454,6 +462,22 @@ namespace NBAHeadCoach.Core.Manager
             }
 
             Debug.Log($"[AwardManager] {championTeam.Name} are the {year} NBA Champions! ({champions.Count} players)");
+
+            // Also award to staff
+            var staff = PersonnelManager.Instance?.GetTeamStaff(championTeam.TeamId);
+            if (staff != null)
+            {
+                foreach (var s in staff)
+                {
+                    s.AddAward(year, AwardType.NBAChampion, championTeam.TeamId);
+                    s.TotalChampionships++;
+                    if (s.CurrentTrack == UnifiedCareerTrack.Coaching)
+                        s.ChampionshipsAsCoach++;
+                    else if (s.CurrentTrack == UnifiedCareerTrack.FrontOffice)
+                        s.ChampionshipsAsGM++;
+                }
+                Debug.Log($"[AwardManager] {championTeam.Name} staff awarded championship medals.");
+            }
         }
 
         #endregion

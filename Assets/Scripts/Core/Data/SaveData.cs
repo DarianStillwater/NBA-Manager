@@ -23,7 +23,7 @@ namespace NBAHeadCoach.Core
         public bool IsIronman;  // Ironman mode - single save, no reload
 
         [Header("Career")]
-        public CoachCareer Career;
+        public UnifiedCareerProfile Career;
         public string PlayerTeamId;
         public DifficultySettings Difficulty;
 
@@ -60,9 +60,6 @@ namespace NBAHeadCoach.Core
         [Header("Unified Career System")]
         public UnifiedCareerSaveData UnifiedCareers;
 
-        [Header("Staff Management")]
-        public StaffManagementSaveData StaffManagement;
-
         [Header("Personality System")]
         public PersonalitySystemSaveData PersonalityData;
 
@@ -75,7 +72,7 @@ namespace NBAHeadCoach.Core
             {
                 SlotName = SaveSlot,
                 SaveName = SaveName,
-                CoachName = Career?.FullName ?? "Unknown",
+                CoachName = Career?.PersonName ?? "Unknown",
                 TeamId = PlayerTeamId,
                 Season = CurrentSeason,
                 Date = CurrentDate,
@@ -87,14 +84,14 @@ namespace NBAHeadCoach.Core
 
         private string GetRecordString()
         {
-            if (Career?.SeasonHistory == null || Career.SeasonHistory.Count == 0)
+            if (Career?.CareerHistory == null || Career.CareerHistory.Count == 0)
                 return "0-0";
 
             int wins = 0, losses = 0;
-            foreach (var season in Career.SeasonHistory)
+            foreach (var entry in Career.CareerHistory)
             {
-                wins += season.Wins;
-                losses += season.Losses;
+                wins += entry.Wins;
+                losses += entry.Losses;
             }
             return $"{wins}-{losses}";
         }

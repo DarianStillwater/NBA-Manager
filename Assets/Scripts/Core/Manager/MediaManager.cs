@@ -376,7 +376,7 @@ namespace NBAHeadCoach.Core.Manager
                 Consequences = new List<MediaConsequence>()
             };
 
-            string coachId = GameManager.Instance?.Career?.CoachId ?? "player";
+            string coachId = GameManager.Instance?.Career?.ProfileId ?? "player";
 
             // Update coach persona tracking
             UpdateCoachPersona(coachId, response.Tone);
@@ -469,7 +469,7 @@ namespace NBAHeadCoach.Core.Manager
         /// </summary>
         public void SkipPressConference(PressConference conference)
         {
-            string coachId = GameManager.Instance?.Career?.CoachId ?? "player";
+            string coachId = GameManager.Instance?.Career?.ProfileId ?? "player";
 
             // Reputation hit for skipping
             AdjustReputation(coachId, -5);

@@ -56,13 +56,15 @@ namespace NBAHeadCoach.UI.Panels
 
         // State
         private StaffPositionType _currentPosition;
-        private object _currentCandidate;  // Coach or Scout
+        private UnifiedCareerProfile _currentCandidate;
         private StaffNegotiationSession _currentNegotiation;
         private bool _isCoach;
+        private int _candidateIndex = 0;
+        private List<UnifiedCareerProfile> _currentPool = new List<UnifiedCareerProfile>();
 
         // Events
         public event Action OnBackClicked;
-        public event Action<object> OnStaffHired;
+        public event Action<UnifiedCareerProfile> OnStaffHired;
 
         protected override void Awake()
         {
@@ -160,12 +162,15 @@ namespace NBAHeadCoach.UI.Panels
                 _ => StaffPositionType.AssistantCoach
             };
 
-            _isCoach = _currentPosition != StaffPositionType.Scout;
+            _isCoach = _currentPosition.IsCoachingPosition();
+            _candidateIndex = 0;
 
-            // Reset browsing
-            if (StaffHiringManager.Instance != null)
+            // Get candidates from PersonnelManager
+            var personnelManager = PersonnelManager.Instance;
+            if (personnelManager != null)
             {
-                StaffHiringManager.Instance.StartBrowsingCandidates(_currentPosition);
+                var role = _currentPosition.ToUnifiedRole();
+                _currentPool = personnelManager.GetFreeAgentsForPosition(role);
             }
 
             ShowNextCandidate();
@@ -177,10 +182,13 @@ namespace NBAHeadCoach.UI.Panels
             // Get available budget from TeamFinances
             long availableBudget = 15_000_000;  // Default
 
-            // TODO: Get actual remaining budget
-            // var team = GameManager.Instance?.GetPlayerTeam();
-            // if (team?.Finances != null)
-            //     availableBudget = team.Finances.GetRemainingStaffBudget();
+            var teamId = GameManager.Instance?.PlayerTeamId;
+            var finances = GameManager.Instance?.FinanceManager?.GetTeamFinances(teamId);
+            
+            if (finances != null)
+            {
+                availableBudget = finances.GetRemainingStaffBudget();
+            }
 
             if (_availableBudgetText != null)
                 _availableBudgetText.text = $"Budget: ${availableBudget:N0}";
@@ -188,81 +196,59 @@ namespace NBAHeadCoach.UI.Panels
 
         private void UpdateCandidateCount()
         {
-            if (StaffHiringManager.Instance != null)
-            {
-                var counts = StaffHiringManager.Instance.GetPoolCounts();
-                int count = _isCoach ? counts.coaches : counts.scouts;
-
-                if (_candidateCountText != null)
-                    _candidateCountText.text = $"Available: {count}";
-            }
+            if (_candidateCountText != null)
+                _candidateCountText.text = $"Available: {_currentPool.Count}";
         }
 
         // ==================== CANDIDATE DISPLAY ====================
 
         private void ShowNextCandidate()
         {
-            if (StaffHiringManager.Instance == null) return;
-
-            if (_isCoach)
+            if (_candidateIndex < _currentPool.Count)
             {
-                var coach = StaffHiringManager.Instance.GetNextCoachCandidate(_currentPosition);
-                if (coach != null)
-                {
-                    _currentCandidate = coach;
-                    DisplayCoachCandidate(coach);
-                }
-                else
-                {
-                    ShowNoCandidates();
-                }
+                _currentCandidate = _currentPool[_candidateIndex];
+                DisplayCandidate(_currentCandidate);
             }
             else
             {
-                var scout = StaffHiringManager.Instance.GetNextScoutCandidate();
-                if (scout != null)
-                {
-                    _currentCandidate = scout;
-                    DisplayScoutCandidate(scout);
-                }
-                else
-                {
-                    ShowNoCandidates();
-                }
+                ShowNoCandidates();
             }
         }
 
-        private void DisplayCoachCandidate(Coach coach)
+        private void DisplayCandidate(UnifiedCareerProfile profile)
         {
             if (_candidateCard != null)
                 _candidateCard.SetActive(true);
 
             if (_candidateNameText != null)
-                _candidateNameText.text = coach.FullName;
+                _candidateNameText.text = profile.PersonName;
 
             if (_candidatePositionText != null)
-                _candidatePositionText.text = coach.Position.ToString();
+                _candidatePositionText.text = profile.CurrentRole.ToString();
 
             if (_candidateRatingText != null)
             {
-                _candidateRatingText.text = $"Rating: {coach.OverallRating}";
-                AttributeDisplayFactory.ApplyRatingColor(_candidateRatingText, coach.OverallRating);
+                _candidateRatingText.text = $"Rating: {profile.OverallRating}";
+                AttributeDisplayFactory.ApplyRatingColor(_candidateRatingText, profile.OverallRating);
             }
 
             if (_candidateAgeText != null)
-                _candidateAgeText.text = $"Age: {coach.Age}";
+                _candidateAgeText.text = $"Age: {profile.CurrentAge}";
 
             if (_candidateExperienceText != null)
-                _candidateExperienceText.text = $"Experience: {coach.ExperienceYears} years";
+            {
+                int exp = profile.CurrentTrack == UnifiedCareerTrack.Coaching ? profile.TotalCoachingYears : profile.TotalFrontOfficeYears;
+                _candidateExperienceText.text = $"Experience: {exp} years";
+            }
 
             if (_candidateAskingPriceText != null)
-                _candidateAskingPriceText.text = $"Asking: ${coach.MarketValue:N0}/yr";
+                _candidateAskingPriceText.text = $"Asking: ${profile.MarketValue:N0}/yr";
 
             // Former player section
             if (_formerPlayerSection != null)
             {
-                _formerPlayerSection.SetActive(coach.IsFormerPlayer);
-                if (coach.IsFormerPlayer && _playingCareerSummaryText != null)
+                _formerPlayerSection.SetActive(profile.IsFormerPlayer);
+                if (profile.IsFormerPlayer && _playingCareerSummaryText != null)
                 {
                     _playingCareerSummaryText.text = "Former NBA Player";
                 }
@@ -271,92 +257,41 @@ namespace NBAHeadCoach.UI.Panels
             // Specializations
             if (_specializationsText != null)
             {
-                var specs = string.Join(", ", coach.Specializations);
+                var specs = profile.CurrentTrack == UnifiedCareerTrack.Coaching 
+                    ? string.Join(", ", profile.Specializations) 
+                    : string.Join(", ", profile.ScoutingSpecializations);
                 _specializationsText.text = string.IsNullOrEmpty(specs) ? "None" : specs;
             }
 
             // Display attributes
-            DisplayCoachAttributes(coach);
+            DisplayAttributes(profile);
 
             // Pre-fill offer with market value
             if (_offerSalaryInput != null)
-                _offerSalaryInput.text = coach.MarketValue.ToString();
+                _offerSalaryInput.text = profile.MarketValue.ToString();
         }
 
-        private void DisplayScoutCandidate(Scout scout)
-        {
-            if (_candidateCard != null)
-                _candidateCard.SetActive(true);
-
-            if (_candidateNameText != null)
-                _candidateNameText.text = scout.FullName;
-
-            if (_candidatePositionText != null)
-                _candidatePositionText.text = "Scout";
-
-            if (_candidateRatingText != null)
-            {
-                _candidateRatingText.text = $"Rating: {scout.OverallRating}";
-                AttributeDisplayFactory.ApplyRatingColor(_candidateRatingText, scout.OverallRating);
-            }
-
-            if (_candidateAgeText != null)
-                _candidateAgeText.text = $"Age: {scout.Age}";
-
-            if (_candidateExperienceText != null)
-                _candidateExperienceText.text = $"Experience: {scout.ExperienceYears} years";
-
-            if (_candidateAskingPriceText != null)
-                _candidateAskingPriceText.text = $"Asking: ${scout.MarketValue:N0}/yr";
-
-            // Former player section
-            if (_formerPlayerSection != null)
-            {
-                _formerPlayerSection.SetActive(scout.IsFormerPlayer);
-            }
-
-            // Specializations
-            if (_specializationsText != null)
-            {
-                _specializationsText.text = $"{scout.PrimarySpecialization}, {scout.SecondarySpecialization}";
-            }
-
-            // Display attributes
-            DisplayScoutAttributes(scout);
-
-            // Pre-fill offer
-            if (_offerSalaryInput != null)
-                _offerSalaryInput.text = scout.MarketValue.ToString();
-        }
-
-        private void DisplayCoachAttributes(Coach coach)
+        private void DisplayAttributes(UnifiedCareerProfile profile)
         {
             if (_candidateAttributesContainer == null) return;
 
-            var attrs = new Dictionary<string, int>
+            var attrs = new Dictionary<string, int>();
+            if (profile.CurrentTrack == UnifiedCareerTrack.Coaching)
             {
-                { "Offensive Scheme", coach.OffensiveScheme },
-                { "Defensive Scheme", coach.DefensiveScheme },
-                { "Game Management", coach.GameManagement },
-                { "Player Dev", coach.PlayerDevelopment },
-                { "Motivation", coach.Motivation }
-            };
-
-            AttributeDisplayFactory.PopulateAttributeContainer(_candidateAttributesContainer, attrs, 100f, 40f);
-        }
-
-        private void DisplayScoutAttributes(Scout scout)
-        {
-            if (_candidateAttributesContainer == null) return;
-
-            var attrs = new Dictionary<string, int>
+                attrs.Add("Offensive Scheme", profile.OffensiveScheme);
+                attrs.Add("Defensive Scheme", profile.DefensiveScheme);
+                attrs.Add("Game Management", profile.GameManagement);
+                attrs.Add("Player Dev", profile.PlayerDevelopment);
+                attrs.Add("Motivation", profile.Motivation);
+            }
+            else
             {
-                { "Evaluation", scout.EvaluationAccuracy },
-                { "Prospects", scout.ProspectEvaluation },
-                { "Pro Players", scout.ProEvaluation },
-                { "Potential", scout.PotentialAssessment },
-                { "Work Rate", scout.WorkRate }
-            };
+                attrs.Add("Evaluation", profile.EvaluationAccuracy);
+                attrs.Add("Prospects", profile.ProspectEvaluation);
+                attrs.Add("Pro Players", profile.ProEvaluation);
+                attrs.Add("Potential", profile.PotentialAssessment);
+                attrs.Add("Work Rate", profile.WorkRate);
+            }
 
             AttributeDisplayFactory.PopulateAttributeContainer(_candidateAttributesContainer, attrs, 100f, 40f);
         }
@@ -376,7 +311,7 @@ namespace NBAHeadCoach.UI.Panels
 
         private void OnMakeOfferClicked()
         {
-            if (_currentCandidate == null || StaffHiringManager.Instance == null) return;
+            if (_currentCandidate == null || PersonnelManager.Instance == null) return;
 
             // Parse offer
             if (!int.TryParse(_offerSalaryInput?.text, out int salary))
@@ -388,22 +323,17 @@ namespace NBAHeadCoach.UI.Panels
             int years = (_offerYearsDropdown?.value ?? 0) + 1;  // Dropdown is 0-indexed
 
             // Get team ID
-            var teamId = "PLAYER_TEAM";  // TODO: Get from GameManager
-
-            // Start or continue negotiation
-            string candidateId = _isCoach
-                ? (_currentCandidate as Coach)?.CoachId
-                : (_currentCandidate as Scout)?.ScoutId;
+            var teamId = GameManager.Instance?.PlayerTeamId ?? "PLAYER_TEAM";
 
             if (_currentNegotiation == null)
             {
-                _currentNegotiation = StaffHiringManager.Instance.StartNegotiation(teamId, candidateId, _isCoach);
+                _currentNegotiation = PersonnelManager.Instance.StartNegotiation("USER", _currentCandidate.ProfileId, teamId);
             }
 
             if (_currentNegotiation == null) return;
 
             // Make offer
-            var response = StaffHiringManager.Instance.MakeOffer(_currentNegotiation.NegotiationId, salary, years);
+            var response = PersonnelManager.Instance.MakeOffer(_currentNegotiation.SessionId, salary, years);
 
             // Show response
             ShowNegotiationResponse(response);
@@ -417,23 +347,23 @@ namespace NBAHeadCoach.UI.Panels
             if (_candidateResponseText != null)
                 _candidateResponseText.text = response.Message;
 
-            if (response.NewStatus == StaffNegotiationStatus.Accepted)
+            if (response.Result == NegotiationResult.Accepted)
             {
                 // Finalize hire
-                var result = StaffHiringManager.Instance?.FinalizeHire(_currentNegotiation.NegotiationId);
-                ShowResult(result?.message ?? "Hired!", true);
+                PersonnelManager.Instance?.FinalizeNegotiation(_currentNegotiation.SessionId, true);
+                ShowResult("Hired!", true);
                 OnStaffHired?.Invoke(_currentCandidate);
             }
-            else if (response.NewStatus == StaffNegotiationStatus.Rejected)
+            else if (response.Result == NegotiationResult.Rejected)
             {
                 ShowResult("Negotiations failed. The candidate walked away.", false);
                 _currentNegotiation = null;
             }
-            else if (response.NewStatus == StaffNegotiationStatus.CounterReceived)
+            else if (response.Result == NegotiationResult.Countered)
             {
                 // Show counter offer
                 if (_counterOfferText != null)
-                    _counterOfferText.text = $"Counter: ${response.CounterSalary:N0}/yr for {response.CounterYears} years";
+                    _counterOfferText.text = $"Counter: ${response.CounterOffer.Salary:N0}/yr for {response.CounterOffer.Years} years";
 
                 if (_acceptCounterButton != null)
                     _acceptCounterButton.gameObject.SetActive(true);
@@ -443,24 +373,16 @@ namespace NBAHeadCoach.UI.Panels
             }
 
             if (_negotiationStatusText != null)
-                _negotiationStatusText.text = $"Round {_currentNegotiation?.RoundNumber ?? 0} / {_currentNegotiation?.MaxRounds ?? 0}";
+                _negotiationStatusText.text = $"Round {_currentNegotiation?.Steps?.Count ?? 0} / 3";
         }
 
         private void OnAcceptCounterClicked()
         {
-            if (_currentNegotiation == null || StaffHiringManager.Instance == null) return;
+            if (_currentNegotiation == null || PersonnelManager.Instance == null) return;
 
-            var result = StaffHiringManager.Instance.AcceptCounterOffer(_currentNegotiation.NegotiationId);
-
-            if (result.success)
-            {
-                ShowResult(result.message, true);
-                OnStaffHired?.Invoke(_currentCandidate);
-            }
-            else
-            {
-                ShowResult(result.message, false);
-            }
+            PersonnelManager.Instance.FinalizeNegotiation(_currentNegotiation.SessionId, true);
+            ShowResult("Hired!", true);
+            OnStaffHired?.Invoke(_currentCandidate);
         }
 
         private void OnNewOfferClicked()
@@ -489,7 +411,7 @@ namespace NBAHeadCoach.UI.Panels
         {
             ResetUI();
             _currentNegotiation = null;
-            StaffHiringManager.Instance?.SkipCandidate(_isCoach);
+            _candidateIndex++;
             ShowNextCandidate();
             UpdateCandidateCount();
         }
@@ -498,28 +420,22 @@ namespace NBAHeadCoach.UI.Panels
 
         private void OnSkipClicked()
         {
-            if (StaffHiringManager.Instance != null)
-            {
-                StaffHiringManager.Instance.SkipCandidate(_isCoach);
-            }
+            _candidateIndex++;
             ShowNextCandidate();
         }
 
         private void OnNextClicked()
         {
-            if (StaffHiringManager.Instance != null)
-            {
-                StaffHiringManager.Instance.SkipCandidate(_isCoach);
-            }
+            _candidateIndex++;
             ShowNextCandidate();
         }
 
         private void OnBackClicked_Internal()
         {
             // Cancel any active negotiation
-            if (_currentNegotiation != null && StaffHiringManager.Instance != null)
+            if (_currentNegotiation != null && PersonnelManager.Instance != null)
             {
-                StaffHiringManager.Instance.CancelNegotiation(_currentNegotiation.NegotiationId);
+                PersonnelManager.Instance.FinalizeNegotiation(_currentNegotiation.SessionId, false);
             }
 
             OnBackClicked?.Invoke();

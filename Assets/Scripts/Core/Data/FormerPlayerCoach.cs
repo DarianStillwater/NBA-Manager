@@ -79,17 +79,19 @@ namespace NBAHeadCoach.Core.Data
         }
 
         /// <summary>
-        /// Create the actual Coach entity from FormerPlayerCoach data
+        /// Create the actual UnifiedCareerProfile entity from FormerPlayerCoach data
         /// </summary>
-        public Coach CreateCoachEntity(string teamId, CoachPosition position)
+        public UnifiedCareerProfile CreateUnifiedProfile(string teamId, UnifiedRole role)
         {
-            var coach = new Coach
+            var profile = new UnifiedCareerProfile
             {
-                CoachId = Guid.NewGuid().ToString(),
-                FirstName = GetFirstName(),
-                LastName = GetLastName(),
+                ProfileId = Guid.NewGuid().ToString(),
+                PersonName = PlayingCareer?.FullName ?? "Unknown Coach",
+                CurrentAge = CalculateCurrentAge(),
+                BirthYear = DateTime.Now.Year - CalculateCurrentAge(),
                 TeamId = teamId,
-                Position = position,
+                CurrentRole = role,
+                CurrentTrack = UnifiedCareerTrack.Coaching,
 
                 // Core attributes derived from playing career
                 OffensiveScheme = CalculateOffensiveScheme(),
@@ -116,13 +118,12 @@ namespace NBAHeadCoach.Core.Data
                 TalentEvaluation = CalculateTalentEvaluation(),
 
                 // Career info
-                ExperienceYears = Progression?.TotalCareerYears ?? 0,
-                Age = CalculateCurrentAge(),
-                CareerWins = 0,
-                CareerLosses = 0,
-                PlayoffAppearances = 0,
-                ChampionshipsWon = 0,  // As coach, not player
-                Reputation = CalculateStartingReputation(),
+                TotalCoachingYears = Progression?.TotalCareerYears ?? 0,
+                TotalWins = 0,
+                TotalLosses = 0,
+                TotalPlayoffAppearances = 0,
+                TotalChampionships = 0,
+                CoachingReputation = CalculateStartingReputation(),
 
                 // Style
                 PrimaryStyle = DerivedStyle,
@@ -130,13 +131,18 @@ namespace NBAHeadCoach.Core.Data
                 DefensivePhilosophy = DerivedDefensivePhilosophy,
 
                 // Specializations
-                Specializations = new List<CoachSpecialization>(DerivedSpecializations)
+                Specializations = new List<CoachSpecialization>(DerivedSpecializations),
+
+                // Former player link
+                IsFormerPlayer = true,
+                FormerPlayerId = FormerPlayerId,
+                PlayingCareer = PlayingCareer
             };
 
             // Store reference
-            CoachId = coach.CoachId;
+            CoachId = profile.ProfileId;
 
-            return coach;
+            return profile;
         }
 
         // ==================== ATTRIBUTE CALCULATIONS ====================

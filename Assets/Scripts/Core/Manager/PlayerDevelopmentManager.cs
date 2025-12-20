@@ -696,7 +696,7 @@ namespace NBAHeadCoach.Core.Manager
         /// </summary>
         public List<DevelopmentResult> ProcessTeamOffseasonDevelopment(
             string teamId,
-            List<Coach> coachingStaff,
+            List<UnifiedCareerProfile> coachingStaff,
             int facilityRating,  // 1-5 stars
             Dictionary<string, string> playerDevelopmentFocus = null,
             Dictionary<string, string> mentorAssignments = null)
@@ -740,7 +740,7 @@ namespace NBAHeadCoach.Core.Manager
         /// </summary>
         public List<DevelopmentResult> ProcessTeamOffseasonWithInstructions(
             string teamId,
-            List<Coach> coachingStaff,
+            List<UnifiedCareerProfile> coachingStaff,
             TrainingFacility facility,
             TeamDevelopmentPlan developmentPlan)
         {
@@ -771,7 +771,7 @@ namespace NBAHeadCoach.Core.Manager
         /// </summary>
         public DevelopmentResult ProcessOffseasonWithInstruction(
             Player player,
-            List<Coach> coachingStaff,
+            List<UnifiedCareerProfile> coachingStaff,
             TrainingFacility facility,
             DevelopmentInstruction instruction)
         {
@@ -985,26 +985,40 @@ namespace NBAHeadCoach.Core.Manager
             return results;
         }
 
-        private float CalculateCoachingQuality(List<Coach> staff)
+        private float CalculateCoachingQuality(List<UnifiedCareerProfile> staff)
         {
             if (staff == null || staff.Count == 0)
                 return 0.5f;
 
-            // Weight by position relevance
+            // Weight by role and specializations
             float totalQuality = 0f;
             float totalWeight = 0f;
 
             foreach (var coach in staff)
             {
-                float weight = coach.Position switch
+                float weight = 0.5f;
+
+                if (coach.CurrentRole == UnifiedRole.HeadCoach)
                 {
-                    CoachPosition.PlayerDevelopment => 3f,
-                    CoachPosition.ShootingCoach => 2f,
-                    CoachPosition.BigManCoach => 1.5f,
-                    CoachPosition.GuardSkillsCoach => 1.5f,
-                    CoachPosition.HeadCoach => 1f,
-                    _ => 0.5f
-                };
+                    weight = 1f;
+                }
+                else if (coach.CurrentRole == UnifiedRole.AssistantCoach || coach.CurrentRole == UnifiedRole.PositionCoach || coach.CurrentRole == UnifiedRole.Coordinator)
+                {
+                    weight = 1f; // Base weight for coaching staff
+
+                    // Bonus weight for relevant specializations
+                    foreach (var spec in coach.Specializations)
+                    {
+                        weight += spec switch
+                        {
+                            CoachSpecialization.RookieDevelopment => 2f,
+                            CoachSpecialization.ShootingDevelopment => 1f,
+                            CoachSpecialization.BigManDevelopment => 0.5f,
+                            CoachSpecialization.GuardDevelopment => 0.5f,
+                            _ => 0f
+                        };
+                    }
+                }
 
                 totalQuality += coach.PlayerDevelopment / 100f * weight;
                 totalWeight += weight;

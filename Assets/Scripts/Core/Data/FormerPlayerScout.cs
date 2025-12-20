@@ -73,16 +73,19 @@ namespace NBAHeadCoach.Core.Data
         }
 
         /// <summary>
-        /// Create the actual Scout entity from FormerPlayerScout data
+        /// Create the actual UnifiedCareerProfile entity from FormerPlayerScout data
         /// </summary>
-        public Scout CreateScoutEntity(string teamId)
+        public UnifiedCareerProfile CreateUnifiedProfile(string teamId)
         {
-            var scout = new Scout
+            var profile = new UnifiedCareerProfile
             {
-                ScoutId = Guid.NewGuid().ToString(),
-                FirstName = GetFirstName(),
-                LastName = GetLastName(),
+                ProfileId = Guid.NewGuid().ToString(),
+                PersonName = PlayingCareer?.FullName ?? "Unknown Scout",
+                CurrentAge = CalculateCurrentAge(),
+                BirthYear = DateTime.Now.Year - CalculateCurrentAge(),
                 TeamId = teamId,
+                CurrentRole = UnifiedRole.Scout,
+                CurrentTrack = UnifiedCareerTrack.Scouting,
 
                 // Core attributes derived from playing career
                 EvaluationAccuracy = CalculateEvaluationAccuracy(),
@@ -99,23 +102,26 @@ namespace NBAHeadCoach.Core.Data
                 CharacterJudgment = CalculateCharacterJudgment(),
 
                 // Specializations
-                PrimarySpecialization = DerivedPrimarySpec,
-                SecondarySpecialization = DerivedSecondarySpec,
+                ScoutingSpecializations = new List<ScoutSpecialization> { DerivedPrimarySpec, DerivedSecondarySpec },
 
                 // Career info
-                ExperienceYears = ScoutingCareerYears,
-                Age = CalculateCurrentAge()
+                TotalFrontOfficeYears = ScoutingCareerYears,
+                
+                // Former player link
+                IsFormerPlayer = true,
+                FormerPlayerId = FormerPlayerId,
+                PlayingCareer = PlayingCareer
             };
 
             // Store reference
-            ScoutId = scout.ScoutId;
+            ScoutId = profile.ProfileId;
             CurrentTeamId = teamId;
 
-            // Set salary
-            scout.AnnualSalary = (int)(scout.MarketValue * UnityEngine.Random.Range(0.9f, 1.1f));
-            scout.ContractYearsRemaining = UnityEngine.Random.Range(2, 4);
+            // Set salary (MarketValue is computed on UnifiedCareerProfile)
+            profile.AnnualSalary = (int)(profile.MarketValue * UnityEngine.Random.Range(0.9f, 1.1f));
+            profile.ContractYearsRemaining = UnityEngine.Random.Range(2, 4);
 
-            return scout;
+            return profile;
         }
 
         // ==================== ATTRIBUTE CALCULATIONS ====================

@@ -608,21 +608,21 @@ namespace NBAHeadCoach.UI.Panels
                 return;
             }
 
-            // Validate all data
-            if (string.IsNullOrEmpty(_gameData.FirstName)) _gameData.FirstName = "Coach";
-            if (string.IsNullOrEmpty(_gameData.LastName)) _gameData.LastName = "Player";
-            if (string.IsNullOrEmpty(_gameData.SelectedTeamId)) _gameData.SelectedTeamId = "LAL";
-            if (_gameData.Difficulty == null) _gameData.Difficulty = DifficultySettings.CreateFromPreset(DifficultyPreset.Normal);
-
-            Debug.Log($"[NewGamePanel] Starting game: {_gameData.FirstName} {_gameData.LastName}, Team: {_gameData.SelectedTeamId}");
-
             // Start the game
+            var background = _gameData.Background;
+            int tactical = background?.TacticalKnowledge ?? 50;
+            int development = background?.DevelopmentSkill ?? 50;
+            int reputation = background?.StartingReputation ?? 50;
+
             GameManager.Instance.StartNewGame(
                 _gameData.FirstName,
                 _gameData.LastName,
                 _gameData.Age,
                 _gameData.SelectedTeamId,
-                _gameData.Difficulty
+                _gameData.Difficulty,
+                tactical,
+                development,
+                reputation
             );
         }
 

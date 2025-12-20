@@ -164,9 +164,9 @@ namespace NBAHeadCoach.UI.Panels
 
             if (_coachNameText != null)
             {
-                var career = GameManager.Instance.CoachCareer;
+                var career = GameManager.Instance.Career;
                 if (career != null)
-                    _coachNameText.text = $"Coach {career.FirstName} {career.LastName}";
+                    _coachNameText.text = $"Coach {career.PersonName}";
             }
         }
 

@@ -14,28 +14,14 @@ namespace NBAHeadCoach.Core.Manager
     {
         public static FormerPlayerCareerManager Instance { get; private set; }
 
-        [Header("Active Former Players")]
-        [SerializeField] private List<FormerPlayerCoach> formerPlayerCoaches = new List<FormerPlayerCoach>();
-        [SerializeField] private List<FormerPlayerScout> formerPlayerScouts = new List<FormerPlayerScout>();
-        [SerializeField] private List<FormerPlayerProgressionData> activeProgressions = new List<FormerPlayerProgressionData>();
-
         [Header("Settings")]
         [SerializeField, Range(1, 5)] private int minRetireesToPipeline = 1;
         [SerializeField, Range(1, 5)] private int maxRetireesToPipeline = 3;
         [SerializeField, Range(0f, 1f)] private float basePromotionChance = 0.30f;
 
-        [Header("User Coaching History")]
-        [SerializeField] private string userCoachId;
-        [SerializeField] private List<UserCoachingRelationship> userCoachingHistory = new List<UserCoachingRelationship>();
-
-        [Header("Unified Career Integration")]
-        [SerializeField] private bool useUnifiedCareerManager = true;
-
         // Events
-        public event Action<FormerPlayerCoach> OnFormerPlayerBecameCoach;
-        public event Action<FormerPlayerScout> OnFormerPlayerBecameScout;
-        public event Action<FormerPlayerProgressionData, CoachingProgressionStage> OnFormerPlayerPromoted;
-        public event Action<FormerPlayerCoach> OnFormerPlayerBecameHeadCoach;
+        public event Action<UnifiedCareerProfile> OnFormerPlayerBecameStaff;
+        public event Action<UnifiedCareerProfile, UnifiedRole> OnFormerPlayerPromoted;
         public event Action<FormerPlayerMatchupInfo> OnFormerPlayerMatchup;
 
         private int currentYear;
@@ -77,114 +63,93 @@ namespace NBAHeadCoach.Core.Manager
         {
             if (path == PostPlayerCareerPath.Coaching)
             {
-                CreateCoachingProgression(playerData);
+                CreateUnifiedCoachingCareer(playerData);
             }
             else if (path == PostPlayerCareerPath.Scouting)
             {
-                CreateScoutingCareer(playerData);
+                CreateUnifiedScoutingCareer(playerData);
             }
             else if (path == PostPlayerCareerPath.FrontOffice)
             {
-                // Delegate to GMJobSecurityManager for front office track
-                if (GMJobSecurityManager.Instance != null)
-                {
-                    bool wasCoachedByUser = CheckIfCoachedByUser(playerData.PlayerId);
-                    int seasonsUnderUser = GetSeasonsUnderUser(playerData.PlayerId);
-                    GMJobSecurityManager.Instance.CreateFrontOfficeProgression(
-                        playerData,
-                        wasCoachedByUser,
-                        seasonsUnderUser,
-                        wasCoachedByUser ? userCoachingHistory.FirstOrDefault(h => h.PlayerId == playerData.PlayerId)?.TeamId : null
-                    );
-                    Debug.Log($"[FormerPlayerCareer] {playerData.FullName} entered front office pipeline");
-                }
+                CreateUnifiedFrontOfficeCareer(playerData);
             }
         }
 
         /// <summary>
         /// Create coaching progression for a retired player
         /// </summary>
-        public FormerPlayerProgressionData CreateCoachingProgression(PlayerCareerData playerData)
+        public UnifiedCareerProfile CreateUnifiedCoachingCareer(PlayerCareerData playerData)
         {
-            var progression = new FormerPlayerProgressionData
-            {
-                ProgressionId = Guid.NewGuid().ToString(),
-                FormerPlayerId = playerData.PlayerId,
-                FormerPlayerName = playerData.FullName,
-                CareerPath = PostPlayerCareerPath.Coaching,
-                CurrentStage = CoachingProgressionStage.AssistantCoach,
-                YearsAtCurrentStage = 0,
-                TotalCareerYears = 0,
-                YearEnteredPipeline = currentYear,
-                PlayingCareer = PlayerCareerReference.FromPlayerCareerData(playerData),
-                WasCoachedByUser = CheckIfCoachedByUser(playerData.PlayerId),
-                SeasonsUnderUserCoaching = GetSeasonsUnderUser(playerData.PlayerId)
-            };
-
-            // Create the FormerPlayerCoach data
-            var traits = GeneratePersonalityTraits(playerData);
-            var formerPlayerCoach = FormerPlayerCoach.CreateFromRetiredPlayer(playerData, progression, traits);
-            formerPlayerCoach.Progression = progression;
-
-            // Find a team to hire them as assistant
-            var teamId = FindTeamForNewCoach(progression);
-            if (!string.IsNullOrEmpty(teamId))
-            {
-                progression.CurrentTeamId = teamId;
-                progression.TeamsWorkedFor.Add(teamId);
-            }
-
-            activeProgressions.Add(progression);
-            formerPlayerCoaches.Add(formerPlayerCoach);
-
-            // Create unified career profile
-            if (useUnifiedCareerManager && UnifiedCareerManager.Instance != null)
-            {
-                var unifiedProfile = UnifiedCareerProfile.CreateForCoaching(
-                    playerData.FullName,
-                    currentYear,
-                    playerData.Age + 1,  // Retired players typically take a year before coaching
-                    true,
-                    playerData.PlayerId,
-                    PlayerCareerReference.FromPlayerCareerData(playerData)
-                );
-                unifiedProfile.FormerPlayerCoachId = formerPlayerCoach.FormerPlayerCoachId;
-                unifiedProfile.CurrentTeamId = teamId;
-                unifiedProfile.CurrentTeamName = progression.CurrentTeamName;
-                progression.UnifiedProfileId = unifiedProfile.ProfileId;
-
-                UnifiedCareerManager.Instance.RegisterProfile(unifiedProfile);
-            }
-
-            Debug.Log($"[FormerPlayerCareer] {playerData.FullName} entered coaching pipeline as Assistant Coach");
-            OnFormerPlayerBecameCoach?.Invoke(formerPlayerCoach);
-
-            return progression;
-        }
-
-        /// <summary>
-        /// Create scouting career for a retired player
-        /// </summary>
-        public FormerPlayerScout CreateScoutingCareer(PlayerCareerData playerData)
-        {
-            var formerPlayerScout = FormerPlayerScout.CreateFromRetiredPlayer(playerData);
-            formerPlayerScout.WasCoachedByUser = CheckIfCoachedByUser(playerData.PlayerId);
-            formerPlayerScout.SeasonsUnderUserCoaching = GetSeasonsUnderUser(playerData.PlayerId);
+            var profile = UnifiedCareerProfile.CreateForCoaching(
+                playerData.FullName,
+                currentYear,
+                playerData.Age + 1,
+                true,
+                playerData.PlayerId,
+                PlayerCareerReference.FromPlayerCareerData(playerData)
+            );
 
             // Find a team
-            var teamId = FindTeamForNewScout();
+            var teamId = FindTeamForNewStaff(profile);
             if (!string.IsNullOrEmpty(teamId))
             {
-                formerPlayerScout.CurrentTeamId = teamId;
-                formerPlayerScout.TeamsWorkedFor.Add(teamId);
+                profile.CurrentTeamId = teamId;
             }
 
-            formerPlayerScouts.Add(formerPlayerScout);
+            PersonnelManager.Instance?.RegisterProfile(profile);
+            Debug.Log($"[FormerPlayerCareer] {playerData.FullName} entered coaching pipeline as {profile.CurrentRole}");
+            OnFormerPlayerBecameStaff?.Invoke(profile);
 
-            Debug.Log($"[FormerPlayerCareer] {playerData.FullName} became a scout");
-            OnFormerPlayerBecameScout?.Invoke(formerPlayerScout);
+            return profile;
+        }
 
-            return formerPlayerScout;
+        public UnifiedCareerProfile CreateUnifiedScoutingCareer(PlayerCareerData playerData)
+        {
+            var profile = UnifiedCareerProfile.CreateForFrontOffice(
+                playerData.FullName,
+                currentYear,
+                playerData.Age + 1,
+                true,
+                playerData.PlayerId,
+                PlayerCareerReference.FromPlayerCareerData(playerData)
+            );
+
+            var teamId = FindTeamForNewStaff(profile);
+            if (!string.IsNullOrEmpty(teamId))
+            {
+                profile.CurrentTeamId = teamId;
+            }
+
+            PersonnelManager.Instance?.RegisterProfile(profile);
+            Debug.Log($"[FormerPlayerCareer] {playerData.FullName} entered scouting pipeline");
+            OnFormerPlayerBecameStaff?.Invoke(profile);
+
+            return profile;
+        }
+
+        public UnifiedCareerProfile CreateUnifiedFrontOfficeCareer(PlayerCareerData playerData)
+        {
+            var profile = UnifiedCareerProfile.CreateForFrontOffice(
+                playerData.FullName,
+                currentYear,
+                playerData.Age + 1,
+                true,
+                playerData.PlayerId,
+                PlayerCareerReference.FromPlayerCareerData(playerData)
+            );
+            profile.CurrentRole = UnifiedRole.AssistantGM;
+
+            var teamId = FindTeamForNewStaff(profile);
+            if (!string.IsNullOrEmpty(teamId))
+            {
+                profile.CurrentTeamId = teamId;
+            }
+
+            PersonnelManager.Instance?.RegisterProfile(profile);
+            Debug.Log($"[FormerPlayerCareer] {playerData.FullName} entered front office pipeline as Assistant GM");
+            OnFormerPlayerBecameStaff?.Invoke(profile);
+
+            return profile;
         }
 
         /// <summary>
@@ -195,117 +160,13 @@ namespace NBAHeadCoach.Core.Manager
         {
             currentYear = year;
 
-            // Advance all progressions
-            foreach (var progression in activeProgressions)
-            {
-                progression.YearsAtCurrentStage++;
-                progression.TotalCareerYears++;
-            }
-
-            // Advance scout years
-            foreach (var scout in formerPlayerScouts)
-            {
-                scout.AdvanceYear();
-            }
-
-            // Check for promotions
-            ProcessPromotions();
-
-            // Check for job changes
-            ProcessJobChanges();
-
-            // Process front office career progressions
-            if (GMJobSecurityManager.Instance != null)
-            {
-                GMJobSecurityManager.Instance.ProcessEndOfSeason(year);
-            }
-
-            // Process unified career manager (handles cross-track transitions and retirements)
-            if (useUnifiedCareerManager && UnifiedCareerManager.Instance != null)
-            {
-                UnifiedCareerManager.Instance.ProcessEndOfSeason(year);
-            }
-
-            Debug.Log($"[FormerPlayerCareer] End of season {year}: {activeProgressions.Count} coaches, {formerPlayerScouts.Count} scouts in pipeline");
+            // PersonnelManager already handles daily/seasonal processing for all profiles
+            // We can just rely on it.
+            
+            Debug.Log($"[FormerPlayerCareer] Processed end of season {year}");
         }
 
-        /// <summary>
-        /// Process potential promotions for coaches in the pipeline
-        /// </summary>
-        private void ProcessPromotions()
-        {
-            foreach (var progression in activeProgressions.Where(p => p.IsEligibleForPromotion()))
-            {
-                float promotionChance = progression.GetBasePromotionChance();
-
-                // Add team success bonus if available
-                // promotionChance += GetTeamSuccessBonus(progression.CurrentTeamId);
-
-                if (UnityEngine.Random.value < promotionChance)
-                {
-                    PromoteCoach(progression);
-                }
-            }
-        }
-
-        /// <summary>
-        /// Promote a coach to the next stage
-        /// </summary>
-        private void PromoteCoach(FormerPlayerProgressionData progression)
-        {
-            var previousStage = progression.CurrentStage;
-
-            // Advance to next stage
-            progression.CurrentStage = previousStage switch
-            {
-                CoachingProgressionStage.AssistantCoach => CoachingProgressionStage.PositionCoach,
-                CoachingProgressionStage.PositionCoach => CoachingProgressionStage.Coordinator,
-                CoachingProgressionStage.Coordinator => CoachingProgressionStage.HeadCoach,
-                _ => progression.CurrentStage
-            };
-
-            progression.YearsAtCurrentStage = 0;
-
-            // Record milestone
-            progression.Milestones.Add(ProgressionMilestone.CreatePromotion(
-                currentYear,
-                progression.CurrentTeamId,
-                progression.CurrentTeamName,
-                progression.CurrentStage
-            ));
-
-            Debug.Log($"[FormerPlayerCareer] {progression.FormerPlayerName} promoted to {progression.CurrentStage}");
-            OnFormerPlayerPromoted?.Invoke(progression, progression.CurrentStage);
-
-            // Special handling for becoming Head Coach
-            if (progression.CurrentStage == CoachingProgressionStage.HeadCoach)
-            {
-                var formerPlayerCoach = formerPlayerCoaches.FirstOrDefault(c => c.FormerPlayerId == progression.FormerPlayerId);
-                if (formerPlayerCoach != null)
-                {
-                    OnFormerPlayerBecameHeadCoach?.Invoke(formerPlayerCoach);
-                }
-            }
-        }
-
-        /// <summary>
-        /// Process potential job changes (moving between teams)
-        /// </summary>
-        private void ProcessJobChanges()
-        {
-            // Coaches who are ready for head coaching jobs may move teams
-            foreach (var progression in activeProgressions.Where(p =>
-                p.CurrentStage == CoachingProgressionStage.Coordinator &&
-                p.YearsAtCurrentStage >= 2))
-            {
-                // Small chance to move to a new team for head coach opportunity
-                if (UnityEngine.Random.value < 0.15f)
-                {
-                    // This would integrate with CoachJobMarketManager
-                    Debug.Log($"[FormerPlayerCareer] {progression.FormerPlayerName} seeking head coaching opportunities");
-                }
-            }
-        }
+        // Promotions and Job Changes are now handled by PersonnelManager
 
         /// <summary>
         /// Check if the user's team is playing against a team with a former player as head coach
@@ -313,36 +174,27 @@ namespace NBAHeadCoach.Core.Manager
         /// </summary>
         public FormerPlayerMatchupInfo CheckForFormerPlayerMatchup(string userTeamId, string opponentTeamId)
         {
-            // Check if opponent's head coach is a former player
-            var opponentCoachProgression = activeProgressions.FirstOrDefault(p =>
-                p.CurrentTeamId == opponentTeamId &&
-                p.CurrentStage == CoachingProgressionStage.HeadCoach);
+            var personnelManager = PersonnelManager.Instance;
+            if (personnelManager == null) return null;
 
-            if (opponentCoachProgression == null)
-                return null;
+            var opponentStaff = personnelManager.GetTeamStaff(opponentTeamId);
+            var headCoach = opponentStaff.FirstOrDefault(s => s.CurrentRole == UnifiedRole.HeadCoach);
 
-            var formerPlayerCoach = formerPlayerCoaches.FirstOrDefault(c =>
-                c.FormerPlayerId == opponentCoachProgression.FormerPlayerId);
-
-            if (formerPlayerCoach == null)
+            if (headCoach == null || !headCoach.IsFormerPlayer)
                 return null;
 
             var matchup = new FormerPlayerMatchupInfo
             {
-                FormerPlayerName = opponentCoachProgression.FormerPlayerName,
+                FormerPlayerName = headCoach.PersonName,
                 OpponentTeamId = opponentTeamId,
-                OpponentTeamName = opponentCoachProgression.CurrentTeamName,
-                WasCoachedByUser = opponentCoachProgression.WasCoachedByUser,
-                SeasonsUnderUser = opponentCoachProgression.SeasonsUnderUserCoaching,
-                CoachingCareerYears = opponentCoachProgression.TotalCareerYears,
-                PlayingCareer = formerPlayerCoach.PlayingCareer
+                OpponentTeamName = headCoach.CurrentTeamName,
+                WasCoachedByUser = false, // TODO: Track user relationship
+                SeasonsUnderUser = 0,
+                CoachingCareerYears = headCoach.TotalCoachingYears,
+                PlayingCareer = headCoach.PlayingCareer
             };
 
             OnFormerPlayerMatchup?.Invoke(matchup);
-
-            Debug.Log($"[FormerPlayerCareer] MATCHUP: User faces {matchup.FormerPlayerName}, " +
-                     $"former player now coaching {matchup.OpponentTeamName}");
-
             return matchup;
         }
 
@@ -351,65 +203,27 @@ namespace NBAHeadCoach.Core.Manager
         /// </summary>
         public float GetHiringBonus(string formerPlayerId, string teamId)
         {
-            var progression = activeProgressions.FirstOrDefault(p => p.FormerPlayerId == formerPlayerId);
-            if (progression == null)
-                return 0f;
+            var profile = PersonnelManager.Instance?.GetProfile(formerPlayerId);
+            if (profile == null) return 0f;
 
             float bonus = 0f;
-
-            // Base loyalty bonus if coached by user: +15%
-            if (progression.WasCoachedByUser)
-            {
-                bonus += 0.15f;
-
-                // +3% per season coached together, cap at +15% additional
-                float seasonBonus = progression.SeasonsUnderUserCoaching * 0.03f;
-                bonus += Mathf.Min(seasonBonus, 0.15f);
-            }
-
-            // +10% if they played for this team
-            if (progression.PlayingCareer?.TeamsPlayedFor?.Contains(teamId) == true)
+            // Simplified logic: +10% if they played for this team
+            if (profile.PlayingCareer?.TeamsPlayedFor?.Contains(teamId) == true)
             {
                 bonus += 0.10f;
             }
 
-            // Cap total bonus at 30%
             return Mathf.Min(bonus, 0.30f);
         }
+    
+        // Relationship tracking disabled for now during refactor
 
         /// <summary>
         /// Record that the user coached a player
         /// </summary>
-        public void RecordUserCoachedPlayer(string playerId, string playerName, string teamId)
-        {
-            var existing = userCoachingHistory.FirstOrDefault(h => h.PlayerId == playerId);
-            if (existing != null)
-            {
-                existing.SeasonsCoached++;
-            }
-            else
-            {
-                userCoachingHistory.Add(new UserCoachingRelationship
-                {
-                    PlayerId = playerId,
-                    PlayerName = playerName,
-                    TeamId = teamId,
-                    SeasonsCoached = 1,
-                    FirstSeasonYear = currentYear
-                });
-            }
-        }
-
-        private bool CheckIfCoachedByUser(string playerId)
-        {
-            return userCoachingHistory.Any(h => h.PlayerId == playerId);
-        }
-
-        private int GetSeasonsUnderUser(string playerId)
-        {
-            var history = userCoachingHistory.FirstOrDefault(h => h.PlayerId == playerId);
-            return history?.SeasonsCoached ?? 0;
-        }
+        public void RecordUserCoachedPlayer(string playerId, string playerName, string teamId) { }
+        private bool CheckIfCoachedByUser(string playerId) => false;
+        private int GetSeasonsUnderUser(string playerId) => 0;
 
         private List<PlayerPersonalityTrait> GeneratePersonalityTraits(PlayerCareerData playerData)
         {
@@ -458,54 +272,22 @@ namespace NBAHeadCoach.Core.Manager
             return traits.Distinct().ToList();
         }
 
-        private string FindTeamForNewCoach(FormerPlayerProgressionData progression)
+        private string FindTeamForNewStaff(UnifiedCareerProfile profile)
         {
             // Prefer former team if possible
-            if (progression.PlayingCareer?.PrimaryTeam != null)
+            if (profile.PlayingCareer?.PrimaryTeam != null)
             {
-                return progression.PlayingCareer.PrimaryTeam;
+                return profile.PlayingCareer.PrimaryTeam;
             }
-
-            // Otherwise assign to a random team needing assistant coaches
-            // This would integrate with actual team data
-            return null;
-        }
-
-        private string FindTeamForNewScout()
-        {
-            // Would integrate with team data to find teams needing scouts
             return null;
         }
 
         // ==================== GETTERS ====================
 
-        public List<FormerPlayerCoach> GetAllFormerPlayerCoaches() => formerPlayerCoaches;
-
-        public List<FormerPlayerScout> GetAllFormerPlayerScouts() => formerPlayerScouts;
-
-        public List<FormerPlayerProgressionData> GetAllProgressions() => activeProgressions;
-
-        public List<FormerPlayerCoach> GetFormerPlayerHeadCoaches()
+        public List<UnifiedCareerProfile> GetAllFormerPlayerStaff()
         {
-            return formerPlayerCoaches.Where(c =>
-                c.Progression?.CurrentStage == CoachingProgressionStage.HeadCoach).ToList();
-        }
-
-        public FormerPlayerCoach GetFormerPlayerCoachByPlayerId(string playerId)
-        {
-            return formerPlayerCoaches.FirstOrDefault(c => c.FormerPlayerId == playerId);
-        }
-
-        public FormerPlayerCoach GetFormerPlayerCoachByTeam(string teamId)
-        {
-            return formerPlayerCoaches.FirstOrDefault(c =>
-                c.Progression?.CurrentTeamId == teamId &&
-                c.Progression?.CurrentStage == CoachingProgressionStage.HeadCoach);
-        }
-
-        public List<FormerPlayerCoach> GetUserFormerPlayersInCoaching()
-        {
-            return formerPlayerCoaches.Where(c => c.Progression?.WasCoachedByUser == true).ToList();
+            return PersonnelManager.Instance?.GetAllProfiles()
+                .Where(p => p.IsFormerPlayer).ToList() ?? new List<UnifiedCareerProfile>();
         }
 
         /// <summary>
@@ -515,25 +297,13 @@ namespace NBAHeadCoach.Core.Manager
         {
             return new FormerPlayerCareerSaveData
             {
-                FormerPlayerCoaches = formerPlayerCoaches,
-                FormerPlayerScouts = formerPlayerScouts,
-                ActiveProgressions = activeProgressions,
-                UserCoachingHistory = userCoachingHistory,
                 CurrentYear = currentYear
             };
         }
 
-        /// <summary>
-        /// Load from save data
-        /// </summary>
         public void LoadSaveData(FormerPlayerCareerSaveData data)
         {
             if (data == null) return;
-
-            formerPlayerCoaches = data.FormerPlayerCoaches ?? new List<FormerPlayerCoach>();
-            formerPlayerScouts = data.FormerPlayerScouts ?? new List<FormerPlayerScout>();
-            activeProgressions = data.ActiveProgressions ?? new List<FormerPlayerProgressionData>();
-            userCoachingHistory = data.UserCoachingHistory ?? new List<UserCoachingRelationship>();
             currentYear = data.CurrentYear;
         }
     }
@@ -603,10 +373,6 @@ namespace NBAHeadCoach.Core.Manager
     [Serializable]
     public class FormerPlayerCareerSaveData
     {
-        public List<FormerPlayerCoach> FormerPlayerCoaches;
-        public List<FormerPlayerScout> FormerPlayerScouts;
-        public List<FormerPlayerProgressionData> ActiveProgressions;
-        public List<UserCoachingRelationship> UserCoachingHistory;
         public int CurrentYear;
     }
 }

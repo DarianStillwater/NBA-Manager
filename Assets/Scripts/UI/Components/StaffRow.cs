@@ -61,59 +61,31 @@ namespace NBAHeadCoach.UI.Components
         }
 
         /// <summary>
-        /// Setup row with coach data.
+        /// Setup row with staff data from UnifiedCareerProfile.
         /// </summary>
-        public void SetupCoach(Coach coach, string currentAssignment = null)
+        public void SetupStaff(UnifiedCareerProfile profile, string currentAssignment = null)
         {
-            if (coach == null) return;
+            if (profile == null) return;
 
-            _staffId = coach.CoachId;
-            _positionType = ConvertCoachPosition(coach.Position);
+            _staffId = profile.ProfileId;
+            _positionType = profile.CurrentRole.ToStaffPositionType();
 
             if (NameText != null)
-                NameText.text = coach.FullName;
+                NameText.text = profile.PersonName;
 
             if (PositionText != null)
                 PositionText.text = StaffLimits.GetAbbreviation(_positionType);
 
             if (SpecialtyText != null)
-                SpecialtyText.text = GetCoachSpecialty(coach);
+                SpecialtyText.text = GetStaffSpecialty(profile);
 
             if (AssignmentText != null)
                 AssignmentText.text = string.IsNullOrEmpty(currentAssignment) ? "--" : currentAssignment;
 
             if (SalaryText != null)
-                SalaryText.text = FormatSalary(coach.AnnualSalary);
+                SalaryText.text = FormatSalary(profile.AnnualSalary);
 
-            UpdateRatingDisplay(coach.OverallRating);
-        }
-
-        /// <summary>
-        /// Setup row with scout data.
-        /// </summary>
-        public void SetupScout(Scout scout, string currentAssignment = null)
-        {
-            if (scout == null) return;
-
-            _staffId = scout.ScoutId;
-            _positionType = StaffPositionType.Scout;
-
-            if (NameText != null)
-                NameText.text = scout.FullName;
-
-            if (PositionText != null)
-                PositionText.text = "SCT";
-
-            if (SpecialtyText != null)
-                SpecialtyText.text = GetScoutSpecialty(scout);
-
-            if (AssignmentText != null)
-                AssignmentText.text = string.IsNullOrEmpty(currentAssignment) ? "--" : currentAssignment;
-
-            if (SalaryText != null)
-                SalaryText.text = FormatSalary(scout.AnnualSalary);
-
-            UpdateRatingDisplay(scout.OverallRating);
+            UpdateRatingDisplay(profile.OverallRating);
         }
 
         /// <summary>
@@ -155,50 +127,53 @@ namespace NBAHeadCoach.UI.Components
             return PoorColor;
         }
 
-        private string GetCoachSpecialty(Coach coach)
+        private string GetStaffSpecialty(UnifiedCareerProfile profile)
         {
-            // Determine specialty based on highest attribute
-            int maxAttr = Mathf.Max(
-                coach.OffensiveScheme,
-                coach.DefensiveScheme,
-                coach.PlayerDevelopment,
-                coach.GameManagement
-            );
+            if (profile.CurrentTrack == UnifiedCareerTrack.Coaching)
+            {
+                // Determine coaching specialty based on highest attribute
+                int maxAttr = Mathf.Max(
+                    profile.OffensiveScheme,
+                    profile.DefensiveScheme,
+                    profile.PlayerDevelopment,
+                    profile.GameManagement
+                );
 
-            if (maxAttr == coach.OffensiveScheme && coach.OffensiveScheme > 60)
-                return "Offense";
-            if (maxAttr == coach.DefensiveScheme && coach.DefensiveScheme > 60)
-                return "Defense";
-            if (maxAttr == coach.PlayerDevelopment && coach.PlayerDevelopment > 60)
-                return "Development";
-            if (maxAttr == coach.GameManagement && coach.GameManagement > 60)
-                return "Management";
+                if (maxAttr == profile.OffensiveScheme && profile.OffensiveScheme > 60)
+                    return "Offense";
+                if (maxAttr == profile.DefensiveScheme && profile.DefensiveScheme > 60)
+                    return "Defense";
+                if (maxAttr == profile.PlayerDevelopment && profile.PlayerDevelopment > 60)
+                    return "Development";
+                if (maxAttr == profile.GameManagement && profile.GameManagement > 60)
+                    return "Management";
 
-            return "Balanced";
-        }
+                return "Balanced Coach";
+            }
+            else if (profile.CurrentTrack == UnifiedCareerTrack.FrontOffice)
+            {
+                // Determine scouting specialty based on highest attribute
+                int maxAttr = Mathf.Max(
+                    profile.EvaluationAccuracy,
+                    profile.ProspectEvaluation,
+                    profile.ProEvaluation,
+                    profile.PotentialAssessment
+                );
 
-        private string GetScoutSpecialty(Scout scout)
-        {
-            // Determine specialty based on highest attribute
-            int maxAttr = Mathf.Max(
-                scout.EvaluatingAbility,
-                scout.PotentialAssessment,
-                scout.CollegeKnowledge,
-                scout.InternationalKnowledge
-            );
+                if (maxAttr == profile.ProspectEvaluation && profile.ProspectEvaluation > 60)
+                    return "Prospects";
+                if (maxAttr == profile.ProEvaluation && profile.ProEvaluation > 60)
+                    return "Pro Scout";
+                if (maxAttr == profile.PotentialAssessment && profile.PotentialAssessment > 60)
+                    return "Potential";
+                if (maxAttr == profile.EvaluationAccuracy && profile.EvaluationAccuracy > 60)
+                    return "Evaluation";
 
-            if (maxAttr == scout.CollegeKnowledge && scout.CollegeKnowledge > 60)
-                return "College";
-            if (maxAttr == scout.InternationalKnowledge && scout.InternationalKnowledge > 60)
-                return "International";
-            if (maxAttr == scout.PotentialAssessment && scout.PotentialAssessment > 60)
-                return "Potential";
-            if (maxAttr == scout.EvaluatingAbility && scout.EvaluatingAbility > 60)
-                return "Evaluation";
+                return "General Scout";
+            }
 
             return "Generalist";
         }
-
         private string FormatSalary(int salary)
         {
             if (salary >= 1_000_000)
@@ -206,22 +181,6 @@ namespace NBAHeadCoach.UI.Components
             else if (salary >= 1_000)
                 return $"${salary / 1_000f:F0}K";
             return $"${salary:N0}";
-        }
-
-        private StaffPositionType ConvertCoachPosition(CoachPosition position)
-        {
-            return position switch
-            {
-                CoachPosition.HeadCoach => StaffPositionType.HeadCoach,
-                CoachPosition.OffensiveCoordinator => StaffPositionType.OffensiveCoordinator,
-                CoachPosition.DefensiveCoordinator => StaffPositionType.DefensiveCoordinator,
-                CoachPosition.AssistantCoach => StaffPositionType.AssistantCoach,
-                CoachPosition.ShootingCoach => StaffPositionType.AssistantCoach,
-                CoachPosition.StrengthCoach => StaffPositionType.AssistantCoach,
-                CoachPosition.PlayerDevelopment => StaffPositionType.AssistantCoach,
-                CoachPosition.VideoCoordinator => StaffPositionType.AssistantCoach,
-                _ => StaffPositionType.AssistantCoach
-            };
         }
     }
 }

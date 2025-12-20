@@ -66,7 +66,7 @@ namespace NBAHeadCoach.Core.AI
         /// Scout quality affects accuracy of the evaluation.
         /// </summary>
         public static ScoutEvaluationResult EvaluatePlayer(
-            Scout scout,
+            UnifiedCareerProfile scout,
             string playerId,
             string playerName,
             int actualOverall,
@@ -92,15 +92,15 @@ namespace NBAHeadCoach.Core.AI
             string recommendation = GenerateRecommendation(estimatedOverall, estimatedPotential, taskType);
 
             // Confidence level correlates with scout experience and rating
-            int confidence = Mathf.Clamp(scout.ExperienceYears * 3 + scoutRating / 2, 30, 95);
+            int confidence = Mathf.Clamp(scout.TotalFrontOfficeYears * 3 + scoutRating / 2, 30, 95);
 
             return new ScoutEvaluationResult
             {
                 EvaluationId = $"EVAL_{Guid.NewGuid().ToString().Substring(0, 8)}",
-                ScoutId = scout.ScoutId,
+                ScoutId = scout.ProfileId,
                 TargetPlayerId = playerId,
                 TaskType = taskType,
-                ScoutName = scout.FullName,
+                ScoutName = scout.PersonName,
                 ScoutRating = scoutRating,
                 EstimatedOverall = estimatedOverall,
                 ActualOverall = actualOverall,
@@ -120,7 +120,7 @@ namespace NBAHeadCoach.Core.AI
         /// Generate a draft prospect evaluation.
         /// </summary>
         public static ScoutEvaluationResult EvaluateDraftProspect(
-            Scout scout,
+            UnifiedCareerProfile scout,
             string prospectId,
             string prospectName,
             int actualOverall,
@@ -140,7 +140,7 @@ namespace NBAHeadCoach.Core.AI
         /// Generate a trade target evaluation.
         /// </summary>
         public static ScoutEvaluationResult EvaluateTradeTarget(
-            Scout scout,
+            UnifiedCareerProfile scout,
             string playerId,
             string playerName,
             int actualOverall,
@@ -154,7 +154,7 @@ namespace NBAHeadCoach.Core.AI
         /// Generate a free agent evaluation.
         /// </summary>
         public static ScoutEvaluationResult EvaluateFreeAgent(
-            Scout scout,
+            UnifiedCareerProfile scout,
             string playerId,
             string playerName,
             int actualOverall,
@@ -175,7 +175,7 @@ namespace NBAHeadCoach.Core.AI
         /// Generate an offensive coordinator suggestion during a game.
         /// </summary>
         public static CoordinatorSuggestion GetOffensiveSuggestion(
-            Coach coordinator,
+            UnifiedCareerProfile coordinator,
             int quarter,
             int timeRemaining,
             int scoreDifferential,
@@ -204,13 +204,13 @@ namespace NBAHeadCoach.Core.AI
             float adjustedImpact = expectedImpact * quality;
 
             // Confidence based on coach experience and rating
-            int confidence = Mathf.Clamp(coordinator.ExperienceYears * 2 + coachRating / 2, 40, 95);
+            int confidence = Mathf.Clamp(coordinator.TotalCoachingYears * 2 + coachRating / 2, 40, 95);
 
             return new CoordinatorSuggestion
             {
                 SuggestionId = $"SUG_{Guid.NewGuid().ToString().Substring(0, 8)}",
-                CoordinatorId = coordinator.CoachId,
-                CoordinatorName = coordinator.FullName,
+                CoordinatorId = coordinator.ProfileId,
+                CoordinatorName = coordinator.PersonName,
                 IsOffensive = true,
                 SuggestionType = suggestionType,
                 Reasoning = reasoning,
@@ -227,7 +227,7 @@ namespace NBAHeadCoach.Core.AI
         /// Generate a defensive coordinator suggestion during a game.
         /// </summary>
         public static CoordinatorSuggestion GetDefensiveSuggestion(
-            Coach coordinator,
+            UnifiedCareerProfile coordinator,
             int quarter,
             int timeRemaining,
             int scoreDifferential,
@@ -252,13 +252,13 @@ namespace NBAHeadCoach.Core.AI
             var (suggestionType, reasoning, expectedImpact) = suggestions[index];
 
             float adjustedImpact = expectedImpact * quality;
-            int confidence = Mathf.Clamp(coordinator.ExperienceYears * 2 + coachRating / 2, 40, 95);
+            int confidence = Mathf.Clamp(coordinator.TotalCoachingYears * 2 + coachRating / 2, 40, 95);
 
             return new CoordinatorSuggestion
             {
                 SuggestionId = $"SUG_{Guid.NewGuid().ToString().Substring(0, 8)}",
-                CoordinatorId = coordinator.CoachId,
-                CoordinatorName = coordinator.FullName,
+                CoordinatorId = coordinator.ProfileId,
+                CoordinatorName = coordinator.PersonName,
                 IsOffensive = false,
                 SuggestionType = suggestionType,
                 Reasoning = reasoning,
@@ -277,7 +277,7 @@ namespace NBAHeadCoach.Core.AI
         /// Calculate development bonus for a player from their assigned AC.
         /// </summary>
         public static float CalculateDevelopmentBonus(
-            Coach assistantCoach,
+            UnifiedCareerProfile assistantCoach,
             Position playerPosition,
             bool hasMatchingSpecialization)
         {
@@ -325,7 +325,7 @@ namespace NBAHeadCoach.Core.AI
         /// Used when user is in GM-only mode.
         /// </summary>
         public static HCGameDecision MakeInGameDecision(
-            Coach headCoach,
+            UnifiedCareerProfile headCoach,
             int quarter,
             int timeRemaining,
             int scoreDifferential,
@@ -337,8 +337,8 @@ namespace NBAHeadCoach.Core.AI
             var decision = new HCGameDecision
             {
                 DecisionId = $"DEC_{Guid.NewGuid().ToString().Substring(0, 8)}",
-                CoachId = headCoach.CoachId,
-                CoachName = headCoach.FullName,
+                CoachId = headCoach.ProfileId,
+                CoachName = headCoach.PersonName,
                 CoachRating = coachRating,
                 Quarter = quarter,
                 TimeRemaining = timeRemaining,
@@ -368,7 +368,7 @@ namespace NBAHeadCoach.Core.AI
             return decision;
         }
 
-        private static bool ShouldCallTimeout(Coach coach, int scoreDiff, int timeRemaining, int quarter)
+        private static bool ShouldCallTimeout(UnifiedCareerProfile coach, int scoreDiff, int timeRemaining, int quarter)
         {
             // More experienced coaches use timeouts more strategically
             float timeoutThreshold = 0.3f - (coach.GameManagement / 100f * 0.2f);
@@ -384,7 +384,7 @@ namespace NBAHeadCoach.Core.AI
             return false;
         }
 
-        private static string DetermineStrategyAdjustment(Coach coach, int scoreDiff, int quarter)
+        private static string DetermineStrategyAdjustment(UnifiedCareerProfile coach, int scoreDiff, int quarter)
         {
             // Late game adjustments
             if (quarter == 4)

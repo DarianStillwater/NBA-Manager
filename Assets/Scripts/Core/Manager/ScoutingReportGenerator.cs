@@ -37,7 +37,7 @@ namespace NBAHeadCoach.Core.Manager
         /// <summary>
         /// Generates a complete scouting report for a player.
         /// </summary>
-        public ScoutingReport GenerateReport(Player player, Scout scout, int timesScoutedPreviously, int gamesObserved)
+        public ScoutingReport GenerateReport(Player player, UnifiedCareerProfile scout, int timesScoutedPreviously, int gamesObserved)
         {
             int totalTimesScounted = timesScoutedPreviously + 1;
 
@@ -59,8 +59,8 @@ namespace NBAHeadCoach.Core.Manager
                 PlayerId = player.PlayerId,
                 PlayerName = player.FullName,
                 TargetType = player.YearsPro > 0 ? ScoutingTargetType.NBAPlayer : ScoutingTargetType.CollegeProspect,
-                ScoutId = scout.ScoutId,
-                ScoutName = scout.FullName,
+                ScoutId = scout.ProfileId,
+                ScoutName = scout.PersonName,
                 ScoutSkillAtGeneration = scout.OverallRating,
                 GeneratedDate = DateTime.Now,
                 TimesScoutedTotal = totalTimesScounted,

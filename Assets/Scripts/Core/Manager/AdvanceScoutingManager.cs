@@ -39,7 +39,7 @@ namespace NBAHeadCoach.Core.Manager
         #region Events
 
         public event Action<AdvanceScoutingReport> OnReportGenerated;
-        public event Action<Scout, ScoutDevelopmentEvent> OnScoutDeveloped;
+        public event Action<UnifiedCareerProfile, ScoutDevelopmentEvent> OnScoutDeveloped;
 
         #endregion
 
@@ -70,21 +70,25 @@ namespace NBAHeadCoach.Core.Manager
         /// <summary>
         /// Assign a scout to watch an opponent team.
         /// </summary>
-        public bool AssignScoutToTeam(Scout scout, string opponentTeamId, int gamesToWatch = 3)
+        public bool AssignScoutToTeam(string scoutId, string opponentTeamId, int gamesToWatch = 3)
         {
-            if (scout == null || string.IsNullOrEmpty(opponentTeamId))
+            if (string.IsNullOrEmpty(scoutId) || string.IsNullOrEmpty(opponentTeamId))
+                return false;
+
+            var scout = PersonnelManager.Instance?.GetProfile(scoutId);
+            if (scout == null || scout.CurrentRole != UnifiedRole.Scout)
                 return false;
 
             // Check if scout is already assigned
-            if (_activeAssignments.ContainsKey(scout.ScoutId))
+            if (_activeAssignments.ContainsKey(scout.ProfileId))
             {
-                Debug.LogWarning($"Scout {scout.Name} is already on assignment");
+                Debug.LogWarning($"Scout {scout.PersonName} is already on assignment");
                 return false;
             }
 
             var assignment = new ScoutAssignment
             {
-                ScoutId = scout.ScoutId,
+                ScoutId = scout.ProfileId,
                 OpponentTeamId = opponentTeamId,
                 GamesToWatch = gamesToWatch,
                 GamesWatched = 0,
@@ -92,7 +96,7 @@ namespace NBAHeadCoach.Core.Manager
                 GameNotes = new List<GameObservation>()
             };
 
-            _activeAssignments[scout.ScoutId] = assignment;
+            _activeAssignments[scout.ProfileId] = assignment;
             return true;
         }
 
@@ -112,7 +116,7 @@ namespace NBAHeadCoach.Core.Manager
             if (!_activeAssignments.TryGetValue(scoutId, out var assignment))
                 return;
 
-            var scout = GetScout(scoutId);
+            var scout = PersonnelManager.Instance?.GetProfile(scoutId);
             if (scout == null) return;
 
             // Generate observation from this game
@@ -127,7 +131,7 @@ namespace NBAHeadCoach.Core.Manager
             }
         }
 
-        private void CompleteAssignment(Scout scout, ScoutAssignment assignment)
+        private void CompleteAssignment(UnifiedCareerProfile scout, ScoutAssignment assignment)
         {
             // Generate the advance report
             var report = GenerateAdvanceReport(scout, assignment);
@@ -139,10 +143,10 @@ namespace NBAHeadCoach.Core.Manager
             _reports[assignment.OpponentTeamId].Add(report);
 
             // Award scout experience
-            AddScoutExperience(scout.ScoutId, _experiencePerReport);
+            AddScoutExperience(scout.ProfileId, _experiencePerReport);
 
             // Clear assignment
-            _activeAssignments.Remove(scout.ScoutId);
+            _activeAssignments.Remove(scout.ProfileId);
 
             // Fire event
             OnReportGenerated?.Invoke(report);
@@ -152,7 +156,7 @@ namespace NBAHeadCoach.Core.Manager
 
         #region Report Generation
 
-        private GameObservation GenerateGameObservation(Scout scout, GameResult result, bool isHome)
+        private GameObservation GenerateGameObservation(UnifiedCareerProfile scout, GameResult result, bool isHome)
         {
             var observation = new GameObservation
             {
@@ -189,7 +193,7 @@ namespace NBAHeadCoach.Core.Manager
             return observation;
         }
 
-        private AdvanceScoutingReport GenerateAdvanceReport(Scout scout, ScoutAssignment assignment)
+        private AdvanceScoutingReport GenerateAdvanceReport(UnifiedCareerProfile scout, ScoutAssignment assignment)
         {
             var opponent = GameManager.Instance?.GetTeam(assignment.OpponentTeamId);
             float scoutAccuracy = GetScoutEffectiveAccuracy(scout);
@@ -199,8 +203,8 @@ namespace NBAHeadCoach.Core.Manager
                 ReportId = Guid.NewGuid().ToString(),
                 OpponentTeamId = assignment.OpponentTeamId,
                 OpponentName = opponent?.Name ?? "Unknown",
-                ScoutId = scout.ScoutId,
-                ScoutName = scout.Name,
+                ScoutId = scout.ProfileId,
+                ScoutName = scout.PersonName,
                 GeneratedDate = GameManager.Instance?.CurrentDate ?? DateTime.Now,
                 GamesAnalyzed = assignment.GamesWatched,
                 Confidence = CalculateReportConfidence(assignment.GamesWatched, scoutAccuracy)
@@ -404,15 +408,14 @@ namespace NBAHeadCoach.Core.Manager
 
         /// <summary>
         /// Process scout development at end of season.
-        /// </summary>
-        public void ProcessSeasonDevelopment(List<Scout> scouts)
+        public void ProcessSeasonDevelopment(List<UnifiedCareerProfile> scouts)
         {
             foreach (var scout in scouts)
             {
-                if (!_scoutDevelopment.TryGetValue(scout.ScoutId, out var data))
+                if (!_scoutDevelopment.TryGetValue(scout.ProfileId, out var data))
                 {
-                    data = new ScoutDevelopmentData { ScoutId = scout.ScoutId };
-                    _scoutDevelopment[scout.ScoutId] = data;
+                    data = new ScoutDevelopmentData { ScoutId = scout.ProfileId };
+                    _scoutDevelopment[scout.ProfileId] = data;
                 }
 
                 // Calculate improvement based on reports generated
@@ -425,13 +428,15 @@ namespace NBAHeadCoach.Core.Manager
                     float proEvalGain = improvement * 100f * 0.5f;
                     float prospectEvalGain = improvement * 100f * 0.3f;
 
-                    // This would need to be applied to the actual Scout object
-                    // For now, track in development data
+                    // Apply gains to the unified profile
+                    scout.ProEvaluation += Mathf.RoundToInt(proEvalGain);
+                    scout.ProspectEvaluation += Mathf.RoundToInt(prospectEvalGain);
+                    
                     data.AccuracyBonus += improvement;
 
                     var devEvent = new ScoutDevelopmentEvent
                     {
-                        ScoutId = scout.ScoutId,
+                        ScoutId = scout.ProfileId,
                         EventType = ScoutDevelopmentEventType.SeasonImprovement,
                         Description = $"Improved evaluation accuracy by {improvement:P1}",
                         AttributeGains = new Dictionary<string, float>
@@ -462,12 +467,12 @@ namespace NBAHeadCoach.Core.Manager
             data.ReportsGeneratedThisSeason++;
         }
 
-        private float GetScoutEffectiveAccuracy(Scout scout)
+        private float GetScoutEffectiveAccuracy(UnifiedCareerProfile scout)
         {
-            float baseAccuracy = scout.ProEvaluation / 100f;
+            float baseAccuracy = scout.EvaluationAccuracy / 100f;
 
             // Add bonus from development
-            if (_scoutDevelopment.TryGetValue(scout.ScoutId, out var data))
+            if (_scoutDevelopment.TryGetValue(scout.ProfileId, out var data))
             {
                 baseAccuracy += data.AccuracyBonus;
             }
@@ -512,10 +517,9 @@ namespace NBAHeadCoach.Core.Manager
             return _activeAssignments.GetValueOrDefault(scoutId);
         }
 
-        private Scout GetScout(string scoutId)
+        private UnifiedCareerProfile GetScout(string scoutId)
         {
-            // This would get scout from ScoutingManager
-            return ScoutingManager.Instance?.GetScout(scoutId);
+            return PersonnelManager.Instance?.GetProfile(scoutId);
         }
 
         #endregion

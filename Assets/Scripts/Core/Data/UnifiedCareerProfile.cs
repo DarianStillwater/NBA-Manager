@@ -39,6 +39,54 @@ namespace NBAHeadCoach.Core.Data
         GeneralManager = 41
     }
 
+    public static class UnifiedRoleExtensions
+    {
+        public static StaffPositionType ToStaffPositionType(this UnifiedRole role)
+        {
+            return role switch
+            {
+                UnifiedRole.HeadCoach => StaffPositionType.HeadCoach,
+                UnifiedRole.AssistantCoach => StaffPositionType.AssistantCoach,
+                UnifiedRole.OffensiveCoordinator => StaffPositionType.OffensiveCoordinator,
+                UnifiedRole.DefensiveCoordinator => StaffPositionType.DefensiveCoordinator,
+                UnifiedRole.Scout => StaffPositionType.Scout,
+                UnifiedRole.GeneralManager => StaffPositionType.GeneralManager,
+                UnifiedRole.AssistantGM => StaffPositionType.AssistantGM,
+                _ => StaffPositionType.AssistantCoach
+            };
+        }
+
+        public static UnifiedRole ToUnifiedRole(this StaffPositionType position)
+        {
+            return position switch
+            {
+                StaffPositionType.HeadCoach => UnifiedRole.HeadCoach,
+                StaffPositionType.AssistantCoach => UnifiedRole.AssistantCoach,
+                StaffPositionType.OffensiveCoordinator => UnifiedRole.OffensiveCoordinator,
+                StaffPositionType.DefensiveCoordinator => UnifiedRole.DefensiveCoordinator,
+                StaffPositionType.Scout => UnifiedRole.Scout,
+                StaffPositionType.GeneralManager => UnifiedRole.GeneralManager,
+                StaffPositionType.AssistantGM => UnifiedRole.AssistantGM,
+                _ => UnifiedRole.AssistantCoach
+            };
+        }
+
+        public static bool IsCoachingRole(this UnifiedRole role)
+        {
+            return role == UnifiedRole.AssistantCoach ||
+                   role == UnifiedRole.PositionCoach ||
+                   role == UnifiedRole.Coordinator ||
+                   role == UnifiedRole.HeadCoach;
+        }
+
+        public static bool IsFrontOfficeRole(this UnifiedRole role)
+        {
+            return role == UnifiedRole.Scout ||
+                   role == UnifiedRole.AssistantGM ||
+                   role == UnifiedRole.GeneralManager;
+        }
+    }
+
     /// <summary>
     /// A single entry in the career history spanning both tracks
     /// </summary>
@@ -139,6 +187,71 @@ namespace NBAHeadCoach.Core.Data
         public int YearsInCurrentRole;
         public int YearsUnemployed;  // For forced retirement tracking
 
+        // ==================== SIMULATION ATTRIBUTES (0-100) ====================
+        [Header("Tactical Ability")]
+        [Range(0, 100)] public int OffensiveScheme;
+        [Range(0, 100)] public int DefensiveScheme;
+        [Range(0, 100)] public int InGameAdjustments;
+        [Range(0, 100)] public int PlayDesign;
+
+        [Header("Game Management")]
+        [Range(0, 100)] public int GameManagement;
+        [Range(0, 100)] public int ClockManagement;
+        [Range(0, 100)] public int RotationManagement;
+
+        [Header("Player Development")]
+        [Range(0, 100)] public int PlayerDevelopment;
+        [Range(0, 100)] public int GuardDevelopment;
+        [Range(0, 100)] public int BigManDevelopment;
+        [Range(0, 100)] public int ShootingCoaching;
+        [Range(0, 100)] public int DefenseCoaching;
+
+        [Header("Leadership & Communication")]
+        [Range(0, 100)] public int Motivation;
+        [Range(0, 100)] public int Communication;
+        [Range(0, 100)] public int ManManagement;
+        [Range(0, 100)] public int MediaHandling;
+
+        [Header("Scouting & Preparation")]
+        [Range(0, 100)] public int ScoutingAbility;
+        [Range(0, 100)] public int TalentEvaluation;
+
+        [Header("Scouting Specifics")]
+        [Range(0, 100)] public int EvaluationAccuracy;
+        [Range(0, 100)] public int ProspectEvaluation;
+        [Range(0, 100)] public int ProEvaluation;
+        [Range(0, 100)] public int PotentialAssessment;
+        [Range(0, 100)] public int CollegeConnections;
+        [Range(0, 100)] public int InternationalConnections;
+        [Range(0, 100)] public int AgentRelationships;
+        [Range(0, 100)] public int WorkRate;
+        [Range(0, 100)] public int AttentionToDetail;
+        [Range(0, 100)] public int CharacterJudgment;
+
+        // ==================== SPECIALIZATIONS & STYLE ====================
+        public List<CoachSpecialization> Specializations = new List<CoachSpecialization>();
+        public List<ScoutSpecialization> ScoutingSpecializations = new List<ScoutSpecialization>();
+        public CoachingStyle PrimaryStyle;
+        public CoachingPhilosophy OffensivePhilosophy;
+        public CoachingPhilosophy DefensivePhilosophy;
+
+        [Header("Scouting History")]
+        public List<ScoutingHit> NotableHits = new List<ScoutingHit>();
+        public List<ScoutingMiss> NotableMisses = new List<ScoutingMiss>();
+
+        [Header("Contract")]
+        public CoachContract CurrentContract;
+        public int AnnualSalary;
+        public int ContractYearsRemaining;
+        public DateTime ContractStartDate;
+        public int BuyoutAmount;
+
+        [Header("Job Security")]
+        public JobSecurityStatus JobSecurity = JobSecurityStatus.Stable;
+        public SeasonExpectations CurrentExpectations;
+        public List<OwnerJobSecurityMessage> OwnerMessages = new List<OwnerJobSecurityMessage>();
+        public DateTime LastFiredDate;
+
         // ==================== CAREER HISTORY ====================
         [Header("Career History")]
         public List<CareerHistoryEntry> CareerHistory = new List<CareerHistoryEntry>();
@@ -174,6 +287,85 @@ namespace NBAHeadCoach.Core.Data
         public int TimesFired;
         public int TimesResigned;
         public int TrackSwitches;  // Number of times switched between coaching <-> FO
+
+        [Header("Awards & Achievements")]
+        public List<AwardHistory> Awards = new List<AwardHistory>();
+
+        // ==================== COMPUTED PROPERTIES ====================
+
+        /// <summary>
+        /// Overall rating based on current role and attributes.
+        /// </summary>
+        public int OverallRating
+        {
+            get
+            {
+                if (CurrentTrack == UnifiedCareerTrack.Retired || CurrentTrack == UnifiedCareerTrack.Unemployed)
+                    return 50;
+
+                float score = CurrentRole switch
+                {
+                    UnifiedRole.HeadCoach => (OffensiveScheme * 0.15f + DefensiveScheme * 0.15f +
+                                               GameManagement * 0.15f + PlayerDevelopment * 0.1f +
+                                               Motivation * 0.15f + Communication * 0.1f +
+                                               InGameAdjustments * 0.1f + ManManagement * 0.1f),
+
+                    UnifiedRole.AssistantCoach or UnifiedRole.PositionCoach => (PlayerDevelopment * 0.25f + Communication * 0.2f +
+                                                     ScoutingAbility * 0.2f + OffensiveScheme * 0.15f +
+                                                     DefensiveScheme * 0.1f + Motivation * 0.1f),
+
+                    UnifiedRole.Coordinator => (CurrentRoleDisplayName.Contains("Defense") ?
+                                                (DefensiveScheme * 0.35f + DefenseCoaching * 0.25f + Communication * 0.15f + ScoutingAbility * 0.15f + InGameAdjustments * 0.1f) :
+                                                (OffensiveScheme * 0.35f + PlayDesign * 0.25f + Communication * 0.15f + ScoutingAbility * 0.15f + InGameAdjustments * 0.1f)),
+
+                    UnifiedRole.Scout => (EvaluationAccuracy * 0.25f + ProspectEvaluation * 0.15f + 
+                                           ProEvaluation * 0.15f + PotentialAssessment * 0.15f + 
+                                           WorkRate * 0.1f + AttentionToDetail * 0.1f + 
+                                           CharacterJudgment * 0.1f),
+
+                    UnifiedRole.GeneralManager or UnifiedRole.AssistantGM => (TalentEvaluation * 0.25f + Communication * 0.2f +
+                                                                             ManManagement * 0.2f + MediaHandling * 0.15f +
+                                                                             Motivation * 0.1f + ScoutingAbility * 0.1f),
+
+                    _ => 50
+                };
+                return Mathf.RoundToInt(score);
+            }
+        }
+
+        private string CurrentRoleDisplayName => GetRoleDisplayName(CurrentRole);
+
+        /// <summary>
+        /// Career win percentage.
+        /// </summary>
+        public float WinPercentage => (TotalWins + TotalLosses > 0) ? (float)TotalWins / (TotalWins + TotalLosses) : 0f;
+
+        /// <summary>
+        /// Market value based on attributes and experience.
+        /// </summary>
+        public int MarketValue
+        {
+            get
+            {
+                int baseValue = CurrentRole switch
+                {
+                    UnifiedRole.HeadCoach => 2_000_000,
+                    UnifiedRole.GeneralManager => 2_500_000,
+                    UnifiedRole.AssistantGM => 1_200_000,
+                    UnifiedRole.Coordinator => 800_000,
+                    UnifiedRole.AssistantCoach => 500_000,
+                    UnifiedRole.Scout => 400_000,
+                    _ => 300_000
+                };
+
+                int skillValue = OverallRating * 50_000;
+                int expValue = Math.Min(TotalCoachingYears + TotalFrontOfficeYears, 20) * 25_000;
+                int winValue = (int)(WinPercentage * 500_000);
+                int champValue = TotalChampionships * 500_000;
+
+                return baseValue + skillValue + expValue + winValue + champValue;
+            }
+        }
 
         // ==================== FACTORY METHODS ====================
 
@@ -418,6 +610,11 @@ namespace NBAHeadCoach.Core.Data
                 else if (CurrentTrack == UnifiedCareerTrack.FrontOffice)
                     ChampionshipsAsGM++;
             }
+        }
+
+        public void AddAward(int year, AwardType awardType, string teamId)
+        {
+            Awards.Add(new AwardHistory(year, awardType, teamId));
         }
 
         /// <summary>
@@ -689,6 +886,53 @@ namespace NBAHeadCoach.Core.Data
                 return UnifiedCareerTrack.Coaching;
             return UnifiedCareerTrack.FrontOffice;
         }
+
+        /// <summary>
+        /// Gets effectiveness for a specific scouting target type.
+        /// </summary>
+        public float GetEffectivenessForTarget(ScoutingTargetType targetType)
+        {
+            float baseEffectiveness = EvaluationAccuracy / 100f;
+            float specializationBonus = 0f;
+            float skillBonus = 0f;
+
+            var primarySpec = ScoutingSpecializations.Count > 0 ? ScoutingSpecializations[0] : (ScoutSpecialization)(-1);
+            var secondarySpec = ScoutingSpecializations.Count > 1 ? ScoutingSpecializations[1] : (ScoutSpecialization)(-1);
+
+            switch (targetType)
+            {
+                case ScoutingTargetType.CollegeProspect:
+                    specializationBonus = (primarySpec == ScoutSpecialization.College) ? 0.15f :
+                                         (secondarySpec == ScoutSpecialization.College) ? 0.08f : 0f;
+                    skillBonus = (ProspectEvaluation + CollegeConnections) / 200f * 0.2f;
+                    break;
+
+                case ScoutingTargetType.InternationalProspect:
+                    specializationBonus = (primarySpec == ScoutSpecialization.International) ? 0.15f :
+                                         (secondarySpec == ScoutSpecialization.International) ? 0.08f : 0f;
+                    skillBonus = (ProspectEvaluation + InternationalConnections) / 200f * 0.2f;
+                    break;
+
+                case ScoutingTargetType.NBAPlayer:
+                    specializationBonus = (primarySpec == ScoutSpecialization.Pro) ? 0.15f :
+                                         (secondarySpec == ScoutSpecialization.Pro) ? 0.08f : 0f;
+                    skillBonus = ProEvaluation / 100f * 0.2f;
+                    break;
+
+                case ScoutingTargetType.OpponentTeam:
+                    specializationBonus = (primarySpec == ScoutSpecialization.Advance) ? 0.15f :
+                                         (secondarySpec == ScoutSpecialization.Advance) ? 0.08f : 0f;
+                    skillBonus = (ProEvaluation + AttentionToDetail) / 200f * 0.2f;
+                    break;
+            }
+
+            return Mathf.Clamp01(baseEffectiveness + specializationBonus + skillBonus);
+        }
+
+        /// <summary>
+        /// How many players this scout can evaluate per week.
+        /// </summary>
+        public int WeeklyCapacity => 2 + Mathf.FloorToInt(WorkRate / 25f);
     }
 
     /// <summary>
@@ -700,5 +944,210 @@ namespace NBAHeadCoach.Core.Data
         public List<UnifiedCareerProfile> AllProfiles = new List<UnifiedCareerProfile>();
         public List<string> RetiredProfileIds = new List<string>();
         public int LastProcessedYear;
+    }
+
+    // ==================== PERSONNEL ENUMS ====================
+
+    public enum CoachSpecialization
+    {
+        GuardDevelopment,
+        BigManDevelopment,
+        ShootingDevelopment,
+        DefensiveDevelopment,
+        PlaymakingDevelopment,
+        RookieDevelopment,
+        VeteranManagement,
+        OffensiveSchemes,
+        DefensiveSchemes,
+        PickAndRoll,
+        Transition,
+        ThreePointOffense
+    }
+
+    public enum CoachingStyle
+    {
+        Demanding,
+        Supportive,
+        HandsOff,
+        PlayerDevelopment,
+        WinNow,
+        Analytical,
+        OldSchool,
+        Innovative
+    }
+
+    public enum CoachingPhilosophy
+    {
+        FastPace,
+        SlowPace,
+        ThreePointHeavy,
+        InsideOut,
+        BallMovement,
+        IsoHeavy,
+        PickAndRollFocused,
+        Aggressive,
+        Conservative,
+        SwitchEverything,
+        DropCoverage,
+        ZoneHeavy,
+        ManToMan,
+        TrapHeavy
+    }
+
+    // ==================== SCOUTING ENUMS & CLASSES ====================
+
+    public enum ScoutSpecialization
+    {
+        College,
+        International,
+        Pro,
+        Advance,
+        Regional
+    }
+
+    public enum ScoutingTargetType
+    {
+        CollegeProspect,
+        InternationalProspect,
+        NBAPlayer,
+        OpponentTeam
+    }
+
+    [Serializable]
+    public class ScoutingHit
+    {
+        public string PlayerName;
+        public int DraftYear;
+        public string EvaluationSummary;
+        public int ProjectedPick;
+        public int ActualPick;
+    }
+
+    [Serializable]
+    public class ScoutingMiss
+    {
+        public string PlayerName;
+        public int DraftYear;
+        public string EvaluationSummary;
+        public string Outcome;
+    }
+
+    // ==================== JOB SECURITY & EXPECTATIONS ====================
+
+    public enum JobSecurityStatus
+    {
+        Untouchable, Secure, Stable, Uncertain, HotSeat, FinalWarning, Fired
+    }
+
+    public enum ExpectationResult
+    {
+        Exceeded, Met, Adequate, BelowExpectations, Failed
+    }
+
+    [Serializable]
+    public class SeasonExpectations
+    {
+        public int MinimumWins;
+        public int TargetWins;
+        public int StretchWins;
+        public bool ExpectsPlayoffs;
+        public string MinimumPlayoffResult;
+        public bool ExpectsDevelopment;
+        public List<string> PlayersToDevelope;
+        public string OwnerStatement;
+
+        public ExpectationResult Evaluate(int wins, bool madePlayoffs, string playoffResult)
+        {
+            if (wins >= StretchWins) return ExpectationResult.Exceeded;
+            if (wins >= TargetWins) return ExpectationResult.Met;
+            if (wins >= MinimumWins)
+            {
+                if (ExpectsPlayoffs && !madePlayoffs) return ExpectationResult.BelowExpectations;
+                return ExpectationResult.Adequate;
+            }
+            return ExpectationResult.Failed;
+        }
+    }
+
+    [Serializable]
+    public class OwnerJobSecurityMessage
+    {
+        public string MessageId;
+        public DateTime Date;
+        public JobSecurityStatus SecurityLevel;
+        public string Subject;
+        public string Message;
+        public bool RequiresResponse;
+        public List<string> ResponseOptions;
+        public string SelectedResponse;
+        public bool WasRead;
+    }
+
+    // ==================== DETAILED CONTRACTS ====================
+
+    public enum CoachContractType
+    {
+        Standard, InterimCoach, MultiYearGuaranteed, PerformanceBased
+    }
+
+    public enum IncentiveType
+    {
+        WinTotal, PlayoffAppearance, ConferenceFinals, FinalsAppearance, Championship, CoachOfYear
+    }
+
+    [Serializable]
+    public class CoachContractIncentive
+    {
+        public string Description;
+        public IncentiveType Type;
+        public int TargetValue;
+        public long Amount;
+        public bool IsAchieved;
+
+        public bool WasAchieved(int wins, bool madePlayoffs, string playoffResult, bool wonChampionship)
+        {
+            return Type switch
+            {
+                IncentiveType.WinTotal => wins >= TargetValue,
+                IncentiveType.PlayoffAppearance => madePlayoffs,
+                IncentiveType.ConferenceFinals => playoffResult is "Conference Finals" or "Finals" or "Champion",
+                IncentiveType.FinalsAppearance => playoffResult is "Finals" or "Champion",
+                IncentiveType.Championship => wonChampionship,
+                _ => false
+            };
+        }
+    }
+
+    [Serializable]
+    public class CoachContract
+    {
+        public string ContractId;
+        public string TeamId;
+        public int TotalYears;
+        public int CurrentYear;
+        public long AnnualSalary;
+        public long TotalValue;
+        public int GuaranteedYears;
+        public long GuaranteedMoney;
+        public bool IsFullyGuaranteed;
+        public bool HasTeamOption;
+        public int TeamOptionYear;
+        public bool HasCoachOption;
+        public int CoachOptionYear;
+        public List<CoachContractIncentive> Incentives;
+        public long BuyoutAmount;
+        public float BuyoutPercentage;
+        public DateTime StartDate;
+        public DateTime EndDate;
+        public CoachContractType ContractType;
+
+        public int YearsRemaining => TotalYears - CurrentYear;
+        public bool IsExpiring => YearsRemaining <= 1;
+
+        public long CalculateBuyout()
+        {
+            if (BuyoutAmount > 0) return BuyoutAmount;
+            return (long)(AnnualSalary * YearsRemaining * BuyoutPercentage);
+        }
     }
 }

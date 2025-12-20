@@ -36,13 +36,12 @@ namespace NBAHeadCoach.Core
         #region Career & League Data
 
         [Header("Career Data")]
-        [SerializeField] private CoachCareer _career;
+        [SerializeField] private UnifiedCareerProfile _career;
         [SerializeField] private string _playerTeamId;
         [SerializeField] private int _currentSeason;
         [SerializeField] private DateTime _currentDate;
 
-        public CoachCareer Career => _career;
-        public CoachCareer CoachCareer => _career;  // Alias for compatibility
+        public UnifiedCareerProfile Career => _career;
         public string PlayerTeamId => _playerTeamId;
         public int CurrentSeason => _currentSeason;
         public DateTime CurrentDate => _currentDate;
@@ -76,7 +75,8 @@ namespace NBAHeadCoach.Core
         private PlayerDevelopmentManager _developmentManager;
         private JobSecurityManager _jobSecurityManager;
         private AllStarManager _allStarManager;
-        private CoachJobMarketManager _coachJobManager;
+        private PersonnelManager _personnelManager;
+        public PersonnelManager PersonnelManager => _personnelManager;
         private InjuryManager _injuryManager;
         public InjuryManager InjuryManager => _injuryManager;
         private PlayoffManager _playoffManager;
@@ -97,6 +97,17 @@ namespace NBAHeadCoach.Core
         public AdvanceScoutingManager AdvanceScoutingManager => _advanceScoutingManager;
         private FormerPlayerCareerManager _formerPlayerCareerManager;
         public FormerPlayerCareerManager FormerPlayerCareerManager => _formerPlayerCareerManager;
+
+        private FinanceManager _financeManager;
+        public FinanceManager FinanceManager => _financeManager;
+
+        // Trade & AI System Managers (Plain C#)
+        private AITradeEvaluator _tradeEvaluator;
+        public AITradeEvaluator TradeEvaluator => _tradeEvaluator;
+        private TradeFinder _tradeFinder;
+        public TradeFinder TradeFinder => _tradeFinder;
+        private TradeNegotiationManager _tradeNegotiationManager;
+        public TradeNegotiationManager TradeNegotiationManager => _tradeNegotiationManager;
 
         // MatchSimulationController uses its own singleton pattern
         public MatchSimulationController MatchSimulation => MatchSimulationController.Instance;
@@ -153,10 +164,20 @@ namespace NBAHeadCoach.Core
 
             // Create non-MonoBehaviour managers
             PlayerDatabase = new PlayerDatabase();
+            _salaryCapManager = new SalaryCapManager();
+            _rosterManager = new RosterManager(_salaryCapManager);
+            
             SeasonController = new SeasonController(this);
             MatchController = new MatchFlowController(this);
             SaveLoad = new SaveLoadManager();
             _personalityManager = new PersonalityManager();
+            _financeManager = new FinanceManager();
+
+            // Initialize Trade & AI Systems
+            _tradeSystem = new TradeSystem(_salaryCapManager, PlayerDatabase);
+            _tradeEvaluator = new AITradeEvaluator(_salaryCapManager, PlayerDatabase);
+            _tradeFinder = new TradeFinder(_tradeEvaluator, _salaryCapManager, PlayerDatabase);
+            _tradeNegotiationManager = new TradeNegotiationManager(_tradeEvaluator, _tradeSystem, _tradeFinder);
 
             // Load player/team data
             StartCoroutine(LoadGameData());
@@ -291,15 +312,16 @@ namespace NBAHeadCoach.Core
 
         #region New Game
 
-        /// <summary>
-        /// Start a brand new career
-        /// </summary>
-        public void StartNewGame(string firstName, string lastName, int age, string teamId, DifficultySettings difficulty)
+        public void StartNewGame(string firstName, string lastName, int age, string teamId, DifficultySettings difficulty, int tactical, int development, int reputation)
         {
             Debug.Log($"[GameManager] Starting new game: Coach {firstName} {lastName}, Team: {teamId}");
 
-            // Create coach career
-            _career = CoachCareer.CreateNewCareer(firstName, lastName, age);
+            // Create coach career using UnifiedCareerProfile
+            _career = UnifiedCareerProfile.CreateForCoaching($"{firstName} {lastName}", DateTime.Now.Year, age, false, "Player_Coach", null);
+            _career.IsUserControlled = true;
+            _career.TacticalRating = tactical;
+            _career.PlayerDevelopment = development;
+            _career.Reputation = reputation;
             _playerTeamId = teamId;
 
             // Initialize season
@@ -308,8 +330,13 @@ namespace NBAHeadCoach.Core
 
             // Accept the job
             var team = GetTeam(teamId);
-            var contract = CoachContract.CreateStandardContract(teamId, 4, 5_000_000);
-            _career.AcceptJob(teamId, team?.Name ?? teamId, contract);
+            _career.HandleHired(_currentSeason, teamId, team?.Name ?? teamId, UnifiedRole.HeadCoach);
+            
+            // Set contract details
+            _career.ContractYears = 4;
+            _career.CurrentSalary = 5_000_000;
+
+            PersonnelManager.Instance?.RegisterProfile(_career);
 
             // Initialize season calendar for player's team
             SeasonController.InitializeSeason(_currentSeason);
@@ -331,21 +358,8 @@ namespace NBAHeadCoach.Core
         private void InitializeManagersForNewGame()
         {
             // Initialize managers that need setup for new game
-            // Most managers are singletons that initialize themselves
-            // We just need to trigger any new-game-specific setup
-
-            _jobSecurityManager?.InitializeForNewSeason(_career, _playerTeamId);
+            _jobSecurityManager?.InitializeForNewSeason(); // Logic inside should use PersonnelManager
             _developmentManager?.InitializeForNewSeason(_allTeams);
-
-            // Initialize staff management (coaches and scouts for all teams)
-            var staffManager = StaffManagementManager.Instance;
-            if (staffManager != null)
-            {
-                staffManager.SetPlayerDatabase(PlayerDatabase);
-                staffManager.SetUserTeam(_playerTeamId);
-                var teamIds = _allTeams.Select(t => t.TeamId).ToList();
-                staffManager.InitializeAllTeamStaff(teamIds);
-            }
 
             // Generate initial draft class for upcoming draft
             var draftGen = DraftClassGenerator.Instance;
@@ -412,18 +426,16 @@ namespace NBAHeadCoach.Core
                 _playoffManager?.RestoreFromSave(data.PlayoffData);
             }
 
-            // Restore staff management state
-            var staffManager = StaffManagementManager.Instance;
-            if (staffManager != null && data.StaffManagement != null)
-            {
-                staffManager.SetPlayerDatabase(PlayerDatabase);
-                staffManager.LoadSaveData(data.StaffManagement);
-            }
-
             // Restore personality data
             if (data.PersonalityData != null)
             {
                 _personalityManager?.LoadSaveData(data.PersonalityData);
+            }
+
+            // Restore Unified Careers
+            if (data.UnifiedCareers != null)
+            {
+                PersonnelManager.Instance?.LoadSaveData(data.UnifiedCareers);
             }
         }
 
@@ -444,8 +456,8 @@ namespace NBAHeadCoach.Core
                 PlayerStates = CreatePlayerStates(),
                 CalendarData = SeasonController.CreateCalendarSaveData(),
                 PlayoffData = _playoffManager?.CreateSaveData(),
-                StaffManagement = StaffManagementManager.Instance?.GetSaveData(),
-                PersonalityData = _personalityManager?.CreateSaveData()
+                PersonalityData = _personalityManager?.CreateSaveData(),
+                UnifiedCareers = PersonnelManager.Instance?.GetSaveData()
             };
         }
 
@@ -498,8 +510,12 @@ namespace NBAHeadCoach.Core
         {
             _currentSeason++;
             _currentDate = new DateTime(_currentSeason, 10, 1);
-            _career.Age++;
-            _career.CurrentContract.CurrentYear++;
+            
+            if (_career != null)
+            {
+                _career.CurrentAge++;
+                _career.CurrentContractYear++;
+            }
 
             SeasonController.InitializeSeason(_currentSeason);
             OnSeasonChanged?.Invoke(_currentSeason);
@@ -589,7 +605,7 @@ namespace NBAHeadCoach.Core
         public void RegisterDevelopmentManager(PlayerDevelopmentManager manager) => _developmentManager = manager;
         public void RegisterJobSecurityManager(JobSecurityManager manager) => _jobSecurityManager = manager;
         public void RegisterAllStarManager(AllStarManager manager) => _allStarManager = manager;
-        public void RegisterCoachJobManager(CoachJobMarketManager manager) => _coachJobManager = manager;
+        public void RegisterPersonnelManager(PersonnelManager manager) => _personnelManager = manager;
         public void RegisterInjuryManager(InjuryManager manager) => _injuryManager = manager;
         public void RegisterPlayoffManager(PlayoffManager manager) => _playoffManager = manager;
         public void RegisterHistoryManager(HistoryManager manager) => _historyManager = manager;

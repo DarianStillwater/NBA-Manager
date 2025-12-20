@@ -55,14 +55,14 @@ namespace NBAHeadCoach.UI.Panels
 
         // Internal state
         private List<GameObject> _spawnedRows = new List<GameObject>();
-        private List<object> _allStaff = new List<object>();  // Mixed Coach and Scout
-        private object _selectedStaff;  // Coach or Scout
+        private List<UnifiedCareerProfile> _allStaff = new List<UnifiedCareerProfile>();
+        private UnifiedCareerProfile _selectedStaff;
         private StaffFilterMode _currentFilter = StaffFilterMode.All;
         private StaffSortMode _currentSort = StaffSortMode.Rating;
 
         // Events
-        public event Action<object> OnStaffSelected;
-        public event Action<object> OnStaffFired;
+        public event Action<UnifiedCareerProfile> OnStaffSelected;
+        public event Action<UnifiedCareerProfile> OnStaffFired;
         public event Action OnHireNewClicked;
 
         private enum StaffFilterMode { All, Coaches, Scouts, Coordinators }
@@ -154,7 +154,7 @@ namespace NBAHeadCoach.UI.Panels
             // Update team info
             RefreshTeamInfo(team);
 
-            // Gather all staff (this would come from CoachingStaffManager and ScoutingManager)
+            // Gather all staff
             GatherAllStaff(team.TeamId);
 
             // Apply filters and sorting
@@ -169,30 +169,15 @@ namespace NBAHeadCoach.UI.Panels
 
         private void GatherAllStaff(string teamId)
         {
-            // Get staff from StaffManagementManager (the facade for all staff operations)
-            var staffManager = StaffManagementManager.Instance;
-
-            if (staffManager == null)
+            var personnelManager = PersonnelManager.Instance;
+            if (personnelManager == null)
             {
-                Debug.LogWarning("[StaffPanel] StaffManagementManager.Instance is null - cannot gather staff");
+                Debug.LogWarning("[StaffPanel] PersonnelManager.Instance is null");
                 return;
             }
 
-            // Get all coaches
-            var coaches = staffManager.GetCoachingStaff(teamId);
-            foreach (var coach in coaches)
-            {
-                _allStaff.Add(coach);
-            }
-
-            // Get all scouts
-            var scouts = staffManager.GetScouts(teamId);
-            foreach (var scout in scouts)
-            {
-                _allStaff.Add(scout);
-            }
-
-            Debug.Log($"[StaffPanel] Gathered {coaches.Count} coaches and {scouts.Count} scouts for team: {teamId}");
+            _allStaff = personnelManager.GetTeamStaff(teamId);
+            Debug.Log($"[StaffPanel] Gathered {_allStaff.Count} staff members for team: {teamId}");
         }
 
         private void RefreshTeamInfo(Team team)
@@ -200,9 +185,10 @@ namespace NBAHeadCoach.UI.Panels
             if (_teamNameText != null)
                 _teamNameText.text = team.Name;
 
-            // Get budget info from StaffManagementManager
-            long totalBudget = 15_000_000;  // Default staff budget
-            long usedBudget = StaffManagementManager.Instance?.GetTotalStaffBudget(team.TeamId) ?? 0;
+            // Get budget info from FinanceManager
+            var finance = GameManager.Instance?.FinanceManager?.GetTeamFinance(team.TeamId);
+            long totalBudget = finance?.StaffBudget ?? 15_000_000;
+            long usedBudget = _allStaff.Sum(s => (long)s.AnnualSalary);
 
             if (_staffCountText != null)
                 _staffCountText.text = $"Staff: {_allStaff.Count}";
@@ -218,39 +204,38 @@ namespace NBAHeadCoach.UI.Panels
             }
         }
 
-        private List<object> GetFilteredAndSortedStaff()
+        private List<UnifiedCareerProfile> GetFilteredAndSortedStaff()
         {
             var filtered = _allStaff.AsEnumerable();
 
             // Apply filter
             filtered = _currentFilter switch
             {
-                StaffFilterMode.Coaches => filtered.Where(s => s is Coach c && !IsCoordinator(c)),
-                StaffFilterMode.Scouts => filtered.Where(s => s is Scout),
-                StaffFilterMode.Coordinators => filtered.Where(s => s is Coach c && IsCoordinator(c)),
+                StaffFilterMode.Coaches => filtered.Where(s => s.CurrentTrack == UnifiedCareerTrack.Coaching && !s.CurrentRole.IsCoordinator()),
+                StaffFilterMode.Scouts => filtered.Where(s => s.CurrentRole == UnifiedRole.Scout),
+                StaffFilterMode.Coordinators => filtered.Where(s => s.CurrentRole.IsCoordinator()),
                 _ => filtered
             };
 
             // Apply sort
             filtered = _currentSort switch
             {
-                StaffSortMode.Rating => filtered.OrderByDescending(GetStaffRating),
-                StaffSortMode.Salary => filtered.OrderByDescending(GetStaffSalary),
-                StaffSortMode.Name => filtered.OrderBy(GetStaffName),
-                StaffSortMode.Position => filtered.OrderBy(GetStaffPositionOrder),
+                StaffSortMode.Rating => filtered.OrderByDescending(s => s.OverallRating),
+                StaffSortMode.Salary => filtered.OrderByDescending(s => s.AnnualSalary),
+                StaffSortMode.Name => filtered.OrderBy(s => s.PersonName),
+                StaffSortMode.Position => filtered.OrderBy(s => (int)s.CurrentRole),
                 _ => filtered
             };
 
             return filtered.ToList();
         }
 
-        private bool IsCoordinator(Coach coach)
+        private bool IsCoordinator(UnifiedCareerProfile profile)
         {
-            return coach.Position == CoachPosition.OffensiveCoordinator ||
-                   coach.Position == CoachPosition.DefensiveCoordinator;
+            return profile.CurrentRole.IsCoordinator();
         }
 
-        private void CreateStaffRow(object staff)
+        private void CreateStaffRow(UnifiedCareerProfile staff)
         {
             GameObject row;
 
@@ -277,7 +262,7 @@ namespace NBAHeadCoach.UI.Panels
             }
         }
 
-        private GameObject CreateDynamicStaffRow(object staff)
+        private GameObject CreateDynamicStaffRow(UnifiedCareerProfile profile)
         {
             if (_listContent == null) return null;
 
@@ -299,18 +284,18 @@ namespace NBAHeadCoach.UI.Panels
             rectTransform.sizeDelta = new Vector2(0, 40);
 
             // Add text columns: Name | Position | Specialty | Assignment | Salary | Rating
-            AddColumnText(row, GetStaffName(staff), 150);
-            AddColumnText(row, GetStaffPositionShort(staff), 60);
-            AddColumnText(row, GetStaffSpecialty(staff), 100);
-            AddColumnText(row, GetStaffAssignment(staff), 120);
-            AddColumnText(row, $"${GetStaffSalary(staff):N0}", 80);
+            AddColumnText(row, profile.PersonName, 150);
+            AddColumnText(row, profile.CurrentRole.ToString().Substring(0, 2).ToUpper(), 60);
+            AddColumnText(row, GetStaffSpecialty(profile), 100);
+            AddColumnText(row, GetStaffAssignment(profile), 120);
+            AddColumnText(row, $"${profile.AnnualSalary:N0}", 80);
 
             // Rating with color
-            var ratingObj = AddColumnText(row, GetStaffRating(staff).ToString(), 40);
+            var ratingObj = AddColumnText(row, profile.OverallRating.ToString(), 40);
             var ratingText = ratingObj.GetComponent<Text>();
             if (ratingText != null)
             {
-                ratingText.color = AttributeDisplayFactory.GetRatingColor(GetStaffRating(staff));
+                ratingText.color = AttributeDisplayFactory.GetRatingColor(profile.OverallRating);
             }
 
             return row;
@@ -340,120 +325,75 @@ namespace NBAHeadCoach.UI.Panels
 
         // ==================== STAFF DETAIL ====================
 
-        private void SelectStaff(object staff)
+        private void SelectStaff(UnifiedCareerProfile profile)
         {
-            _selectedStaff = staff;
-            OnStaffSelected?.Invoke(staff);
-            ShowStaffDetail(staff);
+            _selectedStaff = profile;
+            OnStaffSelected?.Invoke(profile);
+            ShowStaffDetail(profile);
         }
 
-        private void ShowStaffDetail(object staff)
+        private void ShowStaffDetail(UnifiedCareerProfile profile)
         {
             if (_detailPanel != null)
                 _detailPanel.SetActive(true);
 
-            if (staff is Coach coach)
-            {
-                ShowCoachDetail(coach);
-            }
-            else if (staff is Scout scout)
-            {
-                ShowScoutDetail(scout);
-            }
-
-            UpdateAssignmentUI(staff);
-        }
-
-        private void ShowCoachDetail(Coach coach)
-        {
             if (_staffNameText != null)
-                _staffNameText.text = coach.FullName;
+                _staffNameText.text = profile.PersonName;
 
             if (_staffPositionText != null)
-                _staffPositionText.text = coach.Position.ToString();
+                _staffPositionText.text = profile.CurrentRole.ToString();
 
             if (_staffRatingText != null)
             {
-                _staffRatingText.text = $"Rating: {coach.OverallRating}";
-                AttributeDisplayFactory.ApplyRatingColor(_staffRatingText, coach.OverallRating);
+                _staffRatingText.text = $"Rating: {profile.OverallRating}";
+                AttributeDisplayFactory.ApplyRatingColor(_staffRatingText, profile.OverallRating);
             }
 
             if (_staffSalaryText != null)
-                _staffSalaryText.text = $"Salary: ${coach.AnnualSalary:N0}/yr";
+                _staffSalaryText.text = $"Salary: ${profile.AnnualSalary:N0}/yr";
 
             if (_staffContractText != null)
-                _staffContractText.text = $"Contract: {coach.ContractYearsRemaining} years";
+                _staffContractText.text = $"Contract: {profile.ContractYearsRemaining} years";
 
             if (_staffAgeText != null)
-                _staffAgeText.text = $"Age: {coach.Age}";
+                _staffAgeText.text = $"Age: {profile.CurrentAge}";
 
             if (_staffExperienceText != null)
-                _staffExperienceText.text = $"Experience: {coach.ExperienceYears} years";
-
-            // Show attributes
-            ShowCoachAttributes(coach);
-        }
-
-        private void ShowScoutDetail(Scout scout)
-        {
-            if (_staffNameText != null)
-                _staffNameText.text = scout.FullName;
-
-            if (_staffPositionText != null)
-                _staffPositionText.text = "Scout";
-
-            if (_staffRatingText != null)
             {
-                _staffRatingText.text = $"Rating: {scout.OverallRating}";
-                AttributeDisplayFactory.ApplyRatingColor(_staffRatingText, scout.OverallRating);
+                int exp = profile.CurrentTrack == UnifiedCareerTrack.Coaching ? profile.TotalCoachingYears : profile.TotalFrontOfficeYears;
+                _staffExperienceText.text = $"Experience: {exp} years";
             }
 
-            if (_staffSalaryText != null)
-                _staffSalaryText.text = $"Salary: ${scout.AnnualSalary:N0}/yr";
+            // Show attributes based on role
+            ShowAttributes(profile);
 
-            if (_staffContractText != null)
-                _staffContractText.text = $"Contract: {scout.ContractYearsRemaining} years";
-
-            if (_staffAgeText != null)
-                _staffAgeText.text = $"Age: {scout.Age}";
-
-            if (_staffExperienceText != null)
-                _staffExperienceText.text = $"Experience: {scout.ExperienceYears} years";
-
-            // Show attributes
-            ShowScoutAttributes(scout);
+            UpdateAssignmentUI(profile);
         }
 
-        private void ShowCoachAttributes(Coach coach)
+        private void ShowAttributes(UnifiedCareerProfile profile)
         {
             if (_attributesContainer == null) return;
 
-            var attributes = new Dictionary<string, int>
+            var attributes = new Dictionary<string, int>();
+
+            if (profile.CurrentTrack == UnifiedCareerTrack.Coaching)
             {
-                { "Offensive Scheme", coach.OffensiveScheme },
-                { "Defensive Scheme", coach.DefensiveScheme },
-                { "Game Management", coach.GameManagement },
-                { "Player Development", coach.PlayerDevelopment },
-                { "Motivation", coach.Motivation },
-                { "Communication", coach.Communication }
-            };
-
-            AttributeDisplayFactory.PopulateAttributeContainer(_attributesContainer, attributes);
-        }
-
-        private void ShowScoutAttributes(Scout scout)
-        {
-            if (_attributesContainer == null) return;
-
-            var attributes = new Dictionary<string, int>
+                attributes.Add("Offensive Scheme", profile.OffensiveScheme);
+                attributes.Add("Defensive Scheme", profile.DefensiveScheme);
+                attributes.Add("Game Management", profile.GameManagement);
+                attributes.Add("Player Development", profile.PlayerDevelopment);
+                attributes.Add("Motivation", profile.Motivation);
+                attributes.Add("Communication", profile.Communication);
+            }
+            else
             {
-                { "Evaluation Accuracy", scout.EvaluationAccuracy },
-                { "Prospect Evaluation", scout.ProspectEvaluation },
-                { "Pro Evaluation", scout.ProEvaluation },
-                { "Potential Assessment", scout.PotentialAssessment },
-                { "Work Rate", scout.WorkRate },
-                { "Attention to Detail", scout.AttentionToDetail }
-            };
+                attributes.Add("Evaluation Accuracy", profile.EvaluationAccuracy);
+                attributes.Add("Prospect Evaluation", profile.ProspectEvaluation);
+                attributes.Add("Pro Evaluation", profile.ProEvaluation);
+                attributes.Add("Potential Assessment", profile.PotentialAssessment);
+                attributes.Add("Work Rate", profile.WorkRate);
+                attributes.Add("Attention to Detail", profile.AttentionToDetail);
+            }
 
             AttributeDisplayFactory.PopulateAttributeContainer(_attributesContainer, attributes);
         }
@@ -467,7 +407,7 @@ namespace NBAHeadCoach.UI.Panels
 
         // ==================== ASSIGNMENT UI ====================
 
-        private void UpdateAssignmentUI(object staff)
+        private void UpdateAssignmentUI(UnifiedCareerProfile profile)
         {
             if (_assignmentPanel == null) return;
 
@@ -478,9 +418,9 @@ namespace NBAHeadCoach.UI.Panels
             {
                 _taskDropdown.ClearOptions();
 
-                if (staff is Coach coach)
+                if (profile.CurrentTrack == UnifiedCareerTrack.Coaching)
                 {
-                    if (coach.Position == CoachPosition.AssistantCoach)
+                    if (profile.CurrentRole == UnifiedRole.AssistantCoach)
                     {
                         _taskDropdown.AddOptions(new List<string>
                         {
@@ -488,7 +428,7 @@ namespace NBAHeadCoach.UI.Panels
                             "Player Development"
                         });
                     }
-                    else if (IsCoordinator(coach))
+                    else if (profile.CurrentRole.IsCoordinator())
                     {
                         _taskDropdown.AddOptions(new List<string>
                         {
@@ -501,7 +441,7 @@ namespace NBAHeadCoach.UI.Panels
                         _assignmentPanel.SetActive(false);  // HC doesn't get assigned
                     }
                 }
-                else if (staff is Scout)
+                else if (profile.CurrentRole == UnifiedRole.Scout)
                 {
                     _taskDropdown.AddOptions(new List<string>
                     {
@@ -517,7 +457,11 @@ namespace NBAHeadCoach.UI.Panels
             // Show current assignment
             if (_currentAssignmentText != null)
             {
-                _currentAssignmentText.text = $"Current: {GetStaffAssignment(staff)}";
+                var teamId = GameManager.Instance?.GetPlayerTeam()?.TeamId;
+                var assignment = PersonnelManager.Instance?.GetActiveAssignments(teamId)
+                    ?.FirstOrDefault(a => a.StaffId == profile.ProfileId);
+                
+                _currentAssignmentText.text = $"Current: {(assignment != null ? assignment.GetTaskDisplayName() : "Unassigned")}";
             }
         }
 
@@ -548,10 +492,40 @@ namespace NBAHeadCoach.UI.Panels
             int taskIndex = _taskDropdown.value;
             string taskName = _taskDropdown.options[taskIndex].text;
 
-            Debug.Log($"[StaffPanel] Assigning {GetStaffName(_selectedStaff)} to task: {taskName}");
+            Debug.Log($"[StaffPanel] Assigning {_selectedStaff.PersonName} to task: {taskName}");
 
-            // TODO: Call StaffManagementManager to assign task
-            // StaffManagementManager.Instance.AssignScoutToTask(...) or AssignCoachToPlayers(...)
+            if (_selectedStaff.CurrentRole == UnifiedRole.Scout)
+            {
+                // Mapping task name to StaffTask (this is a bit fragile, should use enum)
+                StaffTask task = taskName switch
+                {
+                    "Draft Prospect Scouting" => StaffTask.DraftProspectScouting,
+                    "Opponent Scouting" => StaffTask.OpponentScouting,
+                    "Trade Target Evaluation" => StaffTask.TradeTargetEvaluation,
+                    "Free Agent Evaluation" => StaffTask.FreeAgentEvaluation,
+                    _ => StaffTask.None
+                };
+
+                if (task != StaffTask.None)
+                {
+                    PersonnelManager.Instance.AssignScoutToTask(_selectedStaff.ProfileId, task, "Global"); // Target dummy
+                }
+                else
+                {
+                    PersonnelManager.Instance.UnassignStaff(_selectedStaff.ProfileId);
+                }
+            }
+            else if (_selectedStaff.CurrentRole == UnifiedRole.AssistantCoach)
+            {
+                if (taskName == "Player Development")
+                {
+                    PersonnelManager.Instance.AssignCoachToPlayers(_selectedStaff.ProfileId, new List<string>()); // Dummy empty list
+                }
+                else
+                {
+                    PersonnelManager.Instance.UnassignStaff(_selectedStaff.ProfileId);
+                }
+            }
 
             UpdateAssignmentUI(_selectedStaff);
         }
@@ -563,38 +537,18 @@ namespace NBAHeadCoach.UI.Panels
             var team = GameManager.Instance?.GetPlayerTeam();
             if (team == null) return;
 
-            var staffManager = StaffManagementManager.Instance;
-            if (staffManager == null)
+            var personnelManager = PersonnelManager.Instance;
+            if (personnelManager == null)
             {
-                Debug.LogWarning("[StaffPanel] StaffManagementManager not available");
+                Debug.LogWarning("[StaffPanel] PersonnelManager not available");
                 return;
             }
 
-            (bool success, string message) result;
-
-            if (_selectedStaff is Coach coach)
-            {
-                result = staffManager.FireCoach(team.TeamId, coach.CoachId);
-            }
-            else if (_selectedStaff is Scout scout)
-            {
-                result = staffManager.FireScout(team.TeamId, scout.ScoutId);
-            }
-            else
-            {
-                Debug.LogWarning("[StaffPanel] Unknown staff type");
-                return;
-            }
-
-            if (result.success)
-            {
-                OnStaffFired?.Invoke(_selectedStaff);
-                Debug.Log($"[StaffPanel] Fired: {GetStaffName(_selectedStaff)} - {result.message}");
-            }
-            else
-            {
-                Debug.LogWarning($"[StaffPanel] Failed to fire: {result.message}");
-            }
+            // Perform fire operation
+            personnelManager.FirePersonnel(_selectedStaff.ProfileId, "Fired by team management");
+            
+            OnStaffFired?.Invoke(_selectedStaff);
+            Debug.Log($"[StaffPanel] Fired: {_selectedStaff.PersonName}");
 
             RefreshStaffList();
             ClearStaffDetail();
@@ -603,96 +557,63 @@ namespace NBAHeadCoach.UI.Panels
         private void OnViewContractClicked()
         {
             if (_selectedStaff == null) return;
-            Debug.Log($"[StaffPanel] View contract for: {GetStaffName(_selectedStaff)}");
-            // TODO: Show contract detail popup
+            
+            // Display detailed contract info (would be a popup in full implementation)
+            var staff = _selectedStaff;
+            string contractDetails = $"=== CONTRACT DETAILS ===\n" +
+                $"Staff: {staff.PersonName}\n" +
+                $"Role: {staff.CurrentRole}\n" +
+                $"Team: {staff.CurrentTeamName ?? "Free Agent"}\n" +
+                $"Annual Salary: ${staff.AnnualSalary:N0}\n" +
+                $"Contract Years Remaining: {staff.ContractYearsRemaining}\n" +
+                $"Market Value: ${staff.MarketValue:N0}\n" +
+                $"Overall Rating: {staff.OverallRating}";
+            
+            Debug.Log($"[StaffPanel] {contractDetails}");
+            
+            // Update the detail panel contract text with more info if available
+            if (_staffContractText != null)
+            {
+                _staffContractText.text = $"Contract: {staff.ContractYearsRemaining}yr @ ${staff.AnnualSalary:N0}/yr";
+            }
         }
 
         private void OnHireNewClicked_Internal()
         {
             OnHireNewClicked?.Invoke();
             Debug.Log("[StaffPanel] Hire new staff clicked");
-            // TODO: Open StaffHiringPanel
+            
+            // Navigate to StaffHiringPanel
+            var controller = FindObjectOfType<GameSceneController>();
+            if (controller != null)
+            {
+                controller.ShowPanel("StaffHiring");
+            }
         }
 
         // ==================== HELPER METHODS ====================
 
-        private string GetStaffName(object staff)
+        private string GetStaffSpecialty(UnifiedCareerProfile profile)
         {
-            if (staff is Coach coach) return coach.FullName;
-            if (staff is Scout scout) return scout.FullName;
-            return "Unknown";
-        }
-
-        private int GetStaffRating(object staff)
-        {
-            if (staff is Coach coach) return coach.OverallRating;
-            if (staff is Scout scout) return scout.OverallRating;
-            return 0;
-        }
-
-        private int GetStaffSalary(object staff)
-        {
-            if (staff is Coach coach) return coach.AnnualSalary;
-            if (staff is Scout scout) return scout.AnnualSalary;
-            return 0;
-        }
-
-        private string GetStaffPositionShort(object staff)
-        {
-            if (staff is Coach coach)
+            if (profile.CurrentTrack == UnifiedCareerTrack.Coaching)
             {
-                return coach.Position switch
-                {
-                    CoachPosition.HeadCoach => "HC",
-                    CoachPosition.AssistantCoach => "AC",
-                    CoachPosition.OffensiveCoordinator => "OC",
-                    CoachPosition.DefensiveCoordinator => "DC",
-                    _ => "COACH"
-                };
+                if (profile.Specializations.Count > 0)
+                    return profile.Specializations[0].ToString();
+                return profile.PrimaryStyle.ToString();
             }
-            if (staff is Scout) return "SCT";
-            return "?";
-        }
-
-        private int GetStaffPositionOrder(object staff)
-        {
-            if (staff is Coach coach)
+            else if (profile.ScoutingSpecializations.Count > 0)
             {
-                return coach.Position switch
-                {
-                    CoachPosition.HeadCoach => 0,
-                    CoachPosition.OffensiveCoordinator => 1,
-                    CoachPosition.DefensiveCoordinator => 2,
-                    CoachPosition.AssistantCoach => 3,
-                    _ => 10
-                };
-            }
-            if (staff is Scout) return 20;
-            return 99;
-        }
-
-        private string GetStaffSpecialty(object staff)
-        {
-            if (staff is Coach coach)
-            {
-                if (coach.Specializations.Count > 0)
-                    return coach.Specializations[0].ToString();
-                return coach.PrimaryStyle.ToString();
-            }
-            if (staff is Scout scout)
-            {
-                return scout.PrimarySpecialization.ToString();
+                return profile.ScoutingSpecializations[0].ToString();
             }
             return "-";
         }
 
-        private string GetStaffAssignment(object staff)
+        private string GetStaffAssignment(UnifiedCareerProfile profile)
         {
-            // Get from StaffManagementManager
-            string staffId = staff is Coach c ? c.CoachId : (staff is Scout s ? s.ScoutId : null);
-            if (string.IsNullOrEmpty(staffId)) return "-";
-
-            var assignment = StaffManagementManager.Instance?.GetAssignment(staffId);
+            var teamId = GameManager.Instance?.GetPlayerTeam()?.TeamId;
+            var assignment = PersonnelManager.Instance?.GetActiveAssignments(teamId)
+                ?.FirstOrDefault(a => a.StaffId == profile.ProfileId);
+            
             return assignment?.GetTaskDisplayName() ?? "Unassigned";
         }
     }

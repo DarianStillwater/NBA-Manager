@@ -1000,7 +1000,7 @@ namespace NBAHeadCoach.Core
             return null;
         }
 
-        // Event fired when a player enters the coaching/scouting pipeline
+        // Event fired when a player enters the coaching/pipeline
         public event Action<PlayerCareerData, PostPlayerCareerPath> OnPlayerEnteredCoachingPipeline;
 
         private List<string> GetRivalTeams(string teamId)
@@ -1042,7 +1042,7 @@ namespace NBAHeadCoach.Core
         // ==================== NON-PLAYER RETIREMENT METHODS ====================
 
         /// <summary>
-        /// Evaluate retirement factors for a non-player (coach, GM, scout, etc.)
+        /// Evaluate retirement factors for a non-player (coach, GM, etc.)
         /// </summary>
         public NonPlayerRetirementFactors EvaluateNonPlayerRetirement(UnifiedCareerProfile profile)
         {
@@ -1123,7 +1123,7 @@ namespace NBAHeadCoach.Core
 
         /// <summary>
         /// Evaluate all non-players for potential retirement at end of season
-        /// Works with UnifiedCareerManager to process all profiles
+        /// Works with PersonnelManager to process all profiles
         /// </summary>
         public List<NonPlayerRetirementAnnouncement> ProcessAllNonPlayerRetirements(
             List<UnifiedCareerProfile> profiles,

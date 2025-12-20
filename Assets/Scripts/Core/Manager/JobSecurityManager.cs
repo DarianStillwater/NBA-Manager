@@ -10,69 +10,65 @@ namespace NBAHeadCoach.Core.Manager
     /// </summary>
     public class JobSecurityManager
     {
-        private Dictionary<string, CoachCareer> _coachCareers;
-        private Dictionary<string, List<OwnerJobSecurityMessage>> _ownerMessages;
+        private Dictionary<string, UnifiedCareerProfile> _profiles;
         private Dictionary<string, SeasonExpectations> _expectations;
 
-        public event Action<CoachCareer> OnJobSecurityChanged;
+        public event Action<UnifiedCareerProfile> OnJobSecurityChanged;
         public event Action<OwnerJobSecurityMessage> OnOwnerMessageReceived;
-        public event Action<CoachCareer> OnCoachFired;
-        public event Action<CoachCareer, string> OnHotSeatWarning;
+        public event Action<UnifiedCareerProfile> OnStaffFired;
+        public event Action<UnifiedCareerProfile, string> OnHotSeatWarning;
 
         public JobSecurityManager()
         {
-            _coachCareers = new Dictionary<string, CoachCareer>();
-            _ownerMessages = new Dictionary<string, List<OwnerJobSecurityMessage>>();
+            _profiles = new Dictionary<string, UnifiedCareerProfile>();
             _expectations = new Dictionary<string, SeasonExpectations>();
         }
 
         /// <summary>
         /// Register a coach's career
         /// </summary>
-        public void RegisterCoach(CoachCareer career)
+        public void RegisterProfile(UnifiedCareerProfile profile)
         {
-            _coachCareers[career.CoachId] = career;
-            _ownerMessages[career.CoachId] = new List<OwnerJobSecurityMessage>();
+            _profiles[profile.ProfileId] = profile;
+            profile.OwnerMessages ??= new List<OwnerJobSecurityMessage>();
         }
 
         /// <summary>
         /// Get coach career by ID
         /// </summary>
-        public CoachCareer GetCoachCareer(string coachId)
+        public UnifiedCareerProfile GetProfile(string profileId)
         {
-            _coachCareers.TryGetValue(coachId, out var career);
-            return career;
+            _profiles.TryGetValue(profileId, out var profile);
+            return profile;
         }
 
         /// <summary>
         /// Initialize the manager for a new season
         /// </summary>
-        public void InitializeForNewSeason(CoachCareer career, string teamId)
+        public void InitializeForNewSeason(UnifiedCareerProfile profile, string teamId)
         {
-            if (career == null) return;
+            if (profile == null) return;
 
-            // Register the coach if not already registered
-            if (!_coachCareers.ContainsKey(career.CoachId))
+            if (!_profiles.ContainsKey(profile.ProfileId))
             {
-                RegisterCoach(career);
+                RegisterProfile(profile);
             }
 
-            // Reset season-specific data
-            _ownerMessages[career.CoachId]?.Clear();
+            profile.OwnerMessages?.Clear();
 
-            Debug.Log($"[JobSecurityManager] Initialized for new season - Coach: {career.CoachId}, Team: {teamId}");
+            Debug.Log($"[JobSecurityManager] Initialized for new season - Profile: {profile.ProfileId}, Team: {teamId}");
         }
 
         /// <summary>
         /// Set season expectations from owner
         /// </summary>
         public SeasonExpectations SetSeasonExpectations(
-            string coachId,
+            string profileId,
             TeamFinances teamFinances,
             int projectedTeamStrength)
         {
-            var career = GetCoachCareer(coachId);
-            if (career == null || teamFinances?.TeamOwner == null) return null;
+            var profile = GetProfile(profileId);
+            if (profile == null || teamFinances?.TeamOwner == null) return null;
 
             var owner = teamFinances.TeamOwner;
 
@@ -130,11 +126,11 @@ namespace NBAHeadCoach.Core.Manager
             // Generate owner statement
             expectations.OwnerStatement = GenerateExpectationStatement(owner, expectations);
 
-            _expectations[coachId] = expectations;
-            career.CurrentExpectations = expectations;
+            _expectations[profileId] = expectations;
+            profile.CurrentExpectations = expectations;
 
             // Send expectations message
-            SendOwnerMessage(coachId, owner, JobSecurityStatus.Stable,
+            SendOwnerMessage(profileId, owner, JobSecurityStatus.Stable,
                 "Season Expectations", expectations.OwnerStatement, false);
 
             return expectations;
@@ -144,23 +140,23 @@ namespace NBAHeadCoach.Core.Manager
         /// Evaluate job security based on current record
         /// </summary>
         public JobSecurityStatus EvaluateJobSecurity(
-            string coachId,
+            string profileId,
             int currentWins,
             int currentLosses,
             bool isPlayoffBound,
             TeamFinances teamFinances)
         {
-            var career = GetCoachCareer(coachId);
-            if (career == null) return JobSecurityStatus.Stable;
+            var profile = GetProfile(profileId);
+            if (profile == null) return JobSecurityStatus.Stable;
 
-            var expectations = _expectations.GetValueOrDefault(coachId, career.CurrentExpectations);
+            var expectations = _expectations.GetValueOrDefault(profileId, profile.CurrentExpectations);
             if (expectations == null) return JobSecurityStatus.Stable;
 
             var owner = teamFinances?.TeamOwner;
             if (owner == null) return JobSecurityStatus.Stable;
 
             int gamesPlayed = currentWins + currentLosses;
-            if (gamesPlayed == 0) return career.JobSecurity;
+            if (gamesPlayed == 0) return profile.JobSecurity;
 
             float winPct = currentWins / (float)gamesPlayed;
             int projectedWins = (int)(winPct * 82);
@@ -208,9 +204,9 @@ namespace NBAHeadCoach.Core.Manager
             }
 
             // Check if status changed
-            if (newStatus != career.JobSecurity)
+            if (newStatus != profile.JobSecurity)
             {
-                HandleJobSecurityChange(career, newStatus, owner, currentWins, currentLosses);
+                HandleJobSecurityChange(profile, newStatus, owner, currentWins, currentLosses);
             }
 
             return newStatus;
@@ -220,27 +216,27 @@ namespace NBAHeadCoach.Core.Manager
         /// Handle change in job security status
         /// </summary>
         private void HandleJobSecurityChange(
-            CoachCareer career,
+            UnifiedCareerProfile profile,
             JobSecurityStatus newStatus,
             Owner owner,
             int wins,
             int losses)
         {
-            var oldStatus = career.JobSecurity;
-            career.JobSecurity = newStatus;
+            var oldStatus = profile.JobSecurity;
+            profile.JobSecurity = newStatus;
 
             // Send appropriate owner message
             switch (newStatus)
             {
                 case JobSecurityStatus.Uncertain:
-                    SendOwnerMessage(career.CoachId, owner, newStatus,
+                    SendOwnerMessage(career.ProfileId, owner, newStatus,
                         "Concerns About Our Direction",
                         GenerateUncertainMessage(owner, wins, losses),
                         true);
                     break;
 
                 case JobSecurityStatus.HotSeat:
-                    SendOwnerMessage(career.CoachId, owner, newStatus,
+                    SendOwnerMessage(career.ProfileId, owner, newStatus,
                         "We Need to Talk",
                         GenerateHotSeatMessage(owner, wins, losses),
                         true);
@@ -248,7 +244,7 @@ namespace NBAHeadCoach.Core.Manager
                     break;
 
                 case JobSecurityStatus.FinalWarning:
-                    SendOwnerMessage(career.CoachId, owner, newStatus,
+                    SendOwnerMessage(career.ProfileId, owner, newStatus,
                         "Final Warning",
                         GenerateFinalWarningMessage(owner, wins, losses),
                         true);
@@ -259,7 +255,7 @@ namespace NBAHeadCoach.Core.Manager
                     if (oldStatus >= JobSecurityStatus.Uncertain)
                     {
                         // Recovered from hot seat
-                        SendOwnerMessage(career.CoachId, owner, newStatus,
+                        SendOwnerMessage(profile.ProfileId, owner, newStatus,
                             "Things Are Looking Better",
                             GenerateRecoveryMessage(owner),
                             false);
@@ -267,14 +263,14 @@ namespace NBAHeadCoach.Core.Manager
                     break;
             }
 
-            OnJobSecurityChanged?.Invoke(career);
+            OnJobSecurityChanged?.Invoke(profile);
         }
 
         /// <summary>
         /// Send a direct message from the owner
         /// </summary>
         public OwnerJobSecurityMessage SendOwnerMessage(
-            string coachId,
+            string profileId,
             Owner owner,
             JobSecurityStatus securityLevel,
             string subject,
@@ -293,11 +289,12 @@ namespace NBAHeadCoach.Core.Manager
                 WasRead = false
             };
 
-            if (!_ownerMessages.ContainsKey(coachId))
+            var profile = GetProfile(profileId);
+            if (profile != null)
             {
-                _ownerMessages[coachId] = new List<OwnerJobSecurityMessage>();
+                profile.OwnerMessages ??= new List<OwnerJobSecurityMessage>();
+                profile.OwnerMessages.Add(ownerMessage);
             }
-            _ownerMessages[coachId].Add(ownerMessage);
 
             OnOwnerMessageReceived?.Invoke(ownerMessage);
 
@@ -309,23 +306,25 @@ namespace NBAHeadCoach.Core.Manager
         /// <summary>
         /// Get unread owner messages
         /// </summary>
-        public List<OwnerJobSecurityMessage> GetUnreadMessages(string coachId)
+        public List<OwnerJobSecurityMessage> GetUnreadMessages(string profileId)
         {
-            if (!_ownerMessages.TryGetValue(coachId, out var messages))
+            var profile = GetProfile(profileId);
+            if (profile?.OwnerMessages == null)
                 return new List<OwnerJobSecurityMessage>();
 
-            return messages.FindAll(m => !m.WasRead);
+            return profile.OwnerMessages.FindAll(m => !m.WasRead);
         }
 
         /// <summary>
         /// Mark message as read and optionally respond
         /// </summary>
-        public void RespondToMessage(string coachId, string messageId, string response = null)
+        public void RespondToMessage(string profileId, string messageId, string response = null)
         {
-            if (!_ownerMessages.TryGetValue(coachId, out var messages))
+            var profile = GetProfile(profileId);
+            if (profile?.OwnerMessages == null)
                 return;
 
-            var message = messages.Find(m => m.MessageId == messageId);
+            var message = profile.OwnerMessages.Find(m => m.MessageId == messageId);
             if (message == null) return;
 
             message.WasRead = true;
@@ -335,16 +334,16 @@ namespace NBAHeadCoach.Core.Manager
         /// <summary>
         /// Check if coach should be fired (called after games or at key points)
         /// </summary>
-        public bool ShouldFireCoach(string coachId, TeamFinances teamFinances)
+        public bool ShouldFireStaff(string profileId, TeamFinances teamFinances)
         {
-            var career = GetCoachCareer(coachId);
-            if (career == null) return false;
+            var profile = GetProfile(profileId);
+            if (profile == null) return false;
 
             var owner = teamFinances?.TeamOwner;
             if (owner == null) return false;
 
             // Final warning with continued poor play
-            if (career.JobSecurity == JobSecurityStatus.FinalWarning)
+            if (profile.JobSecurity == JobSecurityStatus.FinalWarning)
             {
                 // 30% chance each evaluation
                 if (UnityEngine.Random.value < 0.30f)
@@ -352,7 +351,7 @@ namespace NBAHeadCoach.Core.Manager
             }
 
             // Hot seat with very impatient owner
-            if (career.JobSecurity == JobSecurityStatus.HotSeat && owner.Patience < 20)
+            if (profile.JobSecurity == JobSecurityStatus.HotSeat && owner.Patience < 20)
             {
                 if (UnityEngine.Random.value < 0.15f)
                     return true;
@@ -364,33 +363,34 @@ namespace NBAHeadCoach.Core.Manager
         /// <summary>
         /// Fire the coach
         /// </summary>
-        public void FireCoach(string coachId, TeamFinances teamFinances, string reason)
+        public void FireStaff(string profileId, TeamFinances teamFinances, string reason)
         {
-            var career = GetCoachCareer(coachId);
-            if (career == null) return;
+            var profile = GetProfile(profileId);
+            if (profile == null) return;
 
             var owner = teamFinances?.TeamOwner;
 
             // Send firing message
             string firingMessage = GenerateFiringMessage(owner, reason);
-            SendOwnerMessage(coachId, owner, JobSecurityStatus.Fired,
+            SendOwnerMessage(profileId, owner, JobSecurityStatus.Fired,
                 "Change in Leadership",
                 firingMessage,
                 false);
 
-            // Update career
-            career.GetFired();
+            // Update profile
+            profile.TimesFired++;
+            profile.JobSecurity = JobSecurityStatus.Fired;
 
-            OnCoachFired?.Invoke(career);
+            OnStaffFired?.Invoke(profile);
 
-            Debug.Log($"[JobSecurity] Coach {career.FullName} has been fired. Reason: {reason}");
+            Debug.Log($"[JobSecurity] Staff {profile.PersonName} has been fired. Reason: {reason}");
         }
 
         /// <summary>
         /// End of season evaluation
         /// </summary>
         public EndOfSeasonResult EvaluateEndOfSeason(
-            string coachId,
+            string profileId,
             int wins,
             int losses,
             bool madePlayoffs,
@@ -398,15 +398,15 @@ namespace NBAHeadCoach.Core.Manager
             bool wonChampionship,
             TeamFinances teamFinances)
         {
-            var career = GetCoachCareer(coachId);
-            if (career == null) return null;
+            var profile = GetProfile(profileId);
+            if (profile == null) return null;
 
-            var expectations = _expectations.GetValueOrDefault(coachId, career.CurrentExpectations);
+            var expectations = _expectations.GetValueOrDefault(profileId, profile.CurrentExpectations);
             var owner = teamFinances?.TeamOwner;
 
             var result = new EndOfSeasonResult
             {
-                CoachId = coachId,
+                ProfileId = profileId,
                 Wins = wins,
                 Losses = losses,
                 MadePlayoffs = madePlayoffs,
@@ -430,7 +430,7 @@ namespace NBAHeadCoach.Core.Manager
                     break;
 
                 case ExpectationResult.Met:
-                    if (career.CurrentContract?.IsExpiring == true)
+                    if (profile.CurrentContract?.IsExpiring == true)
                         result.ContractExtensionOffered = true;
                     result.OwnerFeedback = GenerateMetExpectationsFeedback(owner);
                     break;
@@ -440,7 +440,7 @@ namespace NBAHeadCoach.Core.Manager
                     break;
 
                 case ExpectationResult.BelowExpectations:
-                    if (career.JobSecurity >= JobSecurityStatus.HotSeat || owner.Patience < 40)
+                    if (profile.JobSecurity >= JobSecurityStatus.HotSeat || owner.Patience < 40)
                         result.WillBeFired = true;
                     result.OwnerFeedback = GenerateBelowExpectationsFeedback(owner, result.WillBeFired);
                     break;
@@ -452,7 +452,7 @@ namespace NBAHeadCoach.Core.Manager
             }
 
             // Send end of season message
-            SendOwnerMessage(coachId, owner, career.JobSecurity,
+            SendOwnerMessage(profileId, owner, profile.JobSecurity,
                 "Season Review",
                 result.OwnerFeedback,
                 false);
@@ -460,7 +460,7 @@ namespace NBAHeadCoach.Core.Manager
             // Process firing if needed
             if (result.WillBeFired)
             {
-                FireCoach(coachId, teamFinances, "End of season evaluation");
+                FireStaff(profileId, teamFinances, "End of season evaluation");
             }
 
             return result;
@@ -675,7 +675,7 @@ namespace NBAHeadCoach.Core.Manager
     /// </summary>
     public class EndOfSeasonResult
     {
-        public string CoachId;
+        public string ProfileId;
         public int Wins;
         public int Losses;
         public bool MadePlayoffs;

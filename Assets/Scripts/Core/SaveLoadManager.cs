@@ -73,7 +73,7 @@ namespace NBAHeadCoach.Core
             }
 
             data.IsIronman = true;
-            data.SaveName = $"Ironman - {data.Career?.FullName ?? "Unknown"}";
+            data.SaveName = $"Ironman - {data.Career?.PersonName ?? "Unknown"}";
             return SaveGame(data, _currentIronmanSlot);
         }
 

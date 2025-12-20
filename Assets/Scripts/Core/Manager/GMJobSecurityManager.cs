@@ -148,13 +148,8 @@ namespace NBAHeadCoach.Core.Manager
         [SerializeField] private List<FrontOfficeProgressionData> foProgressions = new List<FrontOfficeProgressionData>();
 
         [Header("Settings")]
+        [Header("Settings")]
         [SerializeField, Range(0f, 1f)] private float midSeasonFiringChance = 0.30f;
-        [SerializeField, Range(30, 60)] private int performanceThresholdForFiring = 40;
-        [SerializeField, Range(2, 5)] private int yearsBeforeFiringEligible = 3;
-        [SerializeField, Range(1, 3)] private int warningsBeforeFired = 2;
-
-        [Header("Unified Career Integration")]
-        [SerializeField] private bool useUnifiedCareerManager = true;
 
         // Events
         public event Action<string, string, GMFiringReason> OnGMFired;
@@ -240,23 +235,19 @@ namespace NBAHeadCoach.Core.Manager
             foProgressions.Add(formerPlayerGM.FOProgression);
 
             // Create unified career profile for cross-track transitions
-            if (useUnifiedCareerManager && UnifiedCareerManager.Instance != null)
-            {
-                var unifiedProfile = UnifiedCareerProfile.CreateForFrontOffice(
-                    playerData.FullName,
-                    currentYear,
-                    playerData.Age + 1,  // Retired players typically take a year before entering FO
-                    true,
-                    playerData.PlayerId,
-                    PlayerCareerReference.FromPlayerCareerData(playerData)
-                );
-                unifiedProfile.FormerPlayerGMId = formerPlayerGM.FormerPlayerGMId;
-                unifiedProfile.CurrentTeamId = teamId;
-                unifiedProfile.CurrentTeamName = formerPlayerGM.FOProgression.CurrentTeamName;
-                formerPlayerGM.FOProgression.UnifiedProfileId = unifiedProfile.ProfileId;
+            var unifiedProfile = UnifiedCareerProfile.CreateForFrontOffice(
+                playerData.FullName,
+                currentYear,
+                playerData.Age + 1,  // Retired players typically take a year before entering FO
+                true,
+                playerData.PlayerId,
+                PlayerCareerReference.FromPlayerCareerData(playerData)
+            );
+            unifiedProfile.CurrentTeamId = teamId;
+            unifiedProfile.CurrentTeamName = formerPlayerGM.FOProgression.CurrentTeamName;
+            formerPlayerGM.FOProgression.UnifiedProfileId = unifiedProfile.ProfileId;
 
-                UnifiedCareerManager.Instance.RegisterProfile(unifiedProfile);
-            }
+            PersonnelManager.Instance?.RegisterProfile(unifiedProfile);
 
             Debug.Log($"[GMJobSecurity] {playerData.FullName} entered front office pipeline as Scout");
 
@@ -387,11 +378,10 @@ namespace NBAHeadCoach.Core.Manager
             };
             gmCareerData.Add(careerData);
 
-            // Notify unified career manager
-            if (useUnifiedCareerManager && UnifiedCareerManager.Instance != null &&
-                !string.IsNullOrEmpty(gm.FOProgression.UnifiedProfileId))
+            // Notify PersonnelManager
+            if (!string.IsNullOrEmpty(gm.FOProgression.UnifiedProfileId))
             {
-                var unifiedProfile = UnifiedCareerManager.Instance.GetProfile(gm.FOProgression.UnifiedProfileId);
+                var unifiedProfile = PersonnelManager.Instance?.GetProfile(gm.FOProgression.UnifiedProfileId);
                 if (unifiedProfile != null)
                 {
                     unifiedProfile.HandleHired(currentYear, teamId, GetTeamName(teamId), UnifiedRole.GeneralManager);
@@ -623,14 +613,13 @@ namespace NBAHeadCoach.Core.Manager
                     // Reset to AGM level (can be rehired)
                     fpGM.FOProgression.HandleFiredAsGM(currentYear, teamId, GetTeamName(teamId));
 
-                    // Notify unified career manager
-                    if (useUnifiedCareerManager && UnifiedCareerManager.Instance != null &&
-                        !string.IsNullOrEmpty(fpGM.FOProgression.UnifiedProfileId))
+                    // Notify PersonnelManager
+                    if (!string.IsNullOrEmpty(fpGM.FOProgression.UnifiedProfileId))
                     {
-                        var unifiedProfile = UnifiedCareerManager.Instance.GetProfile(fpGM.FOProgression.UnifiedProfileId);
+                        var unifiedProfile = PersonnelManager.Instance?.GetProfile(fpGM.FOProgression.UnifiedProfileId);
                         if (unifiedProfile != null)
                         {
-                            UnifiedCareerManager.Instance.FirePerson(unifiedProfile, reason.ToString());
+                            PersonnelManager.Instance?.FirePersonnel(unifiedProfile.ProfileId);
                         }
                     }
 
