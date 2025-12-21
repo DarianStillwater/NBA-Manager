@@ -6,6 +6,8 @@ using UnityEngine;
 using NBAHeadCoach.Core.Data;
 using NBAHeadCoach.Core.Gameplay;
 using NBAHeadCoach.Core.Simulation;
+using NBAHeadCoach.Core.Manager;
+using NBAHeadCoach.Core.AI;
 
 namespace NBAHeadCoach.Core
 {
@@ -139,6 +141,12 @@ namespace NBAHeadCoach.Core
         /// <summary>Fired when simulation resumes</summary>
         public event Action OnSimulationResumed;
 
+        /// <summary>Fired when coaching advisor has new suggestions</summary>
+        public event Action<List<CoachingSuggestion>> OnCoachingSuggestions;
+
+        /// <summary>Fired when analytics snapshot is updated</summary>
+        public event Action<GameAnalyticsSnapshot> OnAnalyticsUpdate;
+
         #endregion
 
         #region Unity Lifecycle
@@ -212,6 +220,9 @@ namespace NBAHeadCoach.Core
                 _playerMinutes[playerId] = 0f;
                 _playerFouls[playerId] = 0;
             }
+
+            // Initialize analytics systems with player lookup functions
+            _playerCoach.InitializeAnalytics(GetPlayer, GetPlayerName);
 
             Debug.Log($"[MatchSimController] Match initialized: {awayTeam.Name} @ {homeTeam.Name}");
 
@@ -434,6 +445,48 @@ namespace NBAHeadCoach.Core
 
         private void ProcessPossessionResult(PossessionResult result, bool offenseIsHome)
         {
+            // Determine if this is the player's team possession
+            bool isPlayerTeamPossession = (_playerIsHome == offenseIsHome);
+            var offenseLineup = offenseIsHome ? _homeLineup : _awayLineup;
+            var defenseLineup = offenseIsHome ? _awayLineup : _homeLineup;
+
+            // Feed data to analytics tracker
+            var analyticsTracker = _playerCoach.GetAnalyticsTracker();
+            if (analyticsTracker != null)
+            {
+                // Record from player team's perspective
+                if (isPlayerTeamPossession)
+                {
+                    analyticsTracker.RecordPossession(result, true, offenseLineup, defenseLineup);
+                }
+                else
+                {
+                    analyticsTracker.RecordPossession(result, false, defenseLineup, offenseLineup);
+                }
+
+                // Set current lineup for +/- tracking
+                analyticsTracker.SetCurrentLineup(_playerIsHome ? _homeLineup : _awayLineup);
+            }
+
+            // Feed matchup data
+            var matchupEvaluator = _playerCoach.GetMatchupEvaluator();
+            if (matchupEvaluator != null && !isPlayerTeamPossession)
+            {
+                // Track opponent possessions for defensive matchup analysis
+                foreach (var evt in result.Events.Where(e => e.Type == EventType.Shot))
+                {
+                    if (!string.IsNullOrEmpty(evt.DefenderPlayerId) && !string.IsNullOrEmpty(evt.ActorPlayerId))
+                    {
+                        matchupEvaluator.RecordMatchupPossession(
+                            evt.DefenderPlayerId,
+                            evt.ActorPlayerId,
+                            evt.PointsScored,
+                            evt.Outcome == EventOutcome.Success
+                        );
+                    }
+                }
+            }
+
             foreach (var evt in result.Events)
             {
                 _allEvents.Add(evt);
@@ -471,6 +524,39 @@ namespace NBAHeadCoach.Core
                     }
                 }
             }
+
+            // Analyze and fire coaching suggestions every few possessions
+            if (TotalPossessions % 3 == 0)
+            {
+                TriggerCoachingAnalysis();
+            }
+        }
+
+        private int TotalPossessions => _allEvents.Count(e => e.Type == EventType.Shot || e.Type == EventType.Turnover);
+
+        private void TriggerCoachingAnalysis()
+        {
+            var advisor = _playerCoach.GetCoachingAdvisor();
+            if (advisor == null) return;
+
+            var suggestions = advisor.AnalyzeAndSuggest(_playerCoach, CurrentPlayerLineup);
+
+            if (suggestions.Any())
+            {
+                OnCoachingSuggestions?.Invoke(suggestions);
+
+                // Auto-pause for high priority suggestions if configured
+                var urgentSuggestions = suggestions.Where(s => s.Priority == SuggestionPriority.High).ToList();
+                if (urgentSuggestions.Any() && !_autoCoachEnabled)
+                {
+                    // Could add auto-pause here if desired
+                    // PauseSimulation();
+                }
+            }
+
+            // Fire analytics update
+            var snapshot = _playerCoach.GetCurrentAnalytics();
+            OnAnalyticsUpdate?.Invoke(snapshot);
         }
 
         private PlayByPlayEntry CreatePlayByPlayEntry(PossessionEvent evt, bool offenseIsHome)

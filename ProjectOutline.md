@@ -343,6 +343,7 @@ Procedural name generation using Markov chains with realistic NBA demographics.
 | Unified Career System | Coach↔GM transitions, cross-track careers |
 | Personnel Refactor | Single PersonnelManager architecture |
 | Name Generation | Markov chain for player/staff names |
+| In-Game Analytics | Real-time stats, coaching advisor, matchup evaluation |
 
 ### Outstanding Issues / TODOs
 

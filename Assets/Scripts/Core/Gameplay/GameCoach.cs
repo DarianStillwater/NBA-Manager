@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using NBAHeadCoach.Core.Data;
+using NBAHeadCoach.Core.Manager;
+using NBAHeadCoach.Core.AI;
 
 namespace NBAHeadCoach.Core.Gameplay
 {
@@ -55,6 +57,12 @@ namespace NBAHeadCoach.Core.Gameplay
         private int _consecutiveStops = 0;
         private int _consecutiveScores = 0;
 
+        // ==================== ANALYTICS & ADVISOR ====================
+        private GameAnalyticsTracker _analyticsTracker;
+        private CoachingAdvisor _coachingAdvisor;
+        private PlayEffectivenessTracker _playTracker;
+        private MatchupEvaluator _matchupEvaluator;
+
         // ==================== EVENTS ====================
         public event Action<string> OnCoachDecision;
         public event Action<TimeoutResult> OnTimeoutCalled;
@@ -67,6 +75,7 @@ namespace NBAHeadCoach.Core.Gameplay
         {
             _tactics = new GameTactics();
             _subPlan = new SubstitutionPlan();
+            InitializeAnalytics();
         }
 
         public GameCoach(TeamStrategy strategy, PlayBook playbook, TeamGameInstructions instructions)
@@ -76,12 +85,36 @@ namespace NBAHeadCoach.Core.Gameplay
             _playerInstructions = instructions;
             _tactics = new GameTactics();
             _subPlan = new SubstitutionPlan();
+            InitializeAnalytics();
 
             // Initialize tactics from strategy
             if (strategy != null)
             {
                 ApplyTeamStrategy(strategy);
             }
+        }
+
+        private void InitializeAnalytics()
+        {
+            _analyticsTracker = new GameAnalyticsTracker();
+            _playTracker = new PlayEffectivenessTracker();
+        }
+
+        /// <summary>
+        /// Initializes analytics with player lookup functions for full functionality.
+        /// </summary>
+        public void InitializeAnalytics(Func<string, Player> getPlayer, Func<string, string> getPlayerName)
+        {
+            _analyticsTracker = new GameAnalyticsTracker();
+            _playTracker = new PlayEffectivenessTracker();
+            _matchupEvaluator = new MatchupEvaluator(getPlayer);
+            _coachingAdvisor = new CoachingAdvisor(
+                _analyticsTracker,
+                _playTracker,
+                _matchupEvaluator,
+                getPlayer,
+                getPlayerName
+            );
         }
 
         // ==================== INITIALIZATION ====================
@@ -776,6 +809,12 @@ namespace NBAHeadCoach.Core.Gameplay
             _doubleTeamTriggers.Clear();
             _tactics = new GameTactics();
 
+            // Reset analytics systems
+            _analyticsTracker?.ResetForNewGame();
+            _coachingAdvisor?.ResetForNewGame();
+            _playTracker?.ResetForNewGame();
+            _matchupEvaluator?.ResetForNewGame();
+
             if (_teamStrategy != null)
                 ApplyTeamStrategy(_teamStrategy);
         }
@@ -791,6 +830,106 @@ namespace NBAHeadCoach.Core.Gameplay
         public float Momentum => _momentum;
         public bool HasPossession => _hasPossession;
         public bool IsClutchTime => _currentQuarter >= 4 && _gameClockSeconds < 300 && Math.Abs(_teamScore - _opponentScore) <= 10;
+
+        // ==================== ANALYTICS ACCESS ====================
+
+        /// <summary>
+        /// Gets the game analytics tracker for real-time statistics.
+        /// </summary>
+        public GameAnalyticsTracker GetAnalyticsTracker() => _analyticsTracker;
+
+        /// <summary>
+        /// Gets the coaching advisor for AI suggestions.
+        /// </summary>
+        public CoachingAdvisor GetCoachingAdvisor() => _coachingAdvisor;
+
+        /// <summary>
+        /// Gets the play effectiveness tracker for hot/cold play analysis.
+        /// </summary>
+        public PlayEffectivenessTracker GetPlayTracker() => _playTracker;
+
+        /// <summary>
+        /// Gets the matchup evaluator for defensive assignments.
+        /// </summary>
+        public MatchupEvaluator GetMatchupEvaluator() => _matchupEvaluator;
+
+        /// <summary>
+        /// Gets current game analytics snapshot.
+        /// </summary>
+        public GameAnalyticsSnapshot GetCurrentAnalytics()
+        {
+            return _analyticsTracker?.GetSnapshot() ?? new GameAnalyticsSnapshot();
+        }
+
+        /// <summary>
+        /// Gets pending coaching suggestions.
+        /// </summary>
+        public List<CoachingSuggestion> GetAdvisorSuggestions()
+        {
+            return _coachingAdvisor?.GetPendingSuggestions() ?? new List<CoachingSuggestion>();
+        }
+
+        /// <summary>
+        /// Gets high priority coaching suggestions only.
+        /// </summary>
+        public List<CoachingSuggestion> GetUrgentSuggestions()
+        {
+            return _coachingAdvisor?.GetHighPrioritySuggestions() ?? new List<CoachingSuggestion>();
+        }
+
+        /// <summary>
+        /// Triggers analysis and returns new suggestions.
+        /// </summary>
+        public List<CoachingSuggestion> AnalyzeAndGetSuggestions()
+        {
+            return _coachingAdvisor?.AnalyzeAndSuggest(this, _currentLineup) ?? new List<CoachingSuggestion>();
+        }
+
+        /// <summary>
+        /// Accepts a coaching suggestion (for tracking).
+        /// </summary>
+        public void AcceptSuggestion(CoachingSuggestion suggestion)
+        {
+            _coachingAdvisor?.AcceptSuggestion(suggestion);
+        }
+
+        /// <summary>
+        /// Rejects a coaching suggestion.
+        /// </summary>
+        public void RejectSuggestion(CoachingSuggestion suggestion)
+        {
+            _coachingAdvisor?.RejectSuggestion(suggestion);
+        }
+
+        /// <summary>
+        /// Gets play effectiveness recommendations.
+        /// </summary>
+        public PlayRecommendations GetPlayRecommendations()
+        {
+            return _playTracker?.GetPlayRecommendations() ?? new PlayRecommendations();
+        }
+
+        /// <summary>
+        /// Evaluates a defensive matchup quality (0-100, higher = better for defender).
+        /// </summary>
+        public float EvaluateMatchup(string defenderId, string offenderId)
+        {
+            return _matchupEvaluator?.EvaluateDefensiveMatchup(defenderId, offenderId) ?? 50f;
+        }
+
+        /// <summary>
+        /// Gets hunt/hide matchup recommendations.
+        /// </summary>
+        public (List<HuntHideRecommendation> hunt, List<HuntHideRecommendation> hide) GetMatchupRecommendations(
+            List<string> ourLineup, List<string> opponentLineup)
+        {
+            if (_matchupEvaluator == null)
+                return (new List<HuntHideRecommendation>(), new List<HuntHideRecommendation>());
+
+            var hunt = _matchupEvaluator.GetHuntRecommendations(ourLineup, opponentLineup);
+            var hide = _matchupEvaluator.GetHideRecommendations(ourLineup, opponentLineup);
+            return (hunt, hide);
+        }
     }
 
     // ==================== EXPANDED ENUMS ====================
