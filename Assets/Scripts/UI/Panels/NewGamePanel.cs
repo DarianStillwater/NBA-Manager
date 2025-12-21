@@ -16,6 +16,7 @@ namespace NBAHeadCoach.UI.Panels
         [Header("Step Containers")]
         [SerializeField] private GameObject _coachCreationStep;
         [SerializeField] private GameObject _teamSelectionStep;
+        [SerializeField] private GameObject _roleSelectionStep;
         [SerializeField] private GameObject _difficultyStep;
         [SerializeField] private GameObject _confirmationStep;
 
@@ -34,6 +35,13 @@ namespace NBAHeadCoach.UI.Panels
         [SerializeField] private Text _selectedTeamInfoText;
         [SerializeField] private Dropdown _conferenceFilter;
         [SerializeField] private Dropdown _situationFilter;
+
+        [Header("Role Selection")]
+        [SerializeField] private Toggle _roleGMOnlyToggle;
+        [SerializeField] private Toggle _roleCoachOnlyToggle;
+        [SerializeField] private Toggle _roleBothToggle;
+        [SerializeField] private Text _roleDescriptionText;
+        [SerializeField] private Text _aiCounterpartText;
 
         [Header("Difficulty")]
         [SerializeField] private Dropdown _difficultyPresetDropdown;
@@ -77,6 +85,7 @@ namespace NBAHeadCoach.UI.Panels
 
             SetupCoachCreation();
             SetupTeamSelection();
+            SetupRoleSelection();
             SetupDifficulty();
             SetupNavigation();
 
@@ -143,6 +152,34 @@ namespace NBAHeadCoach.UI.Panels
             RefreshTeamList();
         }
 
+        private void SetupRoleSelection()
+        {
+            // Default to "Both" role
+            _gameData.SelectedRole = UserRole.Both;
+
+            // Setup toggle group behavior (radio buttons)
+            if (_roleBothToggle != null)
+            {
+                _roleBothToggle.isOn = true;
+                _roleBothToggle.onValueChanged.AddListener(isOn => { if (isOn) OnRoleSelected(UserRole.Both); });
+            }
+
+            if (_roleGMOnlyToggle != null)
+            {
+                _roleGMOnlyToggle.isOn = false;
+                _roleGMOnlyToggle.onValueChanged.AddListener(isOn => { if (isOn) OnRoleSelected(UserRole.GMOnly); });
+            }
+
+            if (_roleCoachOnlyToggle != null)
+            {
+                _roleCoachOnlyToggle.isOn = false;
+                _roleCoachOnlyToggle.onValueChanged.AddListener(isOn => { if (isOn) OnRoleSelected(UserRole.HeadCoachOnly); });
+            }
+
+            // Update initial description
+            UpdateRoleDescription(UserRole.Both);
+        }
+
         private void SetupDifficulty()
         {
             // Preset dropdown
@@ -185,6 +222,7 @@ namespace NBAHeadCoach.UI.Panels
             // Hide all steps
             SetActive(_coachCreationStep, false);
             SetActive(_teamSelectionStep, false);
+            SetActive(_roleSelectionStep, false);
             SetActive(_difficultyStep, false);
             SetActive(_confirmationStep, false);
 
@@ -193,23 +231,29 @@ namespace NBAHeadCoach.UI.Panels
             {
                 case NewGameState.CoachCreation:
                     SetActive(_coachCreationStep, true);
-                    UpdateStepIndicator("Step 1 of 4: Create Your Coach");
+                    UpdateStepIndicator("Step 1 of 5: Create Your Coach");
                     break;
 
                 case NewGameState.TeamSelection:
                     SetActive(_teamSelectionStep, true);
-                    UpdateStepIndicator("Step 2 of 4: Select Your Team");
+                    UpdateStepIndicator("Step 2 of 5: Select Your Team");
                     RefreshTeamList();
+                    break;
+
+                case NewGameState.RoleSelection:
+                    SetActive(_roleSelectionStep, true);
+                    UpdateStepIndicator("Step 3 of 5: Choose Your Role");
+                    UpdateRoleDescription(_gameData.SelectedRole);
                     break;
 
                 case NewGameState.DifficultySettings:
                     SetActive(_difficultyStep, true);
-                    UpdateStepIndicator("Step 3 of 4: Difficulty Settings");
+                    UpdateStepIndicator("Step 4 of 5: Difficulty Settings");
                     break;
 
                 case NewGameState.Confirmation:
                     SetActive(_confirmationStep, true);
-                    UpdateStepIndicator("Step 4 of 4: Confirm & Start");
+                    UpdateStepIndicator("Step 5 of 5: Confirm & Start");
                     UpdateConfirmationSummary();
                     break;
             }
@@ -249,7 +293,8 @@ namespace NBAHeadCoach.UI.Panels
             _currentStep = _currentStep switch
             {
                 NewGameState.CoachCreation => NewGameState.TeamSelection,
-                NewGameState.TeamSelection => NewGameState.DifficultySettings,
+                NewGameState.TeamSelection => NewGameState.RoleSelection,
+                NewGameState.RoleSelection => NewGameState.DifficultySettings,
                 NewGameState.DifficultySettings => NewGameState.Confirmation,
                 _ => _currentStep
             };
@@ -262,7 +307,8 @@ namespace NBAHeadCoach.UI.Panels
             _currentStep = _currentStep switch
             {
                 NewGameState.TeamSelection => NewGameState.CoachCreation,
-                NewGameState.DifficultySettings => NewGameState.TeamSelection,
+                NewGameState.RoleSelection => NewGameState.TeamSelection,
+                NewGameState.DifficultySettings => NewGameState.RoleSelection,
                 NewGameState.Confirmation => NewGameState.DifficultySettings,
                 _ => _currentStep
             };
@@ -340,6 +386,62 @@ namespace NBAHeadCoach.UI.Panels
                         $"Player Development: {bg.DevelopmentSkill}";
                 }
             }
+        }
+
+        #endregion
+
+        #region Role Selection
+
+        private void OnRoleSelected(UserRole role)
+        {
+            _gameData.SelectedRole = role;
+            UpdateRoleDescription(role);
+        }
+
+        private void UpdateRoleDescription(UserRole role)
+        {
+            string description = "";
+            string aiCounterpart = "";
+
+            switch (role)
+            {
+                case UserRole.GMOnly:
+                    description = "GENERAL MANAGER\n\n" +
+                        "• Control all roster decisions: trades, free agency, draft\n" +
+                        "• Hire and fire coaching staff at any time\n" +
+                        "• Games are simulated with AI head coach making all decisions\n" +
+                        "• Receive game summaries and box scores after each game\n" +
+                        "• Evaluate your coach's performance and make changes as needed";
+                    aiCounterpart = "An AI Head Coach will be generated with hidden personality traits that you'll discover through their coaching decisions.";
+                    break;
+
+                case UserRole.HeadCoachOnly:
+                    description = "HEAD COACH\n\n" +
+                        "• Control all in-game decisions: plays, subs, timeouts\n" +
+                        "• Manage player development and training focus\n" +
+                        "• Request roster moves from the GM (they may approve or deny)\n" +
+                        "• Focus on X's and O's without front office distractions\n" +
+                        "• Job security depends on your team's performance";
+                    aiCounterpart = "An AI General Manager will control roster decisions. You can request players, but the GM decides. Their personality is hidden and revealed through their decisions.";
+                    break;
+
+                case UserRole.Both:
+                default:
+                    description = "GM & HEAD COACH\n\n" +
+                        "• Full control over all team operations\n" +
+                        "• Make all roster decisions and in-game coaching calls\n" +
+                        "• The complete NBA management experience\n" +
+                        "• Build your roster AND coach your team to victory\n" +
+                        "• Traditional game mode with maximum control";
+                    aiCounterpart = "No AI counterpart - you handle everything yourself!";
+                    break;
+            }
+
+            if (_roleDescriptionText != null)
+                _roleDescriptionText.text = description;
+
+            if (_aiCounterpartText != null)
+                _aiCounterpartText.text = aiCounterpart;
         }
 
         #endregion
@@ -548,13 +650,15 @@ namespace NBAHeadCoach.UI.Panels
 
         private void UpdateConfirmationSummary()
         {
-            // Coach summary
+            // Coach summary with role
             if (_summaryCoachText != null)
             {
                 string bgName = _gameData.Background?.Name ?? "Unknown";
-                _summaryCoachText.text = $"Coach: {_gameData.FirstName} {_gameData.LastName}\n" +
+                string roleName = GetRoleDisplayName(_gameData.SelectedRole);
+                _summaryCoachText.text = $"{_gameData.FirstName} {_gameData.LastName}\n" +
                                         $"Age: {_gameData.Age}\n" +
-                                        $"Background: {bgName}";
+                                        $"Background: {bgName}\n" +
+                                        $"Role: {roleName}";
             }
 
             // Team summary
@@ -622,7 +726,8 @@ namespace NBAHeadCoach.UI.Panels
                 _gameData.Difficulty,
                 tactical,
                 development,
-                reputation
+                reputation,
+                _gameData.SelectedRole
             );
         }
 
@@ -634,6 +739,17 @@ namespace NBAHeadCoach.UI.Panels
         {
             if (go != null)
                 go.SetActive(active);
+        }
+
+        private string GetRoleDisplayName(UserRole role)
+        {
+            return role switch
+            {
+                UserRole.GMOnly => "General Manager",
+                UserRole.HeadCoachOnly => "Head Coach",
+                UserRole.Both => "GM & Head Coach",
+                _ => "Unknown"
+            };
         }
 
         #endregion
@@ -652,6 +768,7 @@ namespace NBAHeadCoach.UI.Panels
         public CoachBackground Background;
         public string SelectedTeamId;
         public Team SelectedTeam;
+        public UserRole SelectedRole = UserRole.Both;
         public DifficultySettings Difficulty;
     }
 

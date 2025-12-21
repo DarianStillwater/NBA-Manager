@@ -5,6 +5,7 @@ using UnityEngine;
 using NBAHeadCoach.Core.Data;
 using NBAHeadCoach.Core.Manager;
 using NBAHeadCoach.Core.Simulation;
+using NBAHeadCoach.Core.AI;
 
 namespace NBAHeadCoach.Core
 {
@@ -30,10 +31,14 @@ namespace NBAHeadCoach.Core
         private int[] _playerLineup = new int[5];
         private TeamStrategy _playerStrategy;
 
+        // Autonomous game result (for GM-only mode)
+        private AutonomousGameResult _autonomousResult;
+
         // Events
         public event Action<CalendarEvent> OnPreGameStarted;
         public event Action<BoxScore> OnMatchCompleted;
         public event Action<BoxScore> OnPostGameStarted;
+        public event Action<AutonomousGameResult> OnAutonomousGameCompleted;
 
         public MatchFlowController(GameManager gameManager)
         {
@@ -195,6 +200,99 @@ namespace NBAHeadCoach.Core
             CompleteMatch(result);
         }
 
+        /// <summary>
+        /// Simulate game autonomously (for GM-Only mode).
+        /// The AI coach makes all decisions.
+        /// </summary>
+        public AutonomousGameResult SimulateAutonomousGame()
+        {
+            _currentPhase = MatchPhase.Playing;
+
+            // Get AI coach personality
+            var aiCoach = GetAICoachPersonality();
+            if (aiCoach == null)
+            {
+                Debug.LogError("[MatchFlowController] No AI coach found for autonomous simulation");
+                return null;
+            }
+
+            // Use the autonomous simulator
+            var simulator = AutonomousGameSimulator.Instance;
+            _autonomousResult = simulator.SimulateGame(
+                _playerTeam,
+                _opponentTeam,
+                aiCoach,
+                _isHomeGame
+            );
+
+            // Complete the autonomous game
+            CompleteAutonomousMatch(_autonomousResult);
+
+            return _autonomousResult;
+        }
+
+        /// <summary>
+        /// Gets the AI coach personality for autonomous simulation.
+        /// </summary>
+        private AICoachPersonality GetAICoachPersonality()
+        {
+            // Get AI coach profile from GameManager
+            var aiCoachProfile = _gameManager.GetAICoach();
+            if (aiCoachProfile == null)
+            {
+                Debug.LogWarning("[MatchFlowController] No AI coach profile found, generating default");
+                return AICoachPersonality.CreateRandom("default_coach", "Default Coach");
+            }
+
+            // Create personality from profile attributes
+            var personality = new AICoachPersonality
+            {
+                CoachId = aiCoachProfile.ProfileId,
+                CoachName = aiCoachProfile.FullName,
+                PreferredPace = 98 + (aiCoachProfile.TacticalRating - 50) * 0.2f,
+                InGameAdjustmentSpeed = aiCoachProfile.TacticalRating,
+                ClutchPressure = 50 + (aiCoachProfile.Reputation - 50) / 2,
+                MotivationAbility = aiCoachProfile.PlayerDevelopment
+            };
+
+            // Randomize other traits
+            var rng = new System.Random(aiCoachProfile.ProfileId.GetHashCode());
+            personality.ThreePointEmphasis = 30 + rng.Next(40);
+            personality.DefensiveAggression = 30 + rng.Next(50);
+            personality.RotationDepth = 8 + rng.Next(3);
+            personality.Stubbornness = 30 + rng.Next(50);
+            personality.TimeoutAggressiveness = 40 + rng.Next(30);
+
+            return personality;
+        }
+
+        /// <summary>
+        /// Complete an autonomously simulated match.
+        /// </summary>
+        private void CompleteAutonomousMatch(AutonomousGameResult result)
+        {
+            _currentPhase = MatchPhase.PostGame;
+
+            // Record the result in season controller
+            int homeScore = result.HomeScore;
+            int awayScore = result.AwayScore;
+            _gameManager.SeasonController.RecordGameResult(_currentGame, homeScore, awayScore);
+
+            // Fire events
+            OnAutonomousGameCompleted?.Invoke(result);
+
+            // Transition to post-game state (GM summary view)
+            _gameManager.ChangeState(GameState.PostGame, result);
+
+            Debug.Log($"[MatchFlowController] Autonomous game complete: {result.UserTeamScore}-{result.OpponentScore} " +
+                     $"(Coach rating: {result.CoachPerformance.OverallRating}/10)");
+        }
+
+        /// <summary>
+        /// Check if user controls in-game decisions (Coach or Both mode).
+        /// </summary>
+        public bool UserControlsGames => _gameManager.UserControlsGames;
+
         private void CompleteMatch(BoxScore result)
         {
             _currentPhase = MatchPhase.PostGame;
@@ -255,6 +353,7 @@ namespace NBAHeadCoach.Core
         {
             _currentGame = null;
             _matchResult = null;
+            _autonomousResult = null;
             _currentPhase = MatchPhase.None;
 
             // Auto-save after each game
@@ -522,6 +621,7 @@ namespace NBAHeadCoach.Core
         public Team OpponentTeam => _opponentTeam;
         public bool IsHomeGame => _isHomeGame;
         public BoxScore LastResult => _matchResult;
+        public AutonomousGameResult LastAutonomousResult => _autonomousResult;
 
         #endregion
     }

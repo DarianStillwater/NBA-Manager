@@ -40,9 +40,11 @@ namespace NBAHeadCoach.Core
         [SerializeField] private string _playerTeamId;
         [SerializeField] private int _currentSeason;
         [SerializeField] private DateTime _currentDate;
+        [SerializeField] private UserRoleConfiguration _userRoleConfig;
 
         public UnifiedCareerProfile Career => _career;
         public string PlayerTeamId => _playerTeamId;
+        public UserRoleConfiguration UserRoleConfig => _userRoleConfig;
         public int CurrentSeason => _currentSeason;
         public DateTime CurrentDate => _currentDate;
 
@@ -97,6 +99,8 @@ namespace NBAHeadCoach.Core
         public AdvanceScoutingManager AdvanceScoutingManager => _advanceScoutingManager;
         private FormerPlayerCareerManager _formerPlayerCareerManager;
         public FormerPlayerCareerManager FormerPlayerCareerManager => _formerPlayerCareerManager;
+        private JobMarketManager _jobMarketManager;
+        public JobMarketManager JobMarketManager => _jobMarketManager;
 
         private FinanceManager _financeManager;
         public FinanceManager FinanceManager => _financeManager;
@@ -286,7 +290,8 @@ namespace NBAHeadCoach.Core
             _newGameState = _newGameState switch
             {
                 NewGameState.CoachCreation => NewGameState.TeamSelection,
-                NewGameState.TeamSelection => NewGameState.DifficultySettings,
+                NewGameState.TeamSelection => NewGameState.RoleSelection,
+                NewGameState.RoleSelection => NewGameState.DifficultySettings,
                 NewGameState.DifficultySettings => NewGameState.ContractNegotiation,
                 NewGameState.ContractNegotiation => NewGameState.Confirmation,
                 _ => NewGameState.Confirmation
@@ -301,7 +306,8 @@ namespace NBAHeadCoach.Core
             _newGameState = _newGameState switch
             {
                 NewGameState.TeamSelection => NewGameState.CoachCreation,
-                NewGameState.DifficultySettings => NewGameState.TeamSelection,
+                NewGameState.RoleSelection => NewGameState.TeamSelection,
+                NewGameState.DifficultySettings => NewGameState.RoleSelection,
                 NewGameState.ContractNegotiation => NewGameState.DifficultySettings,
                 NewGameState.Confirmation => NewGameState.ContractNegotiation,
                 _ => NewGameState.CoachCreation
@@ -312,31 +318,82 @@ namespace NBAHeadCoach.Core
 
         #region New Game
 
-        public void StartNewGame(string firstName, string lastName, int age, string teamId, DifficultySettings difficulty, int tactical, int development, int reputation)
+        public void StartNewGame(string firstName, string lastName, int age, string teamId, DifficultySettings difficulty, int tactical, int development, int reputation, UserRole selectedRole = UserRole.Both)
         {
-            Debug.Log($"[GameManager] Starting new game: Coach {firstName} {lastName}, Team: {teamId}");
+            Debug.Log($"[GameManager] Starting new game: {firstName} {lastName}, Team: {teamId}, Role: {selectedRole}");
 
-            // Create coach career using UnifiedCareerProfile
-            _career = UnifiedCareerProfile.CreateForCoaching($"{firstName} {lastName}", DateTime.Now.Year, age, false, "Player_Coach", null);
-            _career.IsUserControlled = true;
-            _career.TacticalRating = tactical;
-            _career.PlayerDevelopment = development;
-            _career.Reputation = reputation;
+            string fullName = $"{firstName} {lastName}";
+            var team = GetTeam(teamId);
             _playerTeamId = teamId;
 
             // Initialize season
             _currentSeason = DateTime.Now.Year;
             _currentDate = new DateTime(_currentSeason, 10, 1); // Season starts October
 
-            // Accept the job
-            var team = GetTeam(teamId);
-            _career.HandleHired(_currentSeason, teamId, team?.Name ?? teamId, UnifiedRole.HeadCoach);
-            
-            // Set contract details
-            _career.ContractYears = 4;
-            _career.CurrentSalary = 5_000_000;
+            // Create user role configuration
+            _userRoleConfig = new UserRoleConfiguration
+            {
+                CurrentRole = selectedRole,
+                TeamId = teamId
+            };
 
-            PersonnelManager.Instance?.RegisterProfile(_career);
+            // Create career profile(s) based on selected role
+            switch (selectedRole)
+            {
+                case UserRole.GMOnly:
+                    // User is GM - create GM profile
+                    _career = UnifiedCareerProfile.CreateForFrontOffice(fullName, _currentSeason, age, false, "Player_GM", null);
+                    _career.IsUserControlled = true;
+                    _career.Reputation = reputation;
+                    _career.HandleHired(_currentSeason, teamId, team?.Name ?? teamId, UnifiedRole.GeneralManager);
+                    _career.ContractYears = 4;
+                    _career.CurrentSalary = 3_000_000;
+                    _userRoleConfig.UserGMProfileId = _career.ProfileId;
+                    PersonnelManager.Instance?.RegisterProfile(_career);
+
+                    // Generate AI Head Coach
+                    var aiCoach = GenerateAICoach(teamId, team?.Name ?? teamId);
+                    _userRoleConfig.AICoachProfileId = aiCoach.ProfileId;
+                    PersonnelManager.Instance?.RegisterProfile(aiCoach);
+                    Debug.Log($"[GameManager] Generated AI Coach: {aiCoach.FullName}");
+                    break;
+
+                case UserRole.HeadCoachOnly:
+                    // User is Head Coach - create coach profile
+                    _career = UnifiedCareerProfile.CreateForCoaching(fullName, _currentSeason, age, false, "Player_Coach", null);
+                    _career.IsUserControlled = true;
+                    _career.TacticalRating = tactical;
+                    _career.PlayerDevelopment = development;
+                    _career.Reputation = reputation;
+                    _career.HandleHired(_currentSeason, teamId, team?.Name ?? teamId, UnifiedRole.HeadCoach);
+                    _career.ContractYears = 4;
+                    _career.CurrentSalary = 5_000_000;
+                    _userRoleConfig.UserCoachProfileId = _career.ProfileId;
+                    PersonnelManager.Instance?.RegisterProfile(_career);
+
+                    // Generate AI GM
+                    var aiGM = GenerateAIGM(teamId, team?.Name ?? teamId);
+                    _userRoleConfig.AIGMProfileId = aiGM.ProfileId;
+                    PersonnelManager.Instance?.RegisterProfile(aiGM);
+                    Debug.Log($"[GameManager] Generated AI GM: {aiGM.FullName}");
+                    break;
+
+                case UserRole.Both:
+                default:
+                    // User controls both - create combined coach profile (traditional mode)
+                    _career = UnifiedCareerProfile.CreateForCoaching(fullName, _currentSeason, age, false, "Player_Coach", null);
+                    _career.IsUserControlled = true;
+                    _career.TacticalRating = tactical;
+                    _career.PlayerDevelopment = development;
+                    _career.Reputation = reputation;
+                    _career.HandleHired(_currentSeason, teamId, team?.Name ?? teamId, UnifiedRole.HeadCoach);
+                    _career.ContractYears = 4;
+                    _career.CurrentSalary = 5_000_000;
+                    _userRoleConfig.UserCoachProfileId = _career.ProfileId;
+                    _userRoleConfig.UserGMProfileId = _career.ProfileId; // Same profile handles both
+                    PersonnelManager.Instance?.RegisterProfile(_career);
+                    break;
+            }
 
             // Initialize season calendar for player's team
             SeasonController.InitializeSeason(_currentSeason);
@@ -350,6 +407,95 @@ namespace NBAHeadCoach.Core
             // Transition to playing state
             ChangeState(GameState.Playing);
             LoadScene(GAME_SCENE);
+
+            // Auto-save
+            SaveLoad.AutoSave(CreateSaveData());
+        }
+
+        private UnifiedCareerProfile GenerateAICoach(string teamId, string teamName)
+        {
+            // Generate a random AI coach with hidden personality traits
+            var nameGen = NameGenerator.Instance;
+            string firstName = nameGen?.GetRandomFirstName() ?? "John";
+            string lastName = nameGen?.GetRandomLastName() ?? "Smith";
+            int age = UnityEngine.Random.Range(40, 60);
+
+            var aiCoach = UnifiedCareerProfile.CreateForCoaching($"{firstName} {lastName}", _currentSeason, age, false, $"AI_Coach_{teamId}", null);
+            aiCoach.IsUserControlled = false;
+            aiCoach.TacticalRating = UnityEngine.Random.Range(50, 85);
+            aiCoach.PlayerDevelopment = UnityEngine.Random.Range(50, 85);
+            aiCoach.Reputation = UnityEngine.Random.Range(40, 75);
+            aiCoach.HandleHired(_currentSeason, teamId, teamName, UnifiedRole.HeadCoach);
+            aiCoach.ContractYears = 3;
+            aiCoach.CurrentSalary = 4_000_000;
+
+            return aiCoach;
+        }
+
+        private UnifiedCareerProfile GenerateAIGM(string teamId, string teamName)
+        {
+            // Generate a random AI GM with hidden personality traits
+            var nameGen = NameGenerator.Instance;
+            string firstName = nameGen?.GetRandomFirstName() ?? "Mike";
+            string lastName = nameGen?.GetRandomLastName() ?? "Johnson";
+            int age = UnityEngine.Random.Range(38, 58);
+
+            var aiGM = UnifiedCareerProfile.CreateForFrontOffice($"{firstName} {lastName}", _currentSeason, age, false, $"AI_GM_{teamId}", null);
+            aiGM.IsUserControlled = false;
+            aiGM.Reputation = UnityEngine.Random.Range(50, 80);
+            aiGM.HandleHired(_currentSeason, teamId, teamName, UnifiedRole.GeneralManager);
+            aiGM.ContractYears = 4;
+            aiGM.CurrentSalary = 3_500_000;
+
+            return aiGM;
+        }
+
+        /// <summary>
+        /// Start a new career after accepting a job from the job market.
+        /// Used when transitioning from unemployment to a new position.
+        /// </summary>
+        public void StartNewCareerFromJobMarket(string teamId, UserRole newRole, int salary, int contractYears)
+        {
+            Debug.Log($"[GameManager] Starting new career from job market: {teamId}, Role: {newRole}");
+
+            var team = GetTeam(teamId);
+            _playerTeamId = teamId;
+
+            // Update role configuration
+            _userRoleConfig = new UserRoleConfiguration
+            {
+                CurrentRole = newRole,
+                TeamId = teamId
+            };
+
+            // Update existing career profile with new position
+            if (_career != null)
+            {
+                var role = newRole == UserRole.GMOnly ? UnifiedRole.GeneralManager : UnifiedRole.HeadCoach;
+                _career.HandleHired(_currentSeason, teamId, team?.Name ?? teamId, role);
+                _career.ContractYears = contractYears;
+                _career.CurrentSalary = salary;
+
+                if (newRole == UserRole.GMOnly)
+                {
+                    _userRoleConfig.UserGMProfileId = _career.ProfileId;
+                    // Generate AI coach
+                    var aiCoach = GenerateAICoach(teamId, team?.Name ?? teamId);
+                    _userRoleConfig.AICoachProfileId = aiCoach.ProfileId;
+                    PersonnelManager.Instance?.RegisterProfile(aiCoach);
+                }
+                else
+                {
+                    _userRoleConfig.UserCoachProfileId = _career.ProfileId;
+                    // Generate AI GM
+                    var aiGM = GenerateAIGM(teamId, team?.Name ?? teamId);
+                    _userRoleConfig.AIGMProfileId = aiGM.ProfileId;
+                    PersonnelManager.Instance?.RegisterProfile(aiGM);
+                }
+            }
+
+            // Return to playing state
+            ChangeState(GameState.Playing);
 
             // Auto-save
             SaveLoad.AutoSave(CreateSaveData());
@@ -397,6 +543,7 @@ namespace NBAHeadCoach.Core
         {
             _career = data.Career;
             _playerTeamId = data.PlayerTeamId;
+            _userRoleConfig = data.UserRoleConfig ?? new UserRoleConfiguration { CurrentRole = UserRole.Both };
             _currentSeason = data.CurrentSeason;
             _currentDate = data.CurrentDate;
 
@@ -450,6 +597,7 @@ namespace NBAHeadCoach.Core
                 SaveTimestamp = DateTime.Now,
                 Career = _career,
                 PlayerTeamId = _playerTeamId,
+                UserRoleConfig = _userRoleConfig,
                 CurrentSeason = _currentSeason,
                 CurrentDate = _currentDate,
                 TeamStates = CreateTeamStates(),
@@ -590,6 +738,34 @@ namespace NBAHeadCoach.Core
         /// </summary>
         public bool HasActiveGame => _career != null && !string.IsNullOrEmpty(_playerTeamId);
 
+        /// <summary>
+        /// Check if user controls roster decisions (GM or Both role)
+        /// </summary>
+        public bool UserControlsRoster => _userRoleConfig?.UserControlsRoster ?? true;
+
+        /// <summary>
+        /// Check if user controls in-game decisions (Coach or Both role)
+        /// </summary>
+        public bool UserControlsGames => _userRoleConfig?.UserControlsGames ?? true;
+
+        /// <summary>
+        /// Get the AI coach profile (if user is GM-only)
+        /// </summary>
+        public UnifiedCareerProfile GetAICoach()
+        {
+            if (_userRoleConfig?.HasAICoach != true) return null;
+            return PersonnelManager.Instance?.GetProfile(_userRoleConfig.AICoachProfileId);
+        }
+
+        /// <summary>
+        /// Get the AI GM profile (if user is Coach-only)
+        /// </summary>
+        public UnifiedCareerProfile GetAIGM()
+        {
+            if (_userRoleConfig?.HasAIGM != true) return null;
+            return PersonnelManager.Instance?.GetProfile(_userRoleConfig.AIGMProfileId);
+        }
+
         #endregion
 
         #region Manager Registration
@@ -615,6 +791,7 @@ namespace NBAHeadCoach.Core
         public void RegisterRevenueManager(RevenueManager manager) => _revenueManager = manager;
         public void RegisterAdvanceScoutingManager(AdvanceScoutingManager manager) => _advanceScoutingManager = manager;
         public void RegisterFormerPlayerCareerManager(FormerPlayerCareerManager manager) => _formerPlayerCareerManager = manager;
+        public void RegisterJobMarketManager(JobMarketManager manager) => _jobMarketManager = manager;
 
         #endregion
 

@@ -170,6 +170,86 @@ namespace NBAHeadCoach.Core.Data
     }
 
     /// <summary>
+    /// Configuration for the user's role in a specific game/career.
+    /// Tracks which positions the user controls and which are AI-controlled.
+    /// </summary>
+    [Serializable]
+    public class UserRoleConfiguration
+    {
+        /// <summary>The user's selected role</summary>
+        public UserRole CurrentRole = UserRole.Both;
+
+        /// <summary>User's GM profile ID (if user is GM or Both)</summary>
+        public string UserGMProfileId;
+
+        /// <summary>User's Coach profile ID (if user is Coach or Both)</summary>
+        public string UserCoachProfileId;
+
+        /// <summary>AI GM profile ID (if user is Coach-only)</summary>
+        public string AIGMProfileId;
+
+        /// <summary>AI Head Coach profile ID (if user is GM-only)</summary>
+        public string AICoachProfileId;
+
+        /// <summary>The team the user is associated with</summary>
+        public string TeamId;
+
+        /// <summary>Whether the user controls roster decisions (trades, signings, draft)</summary>
+        public bool UserControlsRoster => CurrentRole == UserRole.GMOnly || CurrentRole == UserRole.Both;
+
+        /// <summary>Whether the user controls in-game decisions (plays, subs, timeouts)</summary>
+        public bool UserControlsGames => CurrentRole == UserRole.HeadCoachOnly || CurrentRole == UserRole.Both;
+
+        /// <summary>Whether this configuration has an AI GM (Coach-only mode)</summary>
+        public bool HasAIGM => CurrentRole == UserRole.HeadCoachOnly && !string.IsNullOrEmpty(AIGMProfileId);
+
+        /// <summary>Whether this configuration has an AI Coach (GM-only mode)</summary>
+        public bool HasAICoach => CurrentRole == UserRole.GMOnly && !string.IsNullOrEmpty(AICoachProfileId);
+
+        /// <summary>
+        /// Get the user's primary profile ID based on their role.
+        /// </summary>
+        public string GetUserPrimaryProfileId()
+        {
+            return CurrentRole switch
+            {
+                UserRole.GMOnly => UserGMProfileId,
+                UserRole.HeadCoachOnly => UserCoachProfileId,
+                UserRole.Both => UserCoachProfileId ?? UserGMProfileId, // Prefer coach profile for "Both"
+                _ => null
+            };
+        }
+
+        /// <summary>
+        /// Get display name for the current role.
+        /// </summary>
+        public string GetRoleDisplayName()
+        {
+            return CurrentRole switch
+            {
+                UserRole.GMOnly => "General Manager",
+                UserRole.HeadCoachOnly => "Head Coach",
+                UserRole.Both => "GM & Head Coach",
+                _ => "Unknown"
+            };
+        }
+
+        /// <summary>
+        /// Get description of the current role's responsibilities.
+        /// </summary>
+        public string GetRoleDescription()
+        {
+            return CurrentRole switch
+            {
+                UserRole.GMOnly => "Build the roster through trades, free agency, and the draft. Your hired Head Coach will handle all in-game decisions.",
+                UserRole.HeadCoachOnly => "Control all in-game decisions including plays, substitutions, and timeouts. Request roster moves from the GM.",
+                UserRole.Both => "Full control over both roster decisions and in-game coaching.",
+                _ => ""
+            };
+        }
+    }
+
+    /// <summary>
     /// Tracks the current staff configuration for a team.
     /// </summary>
     [Serializable]

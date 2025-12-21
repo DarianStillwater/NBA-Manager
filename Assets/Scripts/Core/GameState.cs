@@ -39,7 +39,10 @@ namespace NBAHeadCoach.Core
         Loading,
 
         /// <summary>Saving the game</summary>
-        Saving
+        Saving,
+
+        /// <summary>Job market - user is unemployed and searching for work</summary>
+        JobMarket
     }
 
     /// <summary>
@@ -67,6 +70,7 @@ namespace NBAHeadCoach.Core
     {
         CoachCreation,
         TeamSelection,
+        RoleSelection,
         DifficultySettings,
         ContractNegotiation,
         Confirmation

@@ -2,7 +2,7 @@
 
 > **Purpose**: This document is the single source of truth for understanding the entire game design. An AI or developer can reference this without scanning all project files.
 > 
-> **Last Updated**: December 2024 (Deep Coaching Strategy Update)
+> **Last Updated**: December 2024 (Dual-Role System Update)
 
 ---
 
@@ -13,11 +13,20 @@
 **Perspective**: You play as an NBA head coach managing your team through seasons  
 
 **Core Loop**:
-1. Manage roster (trades, free agency, contracts)
-2. Develop players (training, playing time)
-3. Coach games (strategy, play calling, substitutions)
+1. Manage roster (trades, free agency, contracts) - *GM role*
+2. Develop players (training, playing time) - *Both roles*
+3. Coach games (strategy, play calling, substitutions) - *Coach role*
 4. Navigate seasons (82 games → playoffs → offseason)
-5. Build coaching legacy across multiple careers
+5. Build career legacy across multiple teams and roles
+
+### Dual-Role System
+
+> **Key Feature**: Players choose their role when starting a new career:
+> - **GM Only**: Full roster control, hire/fire coaches, AI coach runs games autonomously
+> - **Head Coach Only**: Full game control, submit roster requests to AI GM for approval
+> - **Both** (default): Complete control over all aspects
+>
+> Roles have **linked fates** - getting fired from either role ends the tenure. After firing, enter the **Job Market** to apply for new positions (potentially switching roles).
 
 ### Design Philosophy: No Visible Attributes
 
@@ -85,6 +94,10 @@ Central controller managing game state, scene loading, and manager coordination.
 - `Booting` → `MainMenu` → `NewGame` → `Playing`
 - `Playing` ↔ `PreGame` ↔ `Match` ↔ `PostGame`
 - `Offseason` (with sub-states for each phase)
+- `JobMarket` (after being fired, job search mode)
+
+**NewGame States** (NewGameState enum):
+- `CoachCreation` → `TeamSelection` → `RoleSelection` → `DifficultySettings` → `ContractNegotiation` → `Confirmation`
 
 **Events**:
 - `OnStateChanged` - State transitions
@@ -219,6 +232,43 @@ The following files have been removed as part of the personnel refactor:
 | `CoordinatorAI.cs` | Enhanced AI for offensive/defensive coordinators, delegation support |
 | `StaffMeeting.cs` | Pre-game/halftime meetings, staff contributions, disagreement handling |
 
+### Dual-Role System (NEW)
+
+> **Recent Addition**: Comprehensive role selection system allowing play as GM, Coach, or Both with AI counterparts.
+
+#### Role Configuration
+
+| File | Description |
+|------|-------------|
+| `StaffRoles.cs` | UserRoleConfiguration, TeamStaffConfiguration, role helpers |
+
+#### GM-Only Mode (Phase 2)
+
+| File | Description |
+|------|-------------|
+| `AutonomousGameResult.cs` | Game results when AI coach runs games (box scores, moments, coach performance) |
+| `AutonomousGameSimulator.cs` | Simulates games using AI coach personality |
+
+#### Coach-Only Mode (Phase 3)
+
+| File | Description |
+|------|-------------|
+| `RosterRequest.cs` | Roster request types, history, priorities, results |
+| `AIGMController.cs` | AI GM with hidden personality traits, request processing |
+
+#### Job Market System (Phase 4)
+
+| File | Description |
+|------|-------------|
+| `JobMarketData.cs` | JobOpening, JobApplication, FiringDetails, UnsolicitedOffer, JobMarketState |
+| `JobMarketManager.cs` | Firing, job openings, applications, interviews, offers |
+
+#### AI Personality Discovery (Phase 5)
+
+| File | Description |
+|------|-------------|
+| `AIPersonalityDiscovery.cs` | Trait observation, confidence levels, personality insights, relationship tracking |
+
 ### Supporting Data
 
 | File | Description |
@@ -306,6 +356,15 @@ The following files have been removed as part of the personnel refactor:
 | OpponentAdjustmentPredictor | `OpponentAdjustmentPredictor.cs` | **NEW** - Predict opponent coach moves |
 | GamePlanBuilder | `GamePlanBuilder.cs` | **NEW** - Pre-game preparation and contingencies |
 
+### Dual-Role & Job Market (NEW)
+
+| Manager/AI | File | Description |
+|------------|------|-------------|
+| JobMarketManager | `JobMarketManager.cs` | **NEW** - Job openings, applications, interviews, offers |
+| AIGMController | `AIGMController.cs` | **NEW** - AI GM decision-making with hidden personality |
+| AutonomousGameSimulator | `AutonomousGameSimulator.cs` | **NEW** - Simulates games with AI coach |
+| PersonalityDiscoveryManager | `AIPersonalityDiscovery.cs` | **NEW** - Tracks AI personality trait discovery |
+
 ### Team Operations
 
 | Manager | File | Description |
@@ -359,8 +418,11 @@ The following files have been removed as part of the personnel refactor:
 | PreGamePanel | `PreGamePanel.cs` | Pre-game preparation |
 | PostGamePanel | `PostGamePanel.cs` | Post-game results |
 | PlayoffBracketPanel | `PlayoffBracketPanel.cs` | Playoff bracket view |
-| NewGamePanel | `NewGamePanel.cs` | New game wizard |
+| NewGamePanel | `NewGamePanel.cs` | New game wizard (with role selection) |
 | TeamSelectionPanel | `TeamSelectionPanel.cs` | Team selection |
+| GameSummaryPanel | `GameSummaryPanel.cs` | **NEW** - GM-only game results view |
+| RosterRequestPanel | `RosterRequestPanel.cs` | **NEW** - Coach roster requests to AI GM |
+| JobMarketPanel | `JobMarketPanel.cs` | **NEW** - Job search when unemployed |
 
 ### UI Components
 
@@ -422,6 +484,12 @@ Procedural name generation using Markov chains with realistic NBA demographics.
 | Opponent Prediction | Coach personality-based adjustment prediction |
 | Game Plan Builder | Pre-game prep, matchups, contingency plans |
 | Staff Partnership | Coordinator AI, delegation, staff meetings |
+| **Dual-Role System** | **5-phase role selection and AI counterpart system** |
+| Role Selection | Choose GM, Coach, or Both when starting new career |
+| GM-Only Mode | AI coach runs games autonomously, view summaries |
+| Coach-Only Mode | Submit roster requests to AI GM for approval |
+| Job Market | After firing, search and apply for new positions |
+| AI Personality Discovery | Learn AI traits through interactions over time |
 
 ### Outstanding Issues / TODOs
 
@@ -530,6 +598,50 @@ ProcessPracticeMentorshipSessions(teamId, roster, sessionType) → List<Mentorsh
 CheckOrganicFormation(teamId, roster) → List<MentorshipRelationship>
 ```
 
+**GameManager** (Role system additions):
+```csharp
+// Role configuration
+UserRoleConfig → UserRoleConfiguration
+UserControlsRoster → bool  // True if GM or Both
+UserControlsGames → bool   // True if Coach or Both
+GetAICoach() → UnifiedCareerProfile  // If GM-only mode
+GetAIGM() → UnifiedCareerProfile     // If Coach-only mode
+
+// Career transitions
+StartNewCareerFromJobMarket(teamId, newRole, salary, contractYears)
+```
+
+**JobMarketManager** (Job market API):
+```csharp
+// Firing
+HandlePlayerFired(reason, publicStatement)
+GetFiringDetails() → FiringDetails
+
+// Job search
+GetAvailableJobs(roleFilter?) → List<JobOpening>
+ApplyForJob(openingId, coverLetter) → JobApplication
+AcceptJob(openingId) → bool
+DeclineJob(openingId)
+
+// Offers
+GetUnsolicitedOffers() → List<UnsolicitedOffer>
+GetMarketSummary() → JobMarketSummary
+```
+
+**AIGMController** (AI GM API for coaches):
+```csharp
+ProcessRequest(RosterRequest) → RosterRequestResult
+GetKnownPersonalityDescription() → string
+RequestHistory → RosterRequestHistory
+```
+
+**PersonalityDiscoveryManager** (AI trait learning):
+```csharp
+GetDiscovery(aiProfileId, aiName, isGM) → AIPersonalityDiscovery
+RecordObservation(aiProfileId, traitKey, positiveEvidence, context)
+GetInsights(aiProfileId) → List<string>
+```
+
 ---
 
 ## GETTING STARTED FOR DEVELOPERS
@@ -555,6 +667,21 @@ CheckOrganicFormation(teamId, roster) → List<MentorshipRelationship>
 ---
 
 ## CHANGE LOG
+
+### December 2024 - Dual-Role System
+- **Phase 1: Role Selection** - Added role choice (GM/Coach/Both) to new game wizard
+- **Phase 2: GM-Only Mode** - AI coach runs games autonomously with `AutonomousGameSimulator`
+- **Phase 3: Coach-Only Mode** - Submit roster requests to AI GM via `RosterRequestPanel`
+- **Phase 4: Job Market** - After firing, search and apply for positions via `JobMarketPanel`
+- **Phase 5: AI Personality Discovery** - Learn AI traits through interactions over time
+- Added `UserRoleConfiguration` for role tracking and AI counterpart references
+- Added `JobMarketManager` with firing, applications, interviews, offers
+- Added `AIGMController` with hidden personality traits
+- Added `AIPersonalityDiscovery` system with observation tracking
+- Enhanced `GameManager` with role-aware helpers and career transitions
+- Enhanced `MatchFlowController` with autonomous game simulation support
+- Added `JobMarket` state to `GameState` enum
+- Added `RoleSelection` step to new game wizard
 
 ### December 2024 - Deep Coaching Strategy Simulation
 - **Phase 1: In-Game Analytics** - Added real-time game stats, coaching advisor, matchup evaluation, play effectiveness tracking

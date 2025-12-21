@@ -26,6 +26,7 @@ namespace NBAHeadCoach.Core
         public UnifiedCareerProfile Career;
         public string PlayerTeamId;
         public DifficultySettings Difficulty;
+        public UserRoleConfiguration UserRoleConfig;
 
         [Header("Season")]
         public int CurrentSeason;
