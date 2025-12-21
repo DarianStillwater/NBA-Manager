@@ -126,6 +126,19 @@ namespace NBAHeadCoach.Core.Data
         [HideInInspector] [Range(0, 100)] public int Composure;            // Handles pressure
         [HideInInspector] [Range(0, 100)] public int Aggression;           // Playing style intensity
 
+        // ==================== PERSONALITY OBJECT ====================
+        /// <summary>
+        /// Player's full personality with traits and morale.
+        /// </summary>
+        [HideInInspector] public Personality Personality;
+
+        // ==================== BEHAVIORAL TENDENCIES ====================
+        /// <summary>
+        /// Player's behavioral tendencies - innate and coachable behaviors.
+        /// Affects how players execute within tactical systems.
+        /// </summary>
+        [HideInInspector] public PlayerTendencies Tendencies;
+
         // ==================== DYNAMIC STATE (Changes during game) ====================
         [Header("Current State")]
         [Range(0, 100)] public float Energy;             // Depletes during play
@@ -174,6 +187,11 @@ namespace NBAHeadCoach.Core.Data
 
         // ==================== COMPUTED PROPERTIES ====================
         public string FullName => $"{FirstName} {LastName}";
+
+        /// <summary>
+        /// Alias for PlayerId for consistent access patterns.
+        /// </summary>
+        public string Id => PlayerId;
 
         /// <summary>
         /// Height formatted as feet and inches (e.g., "6'2"" for 74 inches).
@@ -766,6 +784,86 @@ namespace NBAHeadCoach.Core.Data
             // Injury proneness
             InjuryProneness = 20 + rng.Next(0, 60);  // 20-79
             InjuryHistoryCount = 0;
+
+            // Initialize personality if not already set
+            Personality ??= Personality.GenerateRandom(rng);
+
+            // Initialize tendencies based on position/archetype
+            Tendencies ??= PlayerTendencies.GenerateForArchetype(DetermineArchetype(), OverallRating);
+        }
+
+        /// <summary>
+        /// Determines the player's archetype based on their attributes.
+        /// </summary>
+        public PlayerArchetype DetermineArchetype()
+        {
+            // Analyze skill profile to determine archetype
+            int scoringTotal = Finishing_Rim + Shot_MidRange + Shot_Three;
+            int passingTotal = Passing + OffensiveIQ;
+            int defenseTotal = Defense_Perimeter + Defense_Interior + DefensiveIQ;
+            int shootingTotal = Shot_Three + Shot_MidRange;
+
+            // Position influences archetype determination
+            switch (Position)
+            {
+                case Position.PointGuard:
+                    if (passingTotal > 150) return PlayerArchetype.Facilitator;
+                    if (Passing > 75) return PlayerArchetype.Playmaker;
+                    if (Shot_Three > 75 && Defense_Perimeter > 70) return PlayerArchetype.ThreeAndD;
+                    if (scoringTotal > 200) return PlayerArchetype.Scorer;
+                    break;
+
+                case Position.ShootingGuard:
+                    if (Shot_Three > 75 && Defense_Perimeter > 70) return PlayerArchetype.ThreeAndD;
+                    if (scoringTotal > 200) return PlayerArchetype.Scorer;
+                    if (Speed > 80 && Vertical > 80) return PlayerArchetype.Athletic;
+                    if (Passing > 70) return PlayerArchetype.Playmaker;
+                    break;
+
+                case Position.SmallForward:
+                    if (Shot_Three > 75 && Defense_Perimeter > 70) return PlayerArchetype.ThreeAndD;
+                    if (defenseTotal > 220) return PlayerArchetype.Defender;
+                    if (scoringTotal > 200) return PlayerArchetype.Scorer;
+                    if (Speed > 80 && Vertical > 80) return PlayerArchetype.Athletic;
+                    break;
+
+                case Position.PowerForward:
+                    if (Shot_Three > 70) return PlayerArchetype.Stretch;
+                    if (Finishing_PostMoves > 70) return PlayerArchetype.PostPlayer;
+                    if (defenseTotal > 220) return PlayerArchetype.Defender;
+                    if (Speed > 75 && Vertical > 75) return PlayerArchetype.Athletic;
+                    break;
+
+                case Position.Center:
+                    if (Shot_Three > 65) return PlayerArchetype.Stretch;
+                    if (Finishing_PostMoves > 75) return PlayerArchetype.PostPlayer;
+                    if (defenseTotal > 220) return PlayerArchetype.Defender;
+                    break;
+            }
+
+            return PlayerArchetype.Balanced;
+        }
+
+        /// <summary>
+        /// Initializes tendencies for an existing player who doesn't have them yet.
+        /// </summary>
+        public void InitializeTendencies()
+        {
+            if (Tendencies == null)
+            {
+                Tendencies = PlayerTendencies.GenerateForArchetype(DetermineArchetype(), OverallRating);
+            }
+        }
+
+        /// <summary>
+        /// Initializes personality for an existing player who doesn't have it yet.
+        /// </summary>
+        public void InitializePersonality()
+        {
+            if (Personality == null)
+            {
+                Personality = Personality.GenerateRandom();
+            }
         }
 
         /// <summary>

@@ -156,6 +156,24 @@ namespace NBAHeadCoach.Core.Simulation
             float moraleMod = (avgMorale - 50f) / 50f; // -1 to +1
             turnoverChance -= moraleMod * 0.02f; // ±2% based on morale
 
+            // TENDENCY INTEGRATION: Ball movement and risk tolerance affect turnovers
+            if (handler.Tendencies != null)
+            {
+                // Ball stoppers hold the ball too long, higher turnover risk
+                // Ball movement: -100 (ball stopper) to +100 (willing passer)
+                float ballMovementMod = handler.Tendencies.BallMovement / 500f; // ±0.2
+                turnoverChance -= ballMovementMod * 0.03f; // Ball stoppers +0.6%, willing passers -0.6%
+
+                // Risk takers have more turnovers but also more big plays
+                // Risk tolerance: -100 (risk averse) to +100 (risk taker)
+                float riskMod = handler.Tendencies.RiskTolerance / 500f;
+                turnoverChance += riskMod * 0.02f; // Risk takers +0.4%, risk averse -0.4%
+
+                // Effort consistency affects focus and ball security
+                float effortMod = handler.Tendencies.GetEffortModifier(handler.Energy, 1);
+                turnoverChance -= (effortMod - 1f) * 0.1f; // High effort = fewer turnovers
+            }
+
             turnoverChance = Mathf.Clamp(turnoverChance, 0.05f, 0.25f);
 
             return _random.NextDouble() < turnoverChance
@@ -216,31 +234,52 @@ namespace NBAHeadCoach.Core.Simulation
         }
 
         /// <summary>
-        /// Selects the shooter based on shooting skill and strategy.
+        /// Selects the shooter based on shooting skill, strategy, and tendencies.
         /// </summary>
         private int SelectShooter()
         {
             float[] weights = new float[5];
-            
+
             for (int i = 0; i < 5; i++)
             {
                 Player p = _offensePlayers[i];
-                
+
                 // Base weight on shooting ability
                 float avgShooting = (p.Shot_Three + p.Shot_MidRange + p.Finishing_Rim) / 3f;
                 weights[i] = avgShooting;
-                
+
                 // Strategy influence
                 if (_offenseStrategy.ThreePointFrequency > 60)
                     weights[i] += p.Shot_Three * 0.3f;
                 if (_offenseStrategy.PostUpFrequency > 50 && (i == 3 || i == 4))
                     weights[i] += p.Finishing_PostMoves * 0.3f;
+
+                // TENDENCY INTEGRATION: Shot selection tendencies affect usage
+                if (p.Tendencies != null)
+                {
+                    // Quick trigger players (-100 ShotSelection) take more shots
+                    // Patient shooters (+100 ShotSelection) take fewer but better shots
+                    float shotSelectionMod = -p.Tendencies.ShotSelection / 200f; // +0.5 for quick trigger, -0.5 for patient
+                    weights[i] *= (1f + shotSelectionMod * 0.3f);
+
+                    // Ball stoppers take more shots (they don't pass)
+                    // Ball movement: -100 to +100
+                    float ballMovementMod = -p.Tendencies.BallMovement / 300f;
+                    weights[i] *= (1f + ballMovementMod * 0.2f);
+
+                    // Shot discipline affects whether they stay within their role
+                    // Low shot discipline = takes shots outside their role
+                    if (p.Tendencies.ShotDiscipline < 40)
+                    {
+                        weights[i] *= 1.15f; // 15% more likely to take shots
+                    }
+                }
             }
 
             float total = weights.Sum();
             float roll = (float)_random.NextDouble() * total;
             float cumulative = 0;
-            
+
             for (int i = 0; i < 5; i++)
             {
                 cumulative += weights[i];
@@ -345,19 +384,64 @@ namespace NBAHeadCoach.Core.Simulation
 
             // Determine shot type and zone
             var shotType = ShotCalculator.DetermineShotType(shooter, position, defenderDistance, false);
-            
+
             // Calculate shot probability
             float shotProb = ShotCalculator.CalculateShotProbability(
                 shooter, position, defender, defenderDistance, shotType,
                 isFastBreak: false, secondsRemaining: possessionClock, isHomeTeam: _isOffenseHome);
 
+            // TENDENCY INTEGRATION: Apply tendency-based modifiers
+            if (shooter.Tendencies != null)
+            {
+                // Clutch behavior in late game situations
+                bool isClutch = (quarter >= 4 && gameClock <= 120f) || // Last 2 min of 4th+ quarter
+                                (quarter >= 4 && Mathf.Abs(0) <= 5); // Would need score margin, simplified
+                float clutchMod = shooter.Tendencies.GetClutchModifier(isClutch);
+                shotProb *= clutchMod;
+
+                // Effort consistency affects shot quality
+                float effortMod = shooter.Tendencies.GetEffortModifier(shooter.Energy, quarter);
+                shotProb *= effortMod;
+
+                // Quick trigger players take contested shots more often
+                // This can hurt their percentages but also catches defenses off guard
+                if (shooter.Tendencies.ShotSelection < -30 && defenderDistance < 4f)
+                {
+                    // Taking contested shot when patience would help - slight penalty
+                    shotProb *= 0.95f;
+                }
+                else if (shooter.Tendencies.ShotSelection > 30 && defenderDistance > 5f)
+                {
+                    // Patient shooter with good look - slight bonus
+                    shotProb *= 1.03f;
+                }
+            }
+
             bool made = _random.NextDouble() < shotProb;
-            
+
             // Check for block (only on close shots with good defender)
             bool blocked = false;
             if (!made && defenderDistance < 4f)
             {
                 float blockChance = (defender.Block / 100f) * (1f - defenderDistance / 6f) * 0.15f;
+
+                // TENDENCY INTEGRATION: Defensive tendencies affect block attempts
+                if (defender.Tendencies != null)
+                {
+                    // Aggressive defenders (+100 DefensiveGambling) go for more blocks
+                    // Conservative defenders (-100) stay grounded
+                    float gamblingMod = 1f + (defender.Tendencies.DefensiveGambling / 500f);
+                    blockChance *= gamblingMod;
+
+                    // Effort affects defensive contests
+                    float effortMod = defender.Tendencies.GetEffortModifier(defender.Energy, quarter);
+                    blockChance *= effortMod;
+
+                    // Closeout control affects ability to contest without fouling
+                    float closeoutBonus = (defender.Tendencies.CloseoutControl - 50) / 300f;
+                    blockChance *= (1f + closeoutBonus);
+                }
+
                 blocked = _random.NextDouble() < blockChance;
             }
 
