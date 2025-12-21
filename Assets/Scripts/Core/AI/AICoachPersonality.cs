@@ -56,6 +56,23 @@ namespace NBAHeadCoach.Core.AI
         [Range(0, 100)] public int PlayoffAdjustments = 60;       // Better in playoffs
         [Range(0, 100)] public int Stubbornness = 50;             // Stick to system
 
+        // ==================== PREDICTABILITY & PATTERNS ====================
+        [Header("Predictability")]
+        /// <summary>How predictable this coach is (0 = unpredictable, 100 = very predictable)</summary>
+        [Range(0, 100)] public int Predictability = 50;
+
+        /// <summary>Overall aggression level for opponent profiling</summary>
+        [Range(0, 100)] public int Aggression = 50;
+
+        /// <summary>Common adjustments when losing big</summary>
+        public List<string> WhenLosingBigPatterns = new List<string>();
+
+        /// <summary>Common adjustments when winning big</summary>
+        public List<string> WhenWinningBigPatterns = new List<string>();
+
+        /// <summary>Typical halftime adjustments</summary>
+        public List<string> HalftimePatterns = new List<string>();
+
         // ==================== TIMEOUT USAGE ====================
         [Header("Timeout Tendencies")]
         [Range(0, 100)] public int TimeoutAggressiveness = 50;    // Quick to call timeout
@@ -307,6 +324,241 @@ namespace NBAHeadCoach.Core.AI
                 threshold += 15;  // Try to rally
 
             return rng.Next(100) < threshold;
+        }
+
+        // ==================== ADJUSTMENT PATTERN GENERATION ====================
+
+        /// <summary>
+        /// Generates adjustment patterns based on personality traits.
+        /// Called when creating an opponent profile.
+        /// </summary>
+        public void GenerateAdjustmentPatterns()
+        {
+            WhenLosingBigPatterns.Clear();
+            WhenWinningBigPatterns.Clear();
+            HalftimePatterns.Clear();
+
+            // When losing big - based on aggression and style
+            if (Aggression >= 60 || DefensiveAggression >= 60)
+            {
+                WhenLosingBigPatterns.Add("Increase full court pressure");
+                WhenLosingBigPatterns.Add("More aggressive double teams");
+            }
+            if (PreferredPace < 95)
+            {
+                WhenLosingBigPatterns.Add("Speed up pace");
+            }
+            if (ThreePointEmphasis >= 40)
+            {
+                WhenLosingBigPatterns.Add("Increase three-point attempts");
+            }
+            if (IsolationTendency >= 40)
+            {
+                WhenLosingBigPatterns.Add("More isolation plays for star");
+            }
+            WhenLosingBigPatterns.Add("Tighter rotation to best players");
+
+            // When winning big - based on control and system
+            if (Stubbornness >= 60)
+            {
+                WhenWinningBigPatterns.Add("Stick with what's working");
+            }
+            else
+            {
+                WhenWinningBigPatterns.Add("Slow down pace to protect lead");
+                WhenWinningBigPatterns.Add("Conservative play calling");
+            }
+            if (YoungPlayerTrust >= 60)
+            {
+                WhenWinningBigPatterns.Add("Give bench players minutes");
+            }
+            WhenWinningBigPatterns.Add("Focus on not turning ball over");
+
+            // Halftime adjustments
+            if (HalftimeAdjustmentQuality >= 60)
+            {
+                HalftimePatterns.Add("Major defensive scheme change");
+                HalftimePatterns.Add("New offensive sets");
+            }
+            if (ZoneUsageTendency >= 30)
+            {
+                HalftimePatterns.Add("Switch to zone defense");
+            }
+            if (BlitzingTendency >= 40)
+            {
+                HalftimePatterns.Add("Increase trapping frequency");
+            }
+            HalftimePatterns.Add("Matchup adjustments based on first half");
+        }
+
+        /// <summary>
+        /// Gets the likely adjustment for a specific situation.
+        /// </summary>
+        public string GetLikelyAdjustment(string situation)
+        {
+            var rng = new System.Random();
+            List<string> patterns = situation switch
+            {
+                "LosingBig" => WhenLosingBigPatterns,
+                "WinningBig" => WhenWinningBigPatterns,
+                "Halftime" => HalftimePatterns,
+                _ => new List<string>()
+            };
+
+            if (patterns.Count == 0)
+                return "No adjustment expected";
+
+            // Predictable coaches use first pattern more often
+            if (Predictability >= 70 || rng.Next(100) < Predictability)
+                return patterns[0];
+
+            return patterns[rng.Next(patterns.Count)];
+        }
+
+        /// <summary>
+        /// Gets the probability that the coach will make a specific adjustment.
+        /// </summary>
+        public int GetAdjustmentProbability(Data.AdjustmentType adjustmentType, int scoreDiff, int quarter)
+        {
+            int baseProbability = 50;
+
+            // Score-based modifiers
+            if (scoreDiff < -15)
+            {
+                if (adjustmentType == Data.AdjustmentType.ChangePace ||
+                    adjustmentType == Data.AdjustmentType.IncreaseTrapping)
+                    baseProbability += 25;
+            }
+            else if (scoreDiff > 15)
+            {
+                if (adjustmentType == Data.AdjustmentType.ChangePace)
+                    baseProbability += 20;
+            }
+
+            // Personality modifiers
+            baseProbability += (InGameAdjustmentSpeed - 50) / 5;
+            baseProbability -= (Stubbornness - 50) / 5;
+
+            // Quarter modifiers - more adjustments late
+            if (quarter >= 3)
+                baseProbability += 10;
+            if (quarter == 4)
+                baseProbability += 15;
+
+            return Mathf.Clamp(baseProbability, 5, 95);
+        }
+
+        /// <summary>
+        /// Generates an opponent tendency profile from this coach's personality.
+        /// </summary>
+        public Data.OpponentTendencyProfile GenerateOpponentProfile(string teamId, string teamName)
+        {
+            var profile = new Data.OpponentTendencyProfile
+            {
+                TeamId = teamId,
+                TeamName = teamName,
+                HeadCoachId = CoachId,
+                HeadCoachName = CoachName,
+                LastUpdated = DateTime.Now,
+                DataQuality = 70, // Base quality for personality-derived profile
+
+                // Coach personality
+                CoachPredictability = Predictability,
+                CoachAggression = Aggression,
+
+                // Offensive tendencies (from personality)
+                PnRFrequency = PickAndRollEmphasis,
+                IsolationFrequency = IsolationTendency,
+                PostUpFrequency = PostPlayEmphasis,
+                ThreePointRate = ThreePointEmphasis,
+                PreferredPace = (int)PreferredPace,
+                BallMovement = BallMovementPriority,
+
+                // Defensive tendencies
+                ZoneUsage = ZoneUsageTendency,
+                TrapFrequency = BlitzingTendency,
+                SwitchTendency = SwitchingTendency,
+                HelpDefenseAggression = DefensiveAggression,
+
+                // Primary schemes
+                PrimaryDefense = GetDefensiveScheme(false, false, 1) == DefensiveScheme.Zone23
+                    ? Data.DefensiveScheme.Zone23
+                    : Data.DefensiveScheme.ManToMan,
+
+                // Clutch tendencies
+                PreferredClutchPlay = IsolationTendency >= 60
+                    ? Data.ClutchPlayType.Isolation
+                    : Data.ClutchPlayType.PickAndRoll,
+                ClutchTimeoutTendency = TimeoutAggressiveness,
+                IntentionalFoulTendency = FoulingUp3Tendency ? 70 : 30
+            };
+
+            // Generate adjustment patterns
+            GenerateAdjustmentPatterns();
+
+            // Add adjustment patterns to profile
+            foreach (var pattern in WhenLosingBigPatterns)
+            {
+                profile.WhenLosingBig.Add(new Data.AdjustmentPattern
+                {
+                    Type = ParseAdjustmentType(pattern),
+                    Description = pattern,
+                    Likelihood = Predictability >= 60 ? 70 : 50,
+                    CounterStrategy = GetCounterFor(pattern)
+                });
+            }
+
+            foreach (var pattern in WhenWinningBigPatterns)
+            {
+                profile.WhenWinningBig.Add(new Data.AdjustmentPattern
+                {
+                    Type = ParseAdjustmentType(pattern),
+                    Description = pattern,
+                    Likelihood = Predictability >= 60 ? 70 : 50,
+                    CounterStrategy = GetCounterFor(pattern)
+                });
+            }
+
+            foreach (var pattern in HalftimePatterns)
+            {
+                profile.HalftimeAdjustments.Add(new Data.AdjustmentPattern
+                {
+                    Type = ParseAdjustmentType(pattern),
+                    Description = pattern,
+                    Likelihood = HalftimeAdjustmentQuality,
+                    CounterStrategy = GetCounterFor(pattern)
+                });
+            }
+
+            return profile;
+        }
+
+        private Data.AdjustmentType ParseAdjustmentType(string pattern)
+        {
+            if (pattern.Contains("pace") || pattern.Contains("Pace"))
+                return Data.AdjustmentType.ChangePace;
+            if (pattern.Contains("defense") || pattern.Contains("Defense") || pattern.Contains("zone") || pattern.Contains("Zone"))
+                return Data.AdjustmentType.ChangeDefense;
+            if (pattern.Contains("lineup") || pattern.Contains("Lineup") || pattern.Contains("rotation") || pattern.Contains("bench"))
+                return Data.AdjustmentType.ChangeLineup;
+            if (pattern.Contains("trap") || pattern.Contains("Trap") || pattern.Contains("pressure"))
+                return Data.AdjustmentType.IncreaseTrapping;
+            return Data.AdjustmentType.ChangePlayCalling;
+        }
+
+        private string GetCounterFor(string pattern)
+        {
+            if (pattern.Contains("pressure") || pattern.Contains("trap"))
+                return "Use press break, quick passes to middle";
+            if (pattern.Contains("zone"))
+                return "Run zone offense, attack gaps";
+            if (pattern.Contains("pace") && pattern.Contains("Speed"))
+                return "Control tempo, use clock";
+            if (pattern.Contains("pace") && pattern.Contains("Slow"))
+                return "Push tempo when possible";
+            if (pattern.Contains("isolation"))
+                return "Be ready for star isolations, prepare help";
+            return "Observe and adjust";
         }
 
         // ==================== FACTORY METHODS ====================

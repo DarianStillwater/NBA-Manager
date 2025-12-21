@@ -31,11 +31,13 @@ namespace NBAHeadCoach.Core.Data
         AssistantCoach = 10,
         PositionCoach = 20,
         Coordinator = 30,
+        OffensiveCoordinator = 31,
+        DefensiveCoordinator = 32,
         HeadCoach = 40,
 
         // Front Office Track (Levels 11-41)
         Scout = 11,
-        AssistantGM = 31,
+        AssistantGM = 33,
         GeneralManager = 41
     }
 
@@ -76,6 +78,8 @@ namespace NBAHeadCoach.Core.Data
             return role == UnifiedRole.AssistantCoach ||
                    role == UnifiedRole.PositionCoach ||
                    role == UnifiedRole.Coordinator ||
+                   role == UnifiedRole.OffensiveCoordinator ||
+                   role == UnifiedRole.DefensiveCoordinator ||
                    role == UnifiedRole.HeadCoach;
         }
 
@@ -841,6 +845,8 @@ namespace NBAHeadCoach.Core.Data
             return role == UnifiedRole.AssistantCoach ||
                    role == UnifiedRole.PositionCoach ||
                    role == UnifiedRole.Coordinator ||
+                   role == UnifiedRole.OffensiveCoordinator ||
+                   role == UnifiedRole.DefensiveCoordinator ||
                    role == UnifiedRole.HeadCoach;
         }
 
@@ -863,6 +869,8 @@ namespace NBAHeadCoach.Core.Data
                 UnifiedRole.AssistantCoach => "Assistant Coach",
                 UnifiedRole.PositionCoach => "Position Coach",
                 UnifiedRole.Coordinator => "Coordinator",
+                UnifiedRole.OffensiveCoordinator => "Offensive Coordinator",
+                UnifiedRole.DefensiveCoordinator => "Defensive Coordinator",
                 UnifiedRole.HeadCoach => "Head Coach",
                 UnifiedRole.Scout => "Scout",
                 UnifiedRole.AssistantGM => "Assistant GM",

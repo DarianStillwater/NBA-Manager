@@ -171,6 +171,277 @@ namespace NBAHeadCoach.Core.Manager
             return result;
         }
 
+        // ==================== PRACTICE-BASED DEVELOPMENT ====================
+
+        /// <summary>
+        /// Applies practice gains to a player's development progress.
+        /// Called by PracticeManager after each practice session.
+        /// </summary>
+        public void ApplyPracticeGains(Player player, PlayerPracticeGains gains)
+        {
+            if (player == null || gains == null) return;
+
+            // Apply skill progress from practice
+            foreach (var skillGain in gains.SkillProgress)
+            {
+                if (Enum.TryParse<PlayerAttribute>(skillGain.Key, out var attr))
+                {
+                    int currentValue = player.GetAttributeForSimulation(attr);
+
+                    // Practice provides gradual progress - accumulate until reaching threshold
+                    float threshold = 50f; // Need 50 progress points to gain 1 attribute point
+                    int pointsToAdd = Mathf.FloorToInt(skillGain.Value / threshold);
+
+                    if (pointsToAdd > 0 && currentValue < player.HiddenPotential)
+                    {
+                        int actualGain = Mathf.Min(pointsToAdd, player.HiddenPotential - currentValue, 1);
+                        if (actualGain > 0)
+                        {
+                            player.ModifyAttribute(attr, actualGain);
+
+                            player.DevelopmentHistory.Add(new DevelopmentLog
+                            {
+                                Season = _currentSeason,
+                                Attribute = attr,
+                                PreviousValue = currentValue,
+                                NewValue = currentValue + actualGain,
+                                Reason = "Practice Training",
+                                Date = DateTime.Now
+                            });
+                        }
+                    }
+                }
+            }
+
+            // Apply tendency progress through TendencyCoachingManager
+            if (gains.TendencyProgress.Count > 0 && player.Tendencies != null)
+            {
+                foreach (var tendencyGain in gains.TendencyProgress)
+                {
+                    if (!player.Tendencies.TrainingProgress.ContainsKey(tendencyGain.Key))
+                        player.Tendencies.TrainingProgress[tendencyGain.Key] = 0f;
+
+                    player.Tendencies.TrainingProgress[tendencyGain.Key] += tendencyGain.Value;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Processes weekly practice development for a team.
+        /// Call this at the end of each week during the season.
+        /// </summary>
+        public List<DevelopmentResult> ProcessWeeklyPracticeDevelopment(
+            string teamId,
+            List<Data.PracticeResults> weeklyPracticeResults,
+            float coachingQuality)
+        {
+            var results = new List<DevelopmentResult>();
+
+            if (_playerDatabase == null)
+            {
+                Debug.LogError("[PlayerDevelopmentManager] PlayerDatabase not set");
+                return results;
+            }
+
+            // Aggregate practice gains per player for the week
+            var playerGains = new Dictionary<string, PlayerPracticeGains>();
+
+            foreach (var practiceResult in weeklyPracticeResults)
+            {
+                foreach (var kvp in practiceResult.PlayerGains)
+                {
+                    if (!playerGains.ContainsKey(kvp.Key))
+                    {
+                        playerGains[kvp.Key] = new PlayerPracticeGains
+                        {
+                            PlayerId = kvp.Key,
+                            SkillProgress = new Dictionary<string, float>(),
+                            TendencyProgress = new Dictionary<string, float>()
+                        };
+                    }
+
+                    // Accumulate skill progress
+                    foreach (var skill in kvp.Value.SkillProgress)
+                    {
+                        if (!playerGains[kvp.Key].SkillProgress.ContainsKey(skill.Key))
+                            playerGains[kvp.Key].SkillProgress[skill.Key] = 0f;
+                        playerGains[kvp.Key].SkillProgress[skill.Key] += skill.Value;
+                    }
+
+                    // Accumulate tendency progress
+                    foreach (var tendency in kvp.Value.TendencyProgress)
+                    {
+                        if (!playerGains[kvp.Key].TendencyProgress.ContainsKey(tendency.Key))
+                            playerGains[kvp.Key].TendencyProgress[tendency.Key] = 0f;
+                        playerGains[kvp.Key].TendencyProgress[tendency.Key] += tendency.Value;
+                    }
+                }
+            }
+
+            // Apply accumulated gains to players
+            foreach (var kvp in playerGains)
+            {
+                var player = _playerDatabase.GetPlayer(kvp.Key);
+                if (player != null)
+                {
+                    ApplyPracticeGains(player, kvp.Value);
+                }
+            }
+
+            return results;
+        }
+
+        // ==================== MENTORSHIP INTEGRATION ====================
+
+        /// <summary>
+        /// Gets the mentorship bonus multiplier for a player.
+        /// Integrates with MentorshipManager to get relationship-based bonuses.
+        /// </summary>
+        public (bool hasMentor, float mentorChemistry, float attributeBonusMultiplier) GetMentorshipBonus(string playerId)
+        {
+            var mentorshipManager = MentorshipManager.Instance;
+            if (mentorshipManager == null)
+                return (false, 0f, 0f);
+
+            var relationship = mentorshipManager.GetMenteeCurrentMentor(playerId);
+            if (relationship == null || !relationship.IsActive)
+                return (false, 0f, 0f);
+
+            // Chemistry is relationship strength normalized (0-1)
+            float chemistry = relationship.RelationshipStrength / 100f;
+
+            // Attribute bonus multiplier (0-0.30 based on relationship quality)
+            float bonusMultiplier = relationship.DevelopmentBonusMultiplier;
+
+            return (true, chemistry, bonusMultiplier);
+        }
+
+        /// <summary>
+        /// Applies mentorship-enhanced development gains to a player.
+        /// Uses MentorshipManager to apply bonuses to specific mentored attributes.
+        /// </summary>
+        public Dictionary<PlayerAttribute, float> ApplyMentorshipBonuses(
+            string playerId,
+            Dictionary<PlayerAttribute, float> baseDevelopment)
+        {
+            var mentorshipManager = MentorshipManager.Instance;
+            if (mentorshipManager == null)
+                return baseDevelopment;
+
+            return mentorshipManager.GetMentorshipAttributeGains(playerId, baseDevelopment);
+        }
+
+        /// <summary>
+        /// Processes offseason development with automatic mentorship integration.
+        /// Simplified method that fetches mentorship data automatically.
+        /// </summary>
+        public DevelopmentResult ProcessOffseasonDevelopmentWithMentorship(
+            Player player,
+            float coachingQuality,
+            float facilityQuality,
+            string developmentFocus = null)
+        {
+            // Get mentorship info automatically
+            var (hasMentor, mentorChemistry, _) = GetMentorshipBonus(player.PlayerId);
+
+            // Use the existing method with mentorship data
+            return ProcessOffseasonDevelopment(
+                player,
+                coachingQuality,
+                facilityQuality,
+                developmentFocus,
+                hasMentor,
+                mentorChemistry);
+        }
+
+        /// <summary>
+        /// Processes mentorship development gains from practice sessions.
+        /// Called after processing regular practice gains to add mentor bonuses.
+        /// </summary>
+        public void ProcessMentorshipPracticeGains(
+            Player player,
+            PlayerPracticeGains baseGains,
+            MentorshipSessionResult mentorshipResult)
+        {
+            if (player == null || mentorshipResult == null)
+                return;
+
+            // Add mentorship development gains on top of practice gains
+            foreach (var gain in mentorshipResult.DevelopmentGains)
+            {
+                int currentValue = player.GetAttributeForSimulation(gain.Key);
+
+                // Mentorship provides bonus progress
+                float threshold = 30f; // Lower threshold than regular practice (mentorship is more focused)
+                int pointsToAdd = Mathf.FloorToInt(gain.Value / threshold);
+
+                if (pointsToAdd > 0 && currentValue < player.HiddenPotential)
+                {
+                    int actualGain = Mathf.Min(pointsToAdd, player.HiddenPotential - currentValue, 1);
+                    if (actualGain > 0)
+                    {
+                        player.ModifyAttribute(gain.Key, actualGain);
+
+                        player.DevelopmentHistory.Add(new DevelopmentLog
+                        {
+                            Season = _currentSeason,
+                            Attribute = gain.Key,
+                            PreviousValue = currentValue,
+                            NewValue = currentValue + actualGain,
+                            Reason = "Mentorship Session",
+                            Date = DateTime.Now
+                        });
+
+                        Debug.Log($"[PlayerDevelopmentManager] {player.FullName} gained +{actualGain} {gain.Key} from mentorship");
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets the total development bonus modifier for a player (all sources).
+        /// </summary>
+        public float GetTotalDevelopmentBonus(
+            Player player,
+            float coachingQuality,
+            float facilityQuality)
+        {
+            // Get mentorship bonus
+            var (hasMentor, mentorChemistry, _) = GetMentorshipBonus(player.PlayerId);
+
+            // Calculate total multiplier
+            return CalculateDevelopmentMultiplier(
+                player,
+                coachingQuality,
+                facilityQuality,
+                hasMentor,
+                mentorChemistry);
+        }
+
+        /// <summary>
+        /// Creates a development summary that includes mentorship information.
+        /// </summary>
+        public string GetDevelopmentStatusWithMentorship(Player player)
+        {
+            var (hasMentor, chemistry, bonusMultiplier) = GetMentorshipBonus(player.PlayerId);
+
+            string status = $"{player.FullName} - {player.CurrentDevelopmentPhase}";
+
+            if (hasMentor)
+            {
+                var relationship = MentorshipManager.Instance?.GetMenteeCurrentMentor(player.PlayerId);
+                var mentorPlayer = relationship != null
+                    ? _playerDatabase?.GetPlayer(relationship.MentorPlayerId)
+                    : null;
+
+                status += $"\nMentor: {mentorPlayer?.FullName ?? "Unknown"}";
+                status += $"\nRelationship: {relationship?.GetStatusDescription() ?? "N/A"}";
+                status += $"\nDevelopment Bonus: +{bonusMultiplier * 100:F0}%";
+            }
+
+            return status;
+        }
+
         // ==================== IN-SEASON DEVELOPMENT ====================
 
         /// <summary>

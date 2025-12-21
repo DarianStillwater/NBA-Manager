@@ -63,6 +63,12 @@ namespace NBAHeadCoach.Core.Gameplay
         private PlayEffectivenessTracker _playTracker;
         private MatchupEvaluator _matchupEvaluator;
 
+        // ==================== COORDINATOR AI ====================
+        private CoordinatorAI _coordinatorAI;
+        private GameState _currentGameState;
+        private Data.StaffMeeting _preGameMeeting;
+        private float _gamePlanBonus = 0f;
+
         // ==================== EVENTS ====================
         public event Action<string> OnCoachDecision;
         public event Action<TimeoutResult> OnTimeoutCalled;
@@ -814,6 +820,10 @@ namespace NBAHeadCoach.Core.Gameplay
             _coachingAdvisor?.ResetForNewGame();
             _playTracker?.ResetForNewGame();
             _matchupEvaluator?.ResetForNewGame();
+            _coordinatorAI?.ResetForNewGame();
+            _preGameMeeting = null;
+            _gamePlanBonus = 0f;
+            _currentGameState = new GameState();
 
             if (_teamStrategy != null)
                 ApplyTeamStrategy(_teamStrategy);
@@ -929,6 +939,238 @@ namespace NBAHeadCoach.Core.Gameplay
             var hunt = _matchupEvaluator.GetHuntRecommendations(ourLineup, opponentLineup);
             var hide = _matchupEvaluator.GetHideRecommendations(ourLineup, opponentLineup);
             return (hunt, hide);
+        }
+
+        // ==================== COORDINATOR AI ====================
+
+        /// <summary>
+        /// Initializes the coordinator AI with offensive and defensive coordinators.
+        /// </summary>
+        public void InitializeCoordinatorAI(
+            string teamId,
+            Data.UnifiedCareerProfile offensiveCoordinator,
+            Data.UnifiedCareerProfile defensiveCoordinator)
+        {
+            _coordinatorAI = new CoordinatorAI(teamId);
+            _coordinatorAI.Initialize(offensiveCoordinator, defensiveCoordinator, this);
+            _currentGameState = new GameState();
+            Debug.Log($"[GameCoach] CoordinatorAI initialized with OC: {offensiveCoordinator?.PersonName ?? "None"}, DC: {defensiveCoordinator?.PersonName ?? "None"}");
+        }
+
+        /// <summary>
+        /// Gets the coordinator AI instance.
+        /// </summary>
+        public CoordinatorAI GetCoordinatorAI() => _coordinatorAI;
+
+        /// <summary>
+        /// Sets the pre-game meeting for game plan bonuses.
+        /// </summary>
+        public void SetPreGameMeeting(Data.StaffMeeting meeting)
+        {
+            _preGameMeeting = meeting;
+            if (meeting != null)
+            {
+                _gamePlanBonus = meeting.OverallGamePlanBonus;
+                Debug.Log($"[GameCoach] Pre-game meeting set. Game plan bonus: {_gamePlanBonus * 100:F1}%");
+            }
+        }
+
+        /// <summary>
+        /// Gets the current game plan bonus from pre-game meeting.
+        /// </summary>
+        public float GetGamePlanBonus() => _gamePlanBonus;
+
+        // ==================== DELEGATION CONTROL ====================
+
+        /// <summary>
+        /// Delegates offensive play-calling to the offensive coordinator.
+        /// </summary>
+        public void DelegateOffense(bool delegated)
+        {
+            _coordinatorAI?.DelegateOffense(delegated);
+            OnCoachDecision?.Invoke($"Offense delegation: {(delegated ? "ON" : "OFF")}");
+        }
+
+        /// <summary>
+        /// Delegates defensive scheme adjustments to the defensive coordinator.
+        /// </summary>
+        public void DelegateDefense(bool delegated)
+        {
+            _coordinatorAI?.DelegateDefense(delegated);
+            OnCoachDecision?.Invoke($"Defense delegation: {(delegated ? "ON" : "OFF")}");
+        }
+
+        /// <summary>
+        /// Delegates substitution decisions to coordinators.
+        /// </summary>
+        public void DelegateSubstitutions(bool delegated)
+        {
+            _coordinatorAI?.DelegateSubstitutions(delegated);
+            OnCoachDecision?.Invoke($"Substitutions delegation: {(delegated ? "ON" : "OFF")}");
+        }
+
+        /// <summary>
+        /// Delegates timeout decisions.
+        /// </summary>
+        public void DelegateTimeouts(bool delegated)
+        {
+            _coordinatorAI?.DelegateTimeouts(delegated);
+            OnCoachDecision?.Invoke($"Timeouts delegation: {(delegated ? "ON" : "OFF")}");
+        }
+
+        /// <summary>
+        /// Check if offense is delegated.
+        /// </summary>
+        public bool IsOffenseDelegated => _coordinatorAI?.OffenseDelegated ?? false;
+
+        /// <summary>
+        /// Check if defense is delegated.
+        /// </summary>
+        public bool IsDefenseDelegated => _coordinatorAI?.DefenseDelegated ?? false;
+
+        // ==================== COORDINATOR SUGGESTIONS ====================
+
+        /// <summary>
+        /// Updates the current game state for coordinator analysis.
+        /// </summary>
+        public void UpdateGameStateForCoordinators(string opponentTeamId = null, int opponentStarScoring = 0)
+        {
+            _currentGameState = new GameState
+            {
+                Quarter = _currentQuarter,
+                GameClockSeconds = _gameClockSeconds,
+                TeamScore = _teamScore,
+                OpponentScore = _opponentScore,
+                HasPossession = _hasPossession,
+                OpponentRunPoints = _opponentRunPoints,
+                TeamRunPoints = _teamRunPoints,
+                Momentum = _momentum,
+                OpponentStarScoring = opponentStarScoring,
+                OpponentTeamId = opponentTeamId
+            };
+        }
+
+        /// <summary>
+        /// Gets coordinator suggestions based on current game state.
+        /// </summary>
+        public List<CoordinatorGameSuggestion> GetCoordinatorSuggestions()
+        {
+            if (_coordinatorAI == null) return new List<CoordinatorGameSuggestion>();
+
+            UpdateGameStateForCoordinators();
+            return _coordinatorAI.AnalyzeAndSuggest(_currentGameState);
+        }
+
+        /// <summary>
+        /// Gets pending coordinator suggestions.
+        /// </summary>
+        public List<CoordinatorGameSuggestion> GetPendingCoordinatorSuggestions()
+        {
+            return _coordinatorAI?.GetPendingSuggestions() ?? new List<CoordinatorGameSuggestion>();
+        }
+
+        /// <summary>
+        /// Gets high-priority coordinator suggestions.
+        /// </summary>
+        public List<CoordinatorGameSuggestion> GetHighPriorityCoordinatorSuggestions()
+        {
+            return _coordinatorAI?.GetHighPrioritySuggestions() ?? new List<CoordinatorGameSuggestion>();
+        }
+
+        /// <summary>
+        /// Accepts a coordinator suggestion.
+        /// </summary>
+        public void AcceptCoordinatorSuggestion(CoordinatorGameSuggestion suggestion)
+        {
+            _coordinatorAI?.AcceptSuggestion(suggestion);
+            OnCoachDecision?.Invoke($"Accepted: {suggestion.Title}");
+        }
+
+        /// <summary>
+        /// Rejects a coordinator suggestion.
+        /// </summary>
+        public void RejectCoordinatorSuggestion(CoordinatorGameSuggestion suggestion, string reason = null)
+        {
+            _coordinatorAI?.RejectSuggestion(suggestion, reason);
+        }
+
+        // ==================== DELEGATED DECISIONS ====================
+
+        /// <summary>
+        /// Gets a delegated play call from the offensive coordinator.
+        /// Returns null if offense is not delegated.
+        /// </summary>
+        public DelegatedPlayCall GetDelegatedPlayCall()
+        {
+            if (_coordinatorAI == null || !_coordinatorAI.OffenseDelegated)
+                return null;
+
+            UpdateGameStateForCoordinators();
+            return _coordinatorAI.MakeDelegatedPlayCall(_currentGameState, _currentLineup);
+        }
+
+        /// <summary>
+        /// Gets a delegated defensive scheme from the defensive coordinator.
+        /// Returns null if defense is not delegated.
+        /// </summary>
+        public DelegatedDefensiveCall GetDelegatedDefensiveCall()
+        {
+            if (_coordinatorAI == null || !_coordinatorAI.DefenseDelegated)
+                return null;
+
+            UpdateGameStateForCoordinators();
+            return _coordinatorAI.MakeDelegatedDefensiveCall(_currentGameState);
+        }
+
+        /// <summary>
+        /// Checks if coordinators recommend a timeout.
+        /// Only returns a decision if timeouts are delegated.
+        /// </summary>
+        public DelegatedTimeoutDecision CheckDelegatedTimeout()
+        {
+            if (_coordinatorAI == null || !_coordinatorAI.TimeoutsDelegated)
+                return null;
+
+            UpdateGameStateForCoordinators();
+            return _coordinatorAI.EvaluateTimeout(_currentGameState);
+        }
+
+        /// <summary>
+        /// Gets the coordinator game summary at end of game.
+        /// </summary>
+        public CoordinatorGameSummary GetCoordinatorGameSummary()
+        {
+            return _coordinatorAI?.GetGameSummary();
+        }
+
+        /// <summary>
+        /// Applies a delegated play call (for auto-delegation mode).
+        /// </summary>
+        public PlayCall ApplyDelegatedPlayCall(DelegatedPlayCall delegatedCall)
+        {
+            if (delegatedCall == null) return null;
+
+            var playCall = new PlayCall
+            {
+                Type = delegatedCall.PlayType,
+                Timestamp = _gameClockSeconds
+            };
+
+            OnCoachDecision?.Invoke($"[{delegatedCall.CoordinatorName}] {delegatedCall.PlayType}");
+            Debug.Log($"[GameCoach] Delegated play: {delegatedCall.PlayType} ({delegatedCall.Reasoning})");
+
+            return playCall;
+        }
+
+        /// <summary>
+        /// Applies a delegated defensive call (for auto-delegation mode).
+        /// </summary>
+        public void ApplyDelegatedDefensiveCall(DelegatedDefensiveCall delegatedCall)
+        {
+            if (delegatedCall == null) return;
+
+            SetDefense(delegatedCall.Scheme);
+            Debug.Log($"[GameCoach] Delegated defense: {delegatedCall.Scheme} ({delegatedCall.Reasoning})");
         }
     }
 

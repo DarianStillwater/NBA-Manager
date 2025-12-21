@@ -126,6 +126,47 @@ namespace NBAHeadCoach.Core.Manager
             return GetTeamStaff(teamId).Where(p => p.CurrentRole == UnifiedRole.Scout).ToList();
         }
 
+        /// <summary>
+        /// Gets the offensive coordinator for a team.
+        /// </summary>
+        public UnifiedCareerProfile GetOffensiveCoordinator(string teamId)
+        {
+            return GetTeamStaff(teamId).FirstOrDefault(p =>
+                p.CurrentRole == UnifiedRole.OffensiveCoordinator ||
+                (p.CurrentRole == UnifiedRole.Coordinator && p.Specializations.Contains(CoachSpecialization.OffensiveSchemes)));
+        }
+
+        /// <summary>
+        /// Gets the defensive coordinator for a team.
+        /// </summary>
+        public UnifiedCareerProfile GetDefensiveCoordinator(string teamId)
+        {
+            return GetTeamStaff(teamId).FirstOrDefault(p =>
+                p.CurrentRole == UnifiedRole.DefensiveCoordinator ||
+                (p.CurrentRole == UnifiedRole.Coordinator && p.Specializations.Contains(CoachSpecialization.DefensiveSchemes)));
+        }
+
+        /// <summary>
+        /// Gets all assistant coaches for a team.
+        /// </summary>
+        public List<UnifiedCareerProfile> GetAssistantCoaches(string teamId)
+        {
+            return GetTeamStaff(teamId).Where(p =>
+                p.CurrentRole == UnifiedRole.AssistantCoach ||
+                p.CurrentRole == UnifiedRole.PositionCoach).ToList();
+        }
+
+        /// <summary>
+        /// Gets all coordinators for a team.
+        /// </summary>
+        public List<UnifiedCareerProfile> GetCoordinators(string teamId)
+        {
+            return GetTeamStaff(teamId).Where(p =>
+                p.CurrentRole == UnifiedRole.Coordinator ||
+                p.CurrentRole == UnifiedRole.OffensiveCoordinator ||
+                p.CurrentRole == UnifiedRole.DefensiveCoordinator).ToList();
+        }
+
         public List<UnifiedCareerProfile> GetUnemployedPool()
         {
             return new List<UnifiedCareerProfile>(_unemployedPool);
@@ -432,6 +473,171 @@ namespace NBAHeadCoach.Core.Manager
             if (dc != null) { quality += dc.DefensiveScheme / 100f * 3f; weight += 3f; }
 
             return weight > 0 ? quality / weight : 0.5f;
+        }
+
+        /// <summary>
+        /// Calculate staff synergy bonus based on coaching philosophy alignment.
+        /// </summary>
+        public float GetStaffSynergyBonus(string teamId)
+        {
+            var hc = GetHeadCoach(teamId);
+            var oc = GetOffensiveCoordinator(teamId);
+            var dc = GetDefensiveCoordinator(teamId);
+
+            if (hc == null) return 0f;
+
+            float synergy = 0f;
+            int comparisons = 0;
+
+            // Check offensive philosophy alignment
+            if (oc != null)
+            {
+                if (hc.OffensivePhilosophy == oc.OffensivePhilosophy)
+                    synergy += 0.10f;  // Perfect alignment
+                else if (ArePhilosophiesCompatible(hc.OffensivePhilosophy, oc.OffensivePhilosophy))
+                    synergy += 0.05f;  // Compatible
+                comparisons++;
+            }
+
+            // Check defensive philosophy alignment
+            if (dc != null)
+            {
+                if (hc.DefensivePhilosophy == dc.DefensivePhilosophy)
+                    synergy += 0.10f;
+                else if (ArePhilosophiesCompatible(hc.DefensivePhilosophy, dc.DefensivePhilosophy))
+                    synergy += 0.05f;
+                comparisons++;
+            }
+
+            // Check coordinator synergy with each other
+            if (oc != null && dc != null)
+            {
+                // Balance check - don't want both super aggressive or both super conservative
+                bool ocAggressive = oc.OffensivePhilosophy == CoachingPhilosophy.FastPace ||
+                                   oc.OffensivePhilosophy == CoachingPhilosophy.IsoHeavy;
+                bool dcAggressive = dc.DefensivePhilosophy == CoachingPhilosophy.Aggressive ||
+                                   dc.DefensivePhilosophy == CoachingPhilosophy.TrapHeavy;
+
+                if (ocAggressive != dcAggressive)
+                    synergy += 0.03f;  // Balanced approach bonus
+                comparisons++;
+            }
+
+            return comparisons > 0 ? Mathf.Clamp(synergy, 0f, 0.15f) : 0f;
+        }
+
+        private bool ArePhilosophiesCompatible(CoachingPhilosophy p1, CoachingPhilosophy p2)
+        {
+            // Group philosophies by compatibility
+            var tempoGroup = new[] { CoachingPhilosophy.FastPace, CoachingPhilosophy.SlowPace };
+            var shootingGroup = new[] { CoachingPhilosophy.ThreePointHeavy, CoachingPhilosophy.InsideOut, CoachingPhilosophy.BallMovement };
+            var aggressiveGroup = new[] { CoachingPhilosophy.Aggressive, CoachingPhilosophy.TrapHeavy };
+            var conservativeGroup = new[] { CoachingPhilosophy.Conservative, CoachingPhilosophy.ManToMan };
+
+            bool InSameGroup(CoachingPhilosophy a, CoachingPhilosophy b, CoachingPhilosophy[] group)
+            {
+                return group.Contains(a) && group.Contains(b);
+            }
+
+            return InSameGroup(p1, p2, tempoGroup) ||
+                   InSameGroup(p1, p2, shootingGroup) ||
+                   InSameGroup(p1, p2, aggressiveGroup) ||
+                   InSameGroup(p1, p2, conservativeGroup);
+        }
+
+        /// <summary>
+        /// Creates a pre-game staff meeting for a team.
+        /// </summary>
+        public Data.StaffMeeting CreatePreGameMeeting(
+            string teamId,
+            string opponentTeamId,
+            string opponentTeamName,
+            DateTime gameDate)
+        {
+            var hc = GetHeadCoach(teamId);
+            var oc = GetOffensiveCoordinator(teamId);
+            var dc = GetDefensiveCoordinator(teamId);
+            var scouts = GetScouts(teamId);
+
+            return Data.StaffMeetingManager.GeneratePreGameMeeting(
+                teamId,
+                opponentTeamId,
+                opponentTeamName,
+                gameDate,
+                hc,
+                oc,
+                dc,
+                scouts
+            );
+        }
+
+        /// <summary>
+        /// Creates a halftime staff meeting.
+        /// </summary>
+        public Data.StaffMeeting CreateHalftimeMeeting(
+            string teamId,
+            string opponentTeamId,
+            string opponentTeamName,
+            int teamScore,
+            int opponentScore)
+        {
+            var hc = GetHeadCoach(teamId);
+            var oc = GetOffensiveCoordinator(teamId);
+            var dc = GetDefensiveCoordinator(teamId);
+
+            return Data.StaffMeetingManager.GenerateHalftimeMeeting(
+                teamId,
+                opponentTeamId,
+                opponentTeamName,
+                hc,
+                oc,
+                dc,
+                teamScore,
+                opponentScore
+            );
+        }
+
+        /// <summary>
+        /// Generates coordinator contributions for a staff meeting.
+        /// </summary>
+        public List<Data.StaffContribution> GenerateMeetingContributions(
+            string teamId,
+            Data.OpponentTendencyProfile opponentProfile = null)
+        {
+            var contributions = new List<Data.StaffContribution>();
+
+            var oc = GetOffensiveCoordinator(teamId);
+            var dc = GetDefensiveCoordinator(teamId);
+            var scouts = GetScouts(teamId);
+
+            // Offensive coordinator contribution
+            if (oc != null)
+            {
+                var contribution = Data.StaffMeetingManager.GenerateCoordinatorContribution(
+                    oc, "Offensive Game Plan", opponentProfile);
+                if (contribution != null)
+                    contributions.Add(contribution);
+            }
+
+            // Defensive coordinator contribution
+            if (dc != null)
+            {
+                var contribution = Data.StaffMeetingManager.GenerateCoordinatorContribution(
+                    dc, "Defensive Game Plan", opponentProfile);
+                if (contribution != null)
+                    contributions.Add(contribution);
+            }
+
+            // Scout contribution (first scout only for simplicity)
+            if (scouts.Count > 0)
+            {
+                var contribution = Data.StaffMeetingManager.GenerateScoutContribution(
+                    scouts[0], "Scouting Report", opponentProfile);
+                if (contribution != null)
+                    contributions.Add(contribution);
+            }
+
+            return contributions;
         }
 
         // ==================== SCOUTING OPERATIONS ====================

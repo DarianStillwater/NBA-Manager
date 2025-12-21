@@ -2,7 +2,7 @@
 
 > **Purpose**: This document is the single source of truth for understanding the entire game design. An AI or developer can reference this without scanning all project files.
 > 
-> **Last Updated**: December 2024
+> **Last Updated**: December 2024 (Deep Coaching Strategy Update)
 
 ---
 
@@ -44,10 +44,10 @@
 ```
 Assets/Scripts/
 ├── Core/
-│   ├── AI/                 # AI coach personalities, trade evaluation (3 files)
-│   ├── Data/               # All data models - 30 classes (see Data Models section)
+│   ├── AI/                 # AI coach personalities, coordinators, predictions (8 files)
+│   ├── Data/               # All data models - 40+ classes (see Data Models section)
 │   ├── Gameplay/           # In-game coaching logic (1 file)
-│   ├── Manager/            # Domain managers - 28 managers (see Manager Systems)
+│   ├── Manager/            # Domain managers - 32 managers (see Manager Systems)
 │   ├── Simulation/         # Game/possession simulation engine (6 files)
 │   ├── Util/               # Utilities like NameGenerator
 │   ├── GameManager.cs      # Central game orchestrator
@@ -161,11 +161,63 @@ The following files have been removed as part of the personnel refactor:
 
 | File | Description |
 |------|-------------|
-| `PlayBook.cs` | Team playbooks with 15-20 plays |
-| `SetPlay.cs` | Individual play definitions |
-| `TeamStrategy.cs` | Offensive/defensive schemes |
-| `PlayerGameInstructions.cs` | Per-player game focus |
+| `PlayBook.cs` | Team playbooks with 15-20 plays, familiarity system, practice integration |
+| `SetPlay.cs` | Individual play definitions with 20+ action types |
+| `TeamStrategy.cs` | 11 offensive + 11 defensive schemes |
+| `PlayerGameInstructions.cs` | Per-player game focus and tendencies |
 | `CourtPosition.cs` | Spatial positioning system |
+
+### Deep Coaching Strategy System (NEW)
+
+> **Recent Addition**: Comprehensive coaching strategy simulation with 6 integrated phases.
+
+#### In-Game Analytics (Phase 1)
+
+| File | Description |
+|------|-------------|
+| `GameAnalyticsTracker.cs` | Real-time possession-by-possession stats, shot charts, +/- tracking |
+| `CoachingAdvisor.cs` | AI assistant suggesting adjustments based on game flow |
+| `MatchupEvaluator.cs` | Real-time matchup quality scoring and mismatch detection |
+| `PlayEffectivenessTracker.cs` | Tracks hot/cold plays, opponent adjustment detection |
+
+#### Player Tendencies (Phase 2)
+
+| File | Description |
+|------|-------------|
+| `PlayerTendencies.cs` | Innate (hard to change) and coachable behavioral tendencies |
+| `TendencyCoachingManager.cs` | Training system for coachable tendencies |
+
+#### Practice & Training System (Phase 3)
+
+| File | Description |
+|------|-------------|
+| `PracticeSession.cs` | Practice sessions with focus areas, drills, intensity |
+| `PracticeDrill.cs` | Individual drill types (shooting, defense, team, conditioning, film) |
+| `PracticeManager.cs` | Orchestrates practices, schedules, fatigue, and development |
+| `WeeklySchedule.cs` | Game days, practice days, off days, back-to-back handling |
+
+#### Deep Mentorship System (Phase 4)
+
+| File | Description |
+|------|-------------|
+| `MentorshipRelationship.cs` | Mentor-mentee pairings with strength, compatibility, milestones |
+| `MentorshipManager.cs` | Orchestrates assignments, organic formation, development bonuses (up to 30%) |
+| `MentorProfile.cs` | Mentor capabilities (teaching ability, patience, specialties) |
+
+#### Opponent Chess Match (Phase 5)
+
+| File | Description |
+|------|-------------|
+| `OpponentTendencyProfile.cs` | Comprehensive opponent analysis (offensive/defensive tendencies) |
+| `OpponentAdjustmentPredictor.cs` | Predicts opponent coach adjustments based on personality/game state |
+| `GamePlanBuilder.cs` | Pre-game preparation, matchups, contingency plans |
+
+#### Staff Partnership System (Phase 6)
+
+| File | Description |
+|------|-------------|
+| `CoordinatorAI.cs` | Enhanced AI for offensive/defensive coordinators, delegation support |
+| `StaffMeeting.cs` | Pre-game/halftime meetings, staff contributions, disagreement handling |
 
 ### Supporting Data
 
@@ -230,13 +282,29 @@ The following files have been removed as part of the personnel refactor:
 
 | Manager | File | Description |
 |---------|------|-------------|
-| PlayerDevelopmentManager | `PlayerDevelopmentManager.cs` | Attribute progression |
+| PlayerDevelopmentManager | `PlayerDevelopmentManager.cs` | Attribute progression with mentorship integration |
+| MentorshipManager | `MentorshipManager.cs` | **NEW** - Mentor-mentee relationships, development bonuses |
+| TendencyCoachingManager | `TendencyCoachingManager.cs` | **NEW** - Player tendency training |
+| PracticeManager | `PracticeManager.cs` | **NEW** - Practice sessions, drills, schedule |
 | DraftSystem | `DraftSystem.cs` | Draft lottery and execution |
 | DraftClassGenerator | `DraftClassGenerator.cs` | Prospect generation |
 | ProspectGenerator | `ProspectGenerator.cs` | Procedural prospects |
 | OffseasonManager | `OffseasonManager.cs` | Offseason phase coordination |
 | SummerLeagueManager | `SummerLeagueManager.cs` | Summer league simulation |
 | TrainingCampManager | `TrainingCampManager.cs` | Training camp and cuts |
+
+### In-Game Coaching & AI (NEW)
+
+| Manager/AI | File | Description |
+|------------|------|-------------|
+| GameCoach | `GameCoach.cs` | Central in-game coaching with coordinator integration |
+| CoordinatorAI | `CoordinatorAI.cs` | **NEW** - Offensive/defensive coordinator AI, delegation |
+| CoachingAdvisor | `CoachingAdvisor.cs` | **NEW** - AI suggestion system during games |
+| GameAnalyticsTracker | `GameAnalyticsTracker.cs` | **NEW** - Real-time game statistics |
+| PlayEffectivenessTracker | `PlayEffectivenessTracker.cs` | **NEW** - Hot/cold play tracking |
+| MatchupEvaluator | `MatchupEvaluator.cs` | **NEW** - Matchup quality and mismatch detection |
+| OpponentAdjustmentPredictor | `OpponentAdjustmentPredictor.cs` | **NEW** - Predict opponent coach moves |
+| GamePlanBuilder | `GamePlanBuilder.cs` | **NEW** - Pre-game preparation and contingencies |
 
 ### Team Operations
 
@@ -343,7 +411,17 @@ Procedural name generation using Markov chains with realistic NBA demographics.
 | Unified Career System | Coach↔GM transitions, cross-track careers |
 | Personnel Refactor | Single PersonnelManager architecture |
 | Name Generation | Markov chain for player/staff names |
-| In-Game Analytics | Real-time stats, coaching advisor, matchup evaluation |
+| **Deep Coaching Strategy** | **6-phase comprehensive coaching simulation** |
+| In-Game Analytics | Real-time stats, shot charts, +/-, run detection |
+| Coaching Advisor | AI suggestions for adjustments during games |
+| Play Effectiveness | Hot/cold play tracking, opponent adjustment detection |
+| Matchup Evaluation | Real-time matchup scoring, hunt/hide recommendations |
+| Player Tendencies | Innate + coachable behavioral tendencies |
+| Practice System | Sessions, drills, weekly schedules, fatigue management |
+| Mentorship System | Veteran-rookie relationships, up to 30% dev bonus |
+| Opponent Prediction | Coach personality-based adjustment prediction |
+| Game Plan Builder | Pre-game prep, matchups, contingency plans |
+| Staff Partnership | Coordinator AI, delegation, staff meetings |
 
 ### Outstanding Issues / TODOs
 
@@ -410,6 +488,48 @@ GenerateStaffName(nationality?) → GeneratedName
 ClearTrackedNames() // Call on new game
 ```
 
+**GameCoach** (In-game coaching with coordinator integration):
+```csharp
+// Coordinator AI
+InitializeCoordinatorAI(teamId, offensiveCoordinator, defensiveCoordinator)
+GetCoordinatorSuggestions() → List<CoordinatorGameSuggestion>
+AcceptCoordinatorSuggestion(suggestion)
+RejectCoordinatorSuggestion(suggestion, reason)
+
+// Delegation
+DelegateOffense(delegated)  // Let OC call plays
+DelegateDefense(delegated)  // Let DC adjust schemes
+DelegateTimeouts(delegated) // Let staff call timeouts
+GetDelegatedPlayCall() → DelegatedPlayCall
+GetDelegatedDefensiveCall() → DelegatedDefensiveCall
+
+// Staff Meetings
+SetPreGameMeeting(meeting)
+GetGamePlanBonus() → float
+```
+
+**PersonnelManager** (Coordinator management additions):
+```csharp
+// Coordinator queries
+GetOffensiveCoordinator(teamId) → UnifiedCareerProfile
+GetDefensiveCoordinator(teamId) → UnifiedCareerProfile
+GetCoordinators(teamId) → List<UnifiedCareerProfile>
+GetStaffSynergyBonus(teamId) → float
+
+// Staff meetings
+CreatePreGameMeeting(teamId, opponentId, opponentName, gameDate) → StaffMeeting
+CreateHalftimeMeeting(teamId, opponentId, opponentName, teamScore, oppScore) → StaffMeeting
+GenerateMeetingContributions(teamId, opponentProfile) → List<StaffContribution>
+```
+
+**MentorshipManager** (Mentorship API):
+```csharp
+AssignMentor(mentorId, menteeId, teamId, focusAreas) → (success, message, relationship)
+GetMentorshipDevelopmentBonus(menteeId) → float  // Up to 0.30 (30%)
+ProcessPracticeMentorshipSessions(teamId, roster, sessionType) → List<MentorshipSessionResult>
+CheckOrganicFormation(teamId, roster) → List<MentorshipRelationship>
+```
+
 ---
 
 ## GETTING STARTED FOR DEVELOPERS
@@ -435,6 +555,19 @@ ClearTrackedNames() // Call on new game
 ---
 
 ## CHANGE LOG
+
+### December 2024 - Deep Coaching Strategy Simulation
+- **Phase 1: In-Game Analytics** - Added real-time game stats, coaching advisor, matchup evaluation, play effectiveness tracking
+- **Phase 2: Player Tendencies** - Added innate/coachable behavioral tendencies with training system
+- **Phase 3: Practice System** - Added practice sessions, drills, weekly schedules, familiarity gains
+- **Phase 4: Mentorship System** - Added mentor-mentee relationships with up to 30% development bonus
+- **Phase 5: Opponent Chess Match** - Added opponent tendency profiles, adjustment prediction, game plan builder
+- **Phase 6: Staff Partnership** - Added CoordinatorAI with delegation, staff meetings with contributions/disagreements
+- Enhanced `GameCoach.cs` with coordinator integration and delegation controls
+- Enhanced `PersonnelManager.cs` with coordinator queries and meeting generation
+- Enhanced `Player.cs` with tendencies and mentor profile
+- Enhanced `PlayBook.cs` with practice integration and installation tracking
+- Added `OffensiveCoordinator` and `DefensiveCoordinator` to `UnifiedRole` enum
 
 ### December 2024 - Personnel Refactor
 - Consolidated 9 legacy manager classes into `PersonnelManager`

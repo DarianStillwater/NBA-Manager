@@ -185,6 +185,34 @@ namespace NBAHeadCoach.Core.Data
         public string DevelopmentFocus;                   // Current focus area
         public List<DevelopmentLog> DevelopmentHistory = new List<DevelopmentLog>();
 
+        // ==================== MENTORSHIP ====================
+        [Header("Mentorship")]
+        /// <summary>
+        /// Cached mentor profile for veterans (generated from attributes).
+        /// Only populated for players with 4+ years experience.
+        /// </summary>
+        [HideInInspector] public MentorProfile MentorProfileData;
+
+        /// <summary>
+        /// ID of player's current mentor (if being mentored).
+        /// </summary>
+        public string CurrentMentorId;
+
+        /// <summary>
+        /// Whether this player is currently being mentored.
+        /// </summary>
+        public bool HasMentor => !string.IsNullOrEmpty(CurrentMentorId);
+
+        /// <summary>
+        /// Whether this player can serve as a mentor (4+ years experience).
+        /// </summary>
+        public bool CanBeMentor => YearsInLeague >= 4;
+
+        /// <summary>
+        /// Whether this player can be mentored (4 or fewer years experience).
+        /// </summary>
+        public bool CanBeMentored => YearsInLeague <= 4;
+
         // ==================== COMPUTED PROPERTIES ====================
         public string FullName => $"{FirstName} {LastName}";
 

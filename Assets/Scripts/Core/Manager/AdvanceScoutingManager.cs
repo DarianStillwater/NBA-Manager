@@ -523,6 +523,198 @@ namespace NBAHeadCoach.Core.Manager
         }
 
         #endregion
+
+        #region Opponent Profile Generation
+
+        /// <summary>
+        /// Generates an OpponentTendencyProfile from scouting data for the GamePlanBuilder.
+        /// </summary>
+        public Data.OpponentTendencyProfile GenerateOpponentProfile(
+            string opponentTeamId,
+            AI.AICoachPersonality coachPersonality = null)
+        {
+            var report = GetLatestReport(opponentTeamId);
+            var team = GameManager.Instance?.GetTeam(opponentTeamId);
+
+            // If we have a coach personality, use it to generate base profile
+            if (coachPersonality != null)
+            {
+                var profile = coachPersonality.GenerateOpponentProfile(
+                    opponentTeamId,
+                    team?.Name ?? "Unknown"
+                );
+
+                // Enhance with scouting data if available
+                if (report != null)
+                {
+                    EnhanceProfileWithScoutingData(profile, report);
+                }
+
+                return profile;
+            }
+
+            // Create profile from scouting data only
+            return CreateProfileFromScouting(opponentTeamId, team?.Name ?? "Unknown", report);
+        }
+
+        /// <summary>
+        /// Gets the scouting quality for an opponent (0-1).
+        /// </summary>
+        public float GetScoutingQuality(string opponentTeamId)
+        {
+            var report = GetLatestReport(opponentTeamId);
+            if (report == null)
+                return 0.3f; // Base knowledge
+
+            return report.Confidence switch
+            {
+                ReportConfidence.VeryHigh => 1.0f,
+                ReportConfidence.High => 0.85f,
+                ReportConfidence.Medium => 0.7f,
+                ReportConfidence.Low => 0.5f,
+                _ => 0.3f
+            };
+        }
+
+        private void EnhanceProfileWithScoutingData(Data.OpponentTendencyProfile profile, AdvanceScoutingReport report)
+        {
+            // Improve data quality based on scouting
+            profile.DataQuality = Mathf.Min(100, profile.DataQuality + report.GamesAnalyzed * 5);
+            profile.LastUpdated = report.GeneratedDate;
+
+            // Update tendencies from scouting
+            if (report.OffensiveTendencies != null)
+            {
+                profile.ThreePointRate = Mathf.RoundToInt(report.OffensiveTendencies.ThreePointRate * 100);
+                profile.PreferredPace = Mathf.RoundToInt(report.OffensiveTendencies.AveragePossessions);
+            }
+
+            // Add key player tendencies
+            if (report.KeyPlayers != null)
+            {
+                foreach (var keyPlayer in report.KeyPlayers)
+                {
+                    var tendency = new Data.OpponentPlayerTendency
+                    {
+                        PlayerId = keyPlayer.PlayerId,
+                        PlayerName = keyPlayer.PlayerName,
+                        Position = keyPlayer.Position,
+                        DefensiveStrategy = keyPlayer.DefensiveStrategy,
+                        DefensiveWeaknesses = keyPlayer.Weaknesses ?? new List<string>()
+                    };
+
+                    if (keyPlayer.ThreatLevel == "Primary")
+                        tendency.UsageRate = 30;
+                    else if (keyPlayer.ThreatLevel == "Secondary")
+                        tendency.UsageRate = 22;
+                    else
+                        tendency.UsageRate = 15;
+
+                    profile.KeyPlayerTendencies.Add(tendency);
+
+                    // Add to priority defenders if high threat
+                    if (keyPlayer.ThreatLevel == "Primary")
+                        profile.PriorityDefenders.Add(keyPlayer.PlayerId);
+
+                    // Add to weak links if they have defensive weaknesses
+                    if (keyPlayer.Weaknesses?.Count >= 2)
+                        profile.DefensiveWeakLinks.Add(keyPlayer.PlayerId);
+                }
+            }
+
+            // Add weaknesses from scouting analysis
+            if (report.DefensiveTendencies?.DefensiveRating?.Contains("Below") == true)
+            {
+                profile.Weaknesses.Add(new Data.ExploitableWeakness
+                {
+                    Category = Data.WeaknessCategory.InteriorDefense,
+                    Description = "Below average team defense",
+                    Severity = 60,
+                    ExploitStrategy = "Attack aggressively, push pace"
+                });
+            }
+
+            if (report.OffensiveTendencies?.ShootingStyle?.Contains("Paint") == true)
+            {
+                profile.Weaknesses.Add(new Data.ExploitableWeakness
+                {
+                    Category = Data.WeaknessCategory.ThreePointDefense,
+                    Description = "Limited perimeter shooting",
+                    Severity = 50,
+                    ExploitStrategy = "Pack the paint on defense"
+                });
+            }
+        }
+
+        private Data.OpponentTendencyProfile CreateProfileFromScouting(
+            string teamId,
+            string teamName,
+            AdvanceScoutingReport report)
+        {
+            var profile = new Data.OpponentTendencyProfile
+            {
+                TeamId = teamId,
+                TeamName = teamName,
+                LastUpdated = DateTime.Now,
+                DataQuality = report != null ? 40 + report.GamesAnalyzed * 8 : 30
+            };
+
+            if (report == null)
+            {
+                // Default values for unscouted team
+                profile.PnRFrequency = 40;
+                profile.IsolationFrequency = 25;
+                profile.ThreePointRate = 38;
+                profile.PreferredPace = 98;
+                profile.ZoneUsage = 15;
+                profile.SwitchTendency = 35;
+                profile.CoachPredictability = 50;
+                return profile;
+            }
+
+            // Build from scouting data
+            if (report.OffensiveTendencies != null)
+            {
+                profile.ThreePointRate = Mathf.RoundToInt(report.OffensiveTendencies.ThreePointRate * 100);
+                profile.PreferredPace = Mathf.RoundToInt(report.OffensiveTendencies.AveragePossessions);
+
+                // Infer tendencies from description
+                if (report.OffensiveTendencies.PaceDescription?.Contains("Fast") == true)
+                    profile.TransitionRate = 55;
+            }
+
+            if (report.DefensiveTendencies != null)
+            {
+                if (report.DefensiveTendencies.SchemeNotes?.Contains("switching") == true)
+                    profile.SwitchTendency = 60;
+            }
+
+            // Add key players
+            if (report.KeyPlayers != null)
+            {
+                foreach (var keyPlayer in report.KeyPlayers)
+                {
+                    profile.KeyPlayerTendencies.Add(new Data.OpponentPlayerTendency
+                    {
+                        PlayerId = keyPlayer.PlayerId,
+                        PlayerName = keyPlayer.PlayerName,
+                        Position = keyPlayer.Position,
+                        DefensiveStrategy = keyPlayer.DefensiveStrategy,
+                        DefensiveWeaknesses = keyPlayer.Weaknesses ?? new List<string>()
+                    });
+
+                    if (keyPlayer.ThreatLevel == "Primary")
+                    {
+                        profile.ClutchGoToPlayer = keyPlayer.PlayerId;
+                        profile.PriorityDefenders.Add(keyPlayer.PlayerId);
+                    }
+                }
+            }
+
+            return profile;
+        }
+
+        #endregion
     }
 
     #region Supporting Types

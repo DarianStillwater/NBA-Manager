@@ -56,11 +56,27 @@ namespace NBAHeadCoach.Core.Data
         public const int MAX_PLAYS = 30;
         public const int MAX_QUICK_ACTIONS = 10;
         public const int FAMILIARITY_TO_MASTER = 80;
+        public const int FAMILIARITY_FOR_GAME_READY = 50;
+        public const int FAMILIARITY_FOR_INSTALLATION = 25;
+
+        // ==================== INSTALLATION TRACKING ====================
+        /// <summary>
+        /// Plays currently being installed (learning phase).
+        /// Maps PlayId to date installation started.
+        /// </summary>
+        public Dictionary<string, DateTime> PlaysInInstallation = new Dictionary<string, DateTime>();
+
+        /// <summary>
+        /// Weekly practice focus plays (prioritized for drilling).
+        /// </summary>
+        public List<string> WeeklyFocusPlays = new List<string>();
 
         // ==================== COMPUTED PROPERTIES ====================
 
         public int TotalPlays => Plays.Count;
         public int MasteredPlays => PlayFamiliarity.Count(kvp => kvp.Value >= FAMILIARITY_TO_MASTER);
+        public int GameReadyPlays => PlayFamiliarity.Count(kvp => kvp.Value >= FAMILIARITY_FOR_GAME_READY);
+        public int PlaysBeingInstalled => PlaysInInstallation.Count;
         public float AverageFamiliarity => PlayFamiliarity.Count > 0 ?
             (float)PlayFamiliarity.Values.Average() : 0f;
 
@@ -81,13 +97,16 @@ namespace NBAHeadCoach.Core.Data
             PlayFamiliarity[play.PlayId] = 0;
             PracticeReps[play.PlayId] = 0;
 
+            // New plays start in installation phase
+            PlaysInInstallation[play.PlayId] = DateTime.Now;
+
             // Categorize
             if (!PlaysByCategory.ContainsKey(play.Category))
                 PlaysByCategory[play.Category] = new List<string>();
             PlaysByCategory[play.Category].Add(play.PlayId);
 
-            Debug.Log($"[PlayBook] Added play '{play.PlayName}' to playbook");
-            return (true, $"Added '{play.PlayName}' to playbook.");
+            Debug.Log($"[PlayBook] Added play '{play.PlayName}' to playbook (in installation)");
+            return (true, $"Added '{play.PlayName}' to playbook. Play needs practice to become game-ready.");
         }
 
         /// <summary>
@@ -102,6 +121,8 @@ namespace NBAHeadCoach.Core.Data
             Plays.Remove(play);
             PlayFamiliarity.Remove(playId);
             PracticeReps.Remove(playId);
+            PlaysInInstallation.Remove(playId);
+            WeeklyFocusPlays.Remove(playId);
 
             // Remove from categories
             foreach (var cat in PlaysByCategory.Values)
@@ -167,7 +188,51 @@ namespace NBAHeadCoach.Core.Data
             int currentFam = PlayFamiliarity[playId];
             float famGain = 5f * reps * (1f - currentFam / 100f);  // Less gain when higher
 
-            PlayFamiliarity[playId] = Mathf.Min(100, currentFam + Mathf.RoundToInt(famGain));
+            int newFam = Mathf.Min(100, currentFam + Mathf.RoundToInt(famGain));
+            PlayFamiliarity[playId] = newFam;
+
+            // Check if play graduates from installation
+            CheckInstallationGraduation(playId, newFam);
+        }
+
+        /// <summary>
+        /// Applies familiarity gains from a practice session.
+        /// Called by PracticeManager after executing practice drills.
+        /// </summary>
+        /// <param name="familiarityGains">Dictionary mapping PlayId to familiarity points gained</param>
+        public void ApplyPracticeFamiliarityGains(Dictionary<string, float> familiarityGains)
+        {
+            foreach (var gain in familiarityGains)
+            {
+                if (!PlayFamiliarity.ContainsKey(gain.Key))
+                    continue;
+
+                int currentFam = PlayFamiliarity[gain.Key];
+
+                // Apply gain with diminishing returns at high familiarity
+                float effectiveGain = gain.Value * (1f - currentFam / 150f);
+                int newFam = Mathf.Min(100, currentFam + Mathf.RoundToInt(effectiveGain));
+                PlayFamiliarity[gain.Key] = newFam;
+
+                // Track as practice reps
+                PracticeReps[gain.Key] += Mathf.CeilToInt(gain.Value);
+
+                // Check graduation from installation
+                CheckInstallationGraduation(gain.Key, newFam);
+            }
+        }
+
+        /// <summary>
+        /// Checks if a play should graduate from installation phase.
+        /// </summary>
+        private void CheckInstallationGraduation(string playId, int familiarity)
+        {
+            if (PlaysInInstallation.ContainsKey(playId) && familiarity >= FAMILIARITY_FOR_INSTALLATION)
+            {
+                PlaysInInstallation.Remove(playId);
+                var play = GetPlay(playId);
+                Debug.Log($"[PlayBook] '{play?.PlayName ?? playId}' has graduated from installation phase");
+            }
         }
 
         /// <summary>
@@ -187,6 +252,38 @@ namespace NBAHeadCoach.Core.Data
         }
 
         /// <summary>
+        /// Checks if play is game-ready (can be run effectively in games).
+        /// </summary>
+        public bool IsPlayGameReady(string playId)
+        {
+            return GetPlayFamiliarity(playId) >= FAMILIARITY_FOR_GAME_READY;
+        }
+
+        /// <summary>
+        /// Checks if play is still in installation phase.
+        /// </summary>
+        public bool IsPlayInInstallation(string playId)
+        {
+            return PlaysInInstallation.ContainsKey(playId);
+        }
+
+        /// <summary>
+        /// Gets the installation status of a play.
+        /// </summary>
+        public PlayInstallationStatus GetInstallationStatus(string playId)
+        {
+            int fam = GetPlayFamiliarity(playId);
+
+            if (fam >= FAMILIARITY_TO_MASTER)
+                return PlayInstallationStatus.Mastered;
+            if (fam >= FAMILIARITY_FOR_GAME_READY)
+                return PlayInstallationStatus.GameReady;
+            if (fam >= FAMILIARITY_FOR_INSTALLATION)
+                return PlayInstallationStatus.Learning;
+            return PlayInstallationStatus.Installing;
+        }
+
+        /// <summary>
         /// Gets execution quality modifier based on familiarity.
         /// </summary>
         public float GetExecutionModifier(string playId)
@@ -195,6 +292,19 @@ namespace NBAHeadCoach.Core.Data
             // 0 familiarity = 0.5x (half effectiveness)
             // 100 familiarity = 1.2x (20% bonus)
             return 0.5f + (fam / 100f * 0.7f);
+        }
+
+        /// <summary>
+        /// Gets turnover risk modifier based on familiarity.
+        /// Low familiarity = higher turnover risk.
+        /// </summary>
+        public float GetTurnoverRiskModifier(string playId)
+        {
+            int fam = GetPlayFamiliarity(playId);
+            // 0 familiarity = 2.0x turnover risk
+            // 50 familiarity = 1.0x (baseline)
+            // 100 familiarity = 0.5x (reduced risk)
+            return 2.0f - (fam / 100f * 1.5f);
         }
 
         /// <summary>
@@ -207,7 +317,123 @@ namespace NBAHeadCoach.Core.Data
                 int current = PlayFamiliarity[playId];
                 int decay = Mathf.RoundToInt(current * decayPercent);
                 PlayFamiliarity[playId] = Math.Max(0, current - decay);
+
+                // Plays that decay below installation threshold go back to installation
+                if (PlayFamiliarity[playId] < FAMILIARITY_FOR_INSTALLATION && !PlaysInInstallation.ContainsKey(playId))
+                {
+                    PlaysInInstallation[playId] = DateTime.Now;
+                }
             }
+        }
+
+        // ==================== PRACTICE PLANNING ====================
+
+        /// <summary>
+        /// Sets plays to focus on during this week's practices.
+        /// </summary>
+        public void SetWeeklyFocusPlays(List<string> playIds)
+        {
+            WeeklyFocusPlays = playIds?.Where(id => Plays.Any(p => p.PlayId == id)).ToList()
+                ?? new List<string>();
+        }
+
+        /// <summary>
+        /// Gets plays that need the most practice (low familiarity or in installation).
+        /// </summary>
+        public List<SetPlay> GetPlaysNeedingPractice(int count = 5)
+        {
+            return Plays
+                .OrderBy(p => GetPlayFamiliarity(p.PlayId))
+                .ThenByDescending(p => IsPlayInInstallation(p.PlayId) ? 1 : 0)
+                .Take(count)
+                .ToList();
+        }
+
+        /// <summary>
+        /// Gets plays currently in installation that need work.
+        /// </summary>
+        public List<SetPlay> GetInstallationPlays()
+        {
+            return Plays
+                .Where(p => IsPlayInInstallation(p.PlayId))
+                .OrderBy(p => GetPlayFamiliarity(p.PlayId))
+                .ToList();
+        }
+
+        /// <summary>
+        /// Gets plays that are close to mastery and would benefit from extra reps.
+        /// </summary>
+        public List<SetPlay> GetPlaysNearMastery(int marginPoints = 15)
+        {
+            return Plays
+                .Where(p =>
+                {
+                    int fam = GetPlayFamiliarity(p.PlayId);
+                    return fam >= FAMILIARITY_TO_MASTER - marginPoints && fam < FAMILIARITY_TO_MASTER;
+                })
+                .OrderByDescending(p => GetPlayFamiliarity(p.PlayId))
+                .ToList();
+        }
+
+        /// <summary>
+        /// Gets recommended plays to drill based on current state.
+        /// Prioritizes: installation plays, weekly focus, low familiarity.
+        /// </summary>
+        public List<SetPlay> GetRecommendedDrillPlays(int count = 3)
+        {
+            var recommended = new List<SetPlay>();
+
+            // First, add installation plays
+            var installPlays = GetInstallationPlays();
+            recommended.AddRange(installPlays.Take(2));
+
+            // Add weekly focus plays not already included
+            foreach (var focusId in WeeklyFocusPlays)
+            {
+                if (recommended.Count >= count) break;
+                var play = GetPlay(focusId);
+                if (play != null && !recommended.Contains(play))
+                    recommended.Add(play);
+            }
+
+            // Fill with low familiarity plays
+            if (recommended.Count < count)
+            {
+                var lowFamPlays = GetPlaysNeedingPractice(count)
+                    .Where(p => !recommended.Contains(p));
+                recommended.AddRange(lowFamPlays.Take(count - recommended.Count));
+            }
+
+            return recommended.Take(count).ToList();
+        }
+
+        /// <summary>
+        /// Gets a practice plan summary for the playbook.
+        /// </summary>
+        public PlayBookPracticeStatus GetPracticeStatus()
+        {
+            return new PlayBookPracticeStatus
+            {
+                TotalPlays = TotalPlays,
+                MasteredCount = MasteredPlays,
+                GameReadyCount = GameReadyPlays,
+                InstallingCount = PlaysBeingInstalled,
+                NeedsPracticeCount = Plays.Count(p => GetPlayFamiliarity(p.PlayId) < FAMILIARITY_FOR_GAME_READY),
+                AverageFamiliarity = AverageFamiliarity,
+                WeeklyFocusCount = WeeklyFocusPlays.Count,
+                RecommendedDrills = GetRecommendedDrillPlays()
+                    .Select(p => new PlayDrillRecommendation
+                    {
+                        Play = p,
+                        CurrentFamiliarity = GetPlayFamiliarity(p.PlayId),
+                        Status = GetInstallationStatus(p.PlayId),
+                        Priority = IsPlayInInstallation(p.PlayId) ? DrillPriority.Critical :
+                                  WeeklyFocusPlays.Contains(p.PlayId) ? DrillPriority.High :
+                                  GetPlayFamiliarity(p.PlayId) < FAMILIARITY_FOR_GAME_READY ? DrillPriority.Medium :
+                                  DrillPriority.Low
+                    })
+                    .ToList()
+            };
         }
 
         // ==================== SITUATIONAL PREFERENCES ====================
@@ -413,11 +639,12 @@ namespace NBAHeadCoach.Core.Data
             // Add basic quick actions
             playbook.QuickActions = QuickAction.GetBasicActions();
 
-            // Set initial familiarity for default plays
+            // Set initial familiarity for default plays (above installation threshold)
             foreach (var play in playbook.Plays)
             {
-                playbook.PlayFamiliarity[play.PlayId] = 50;  // Start at 50%
+                playbook.PlayFamiliarity[play.PlayId] = 50;  // Start at 50% (game-ready)
                 playbook.PracticeReps[play.PlayId] = 10;
+                playbook.PlaysInInstallation.Remove(play.PlayId); // Not in installation since fam > 25
             }
 
             return playbook;
@@ -590,5 +817,127 @@ namespace NBAHeadCoach.Core.Data
         public int ScoreCount;
         public int TurnoverCount;
         public float PointsPerPlay => TimesRun > 0 ? (float)ScoreCount / TimesRun : 0f;
+    }
+
+    // ==================== PRACTICE INTEGRATION ====================
+
+    /// <summary>
+    /// Installation status of a play in the playbook.
+    /// </summary>
+    public enum PlayInstallationStatus
+    {
+        /// <summary>Play is brand new, needs extensive practice</summary>
+        Installing,
+
+        /// <summary>Play is partially learned, can be run but risky</summary>
+        Learning,
+
+        /// <summary>Play is ready to use in games</summary>
+        GameReady,
+
+        /// <summary>Play is fully mastered, executes at peak efficiency</summary>
+        Mastered
+    }
+
+    /// <summary>
+    /// Priority level for drilling a play in practice.
+    /// </summary>
+    public enum DrillPriority
+    {
+        Low,
+        Medium,
+        High,
+        Critical
+    }
+
+    /// <summary>
+    /// Summary of playbook status for practice planning.
+    /// </summary>
+    public class PlayBookPracticeStatus
+    {
+        public int TotalPlays;
+        public int MasteredCount;
+        public int GameReadyCount;
+        public int InstallingCount;
+        public int NeedsPracticeCount;
+        public float AverageFamiliarity;
+        public int WeeklyFocusCount;
+        public List<PlayDrillRecommendation> RecommendedDrills = new List<PlayDrillRecommendation>();
+
+        /// <summary>Overall health of the playbook (0-100)</summary>
+        public float PlaybookHealth => TotalPlays > 0 ?
+            (MasteredCount * 1.0f + GameReadyCount * 0.7f + (TotalPlays - MasteredCount - GameReadyCount) * 0.3f)
+            / TotalPlays * 100f : 0f;
+
+        /// <summary>Percentage of plays that are game-ready or better</summary>
+        public float GameReadyPercent => TotalPlays > 0 ?
+            (float)(MasteredCount + GameReadyCount) / TotalPlays * 100f : 0f;
+
+        /// <summary>Summary message for UI display</summary>
+        public string StatusSummary
+        {
+            get
+            {
+                if (InstallingCount > 0)
+                    return $"{InstallingCount} play(s) being installed - need practice time";
+                if (NeedsPracticeCount > TotalPlays / 2)
+                    return "Playbook needs work - schedule more practice";
+                if (MasteredCount >= TotalPlays * 0.8f)
+                    return "Playbook is in excellent shape";
+                if (GameReadyCount >= TotalPlays * 0.6f)
+                    return "Playbook is game-ready";
+                return "Playbook needs more reps";
+            }
+        }
+    }
+
+    /// <summary>
+    /// Recommendation for a play to drill in practice.
+    /// </summary>
+    public class PlayDrillRecommendation
+    {
+        public SetPlay Play;
+        public int CurrentFamiliarity;
+        public PlayInstallationStatus Status;
+        public DrillPriority Priority;
+
+        /// <summary>Estimated practice sessions needed to reach game-ready</summary>
+        public int SessionsToGameReady
+        {
+            get
+            {
+                int needed = PlayBook.FAMILIARITY_FOR_GAME_READY - CurrentFamiliarity;
+                if (needed <= 0) return 0;
+                // Assume ~5-8 familiarity points per session drilling that play
+                return Mathf.CeilToInt(needed / 6f);
+            }
+        }
+
+        /// <summary>Estimated practice sessions needed to master</summary>
+        public int SessionsToMaster
+        {
+            get
+            {
+                int needed = PlayBook.FAMILIARITY_TO_MASTER - CurrentFamiliarity;
+                if (needed <= 0) return 0;
+                return Mathf.CeilToInt(needed / 6f);
+            }
+        }
+
+        /// <summary>Reason why this play is recommended for drilling</summary>
+        public string RecommendationReason
+        {
+            get
+            {
+                return Status switch
+                {
+                    PlayInstallationStatus.Installing => "New play - needs installation reps",
+                    PlayInstallationStatus.Learning => "Partially learned - building familiarity",
+                    PlayInstallationStatus.GameReady => "Game-ready - working toward mastery",
+                    PlayInstallationStatus.Mastered => "Mastered - maintenance reps",
+                    _ => "Needs practice"
+                };
+            }
+        }
     }
 }
