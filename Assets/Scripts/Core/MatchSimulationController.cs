@@ -147,6 +147,12 @@ namespace NBAHeadCoach.Core
         /// <summary>Fired when analytics snapshot is updated</summary>
         public event Action<GameAnalyticsSnapshot> OnAnalyticsUpdate;
 
+        /// <summary>Fired for each spatial state during possession (for court visualization)</summary>
+        public event Action<SpatialState> OnSpatialStateUpdate;
+
+        /// <summary>Fired when a shot is attempted (for court shot markers)</summary>
+        public event Action<ShotMarkerData> OnShotAttempt;
+
         #endregion
 
         #region Unity Lifecycle
@@ -450,6 +456,15 @@ namespace NBAHeadCoach.Core
             var offenseLineup = offenseIsHome ? _homeLineup : _awayLineup;
             var defenseLineup = offenseIsHome ? _awayLineup : _homeLineup;
 
+            // Fire spatial state events for court visualization
+            if (result.SpatialStates != null)
+            {
+                foreach (var state in result.SpatialStates)
+                {
+                    OnSpatialStateUpdate?.Invoke(state);
+                }
+            }
+
             // Feed data to analytics tracker
             var analyticsTracker = _playerCoach.GetAnalyticsTracker();
             if (analyticsTracker != null)
@@ -507,6 +522,22 @@ namespace NBAHeadCoach.Core
                         _awayScore += evt.PointsScored;
 
                     FireScoreboardUpdate();
+                }
+
+                // Fire shot marker event for court visualization
+                if (evt.Type == EventType.Shot)
+                {
+                    var shotMarker = new ShotMarkerData(
+                        evt.ActorPlayerId,
+                        GetPlayerName(evt.ActorPlayerId),
+                        evt.ActorPosition,
+                        evt.Outcome == EventOutcome.Success,
+                        evt.PointsScored,
+                        _gameClock,
+                        _currentQuarter,
+                        ConvertToShotType(evt.ShotType)
+                    );
+                    OnShotAttempt?.Invoke(shotMarker);
                 }
 
                 // Track fouls
@@ -758,6 +789,21 @@ namespace NBAHeadCoach.Core
             int mins = (int)(seconds / 60);
             int secs = (int)(seconds % 60);
             return $"{mins}:{secs:D2}";
+        }
+
+        private ShotType ConvertToShotType(Simulation.ShotType? simShotType)
+        {
+            if (simShotType == null) return Data.ShotType.Jumper;
+
+            return simShotType.Value switch
+            {
+                Simulation.ShotType.Layup => Data.ShotType.Layup,
+                Simulation.ShotType.Dunk => Data.ShotType.Dunk,
+                Simulation.ShotType.MidRange => Data.ShotType.Jumper,
+                Simulation.ShotType.ThreePointer => Data.ShotType.ThreePointer,
+                Simulation.ShotType.FreeThrow => Data.ShotType.FreeThrow,
+                _ => Data.ShotType.Jumper
+            };
         }
 
         private void FireScoreboardUpdate()

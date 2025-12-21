@@ -2,7 +2,7 @@
 
 > **Purpose**: This document is the single source of truth for understanding the entire game design. An AI or developer can reference this without scanning all project files.
 > 
-> **Last Updated**: December 2024 (Dual-Role System Update)
+> **Last Updated**: December 2024 (Animated Court Visualization Update)
 
 ---
 
@@ -179,6 +179,7 @@ The following files have been removed as part of the personnel refactor:
 | `TeamStrategy.cs` | 11 offensive + 11 defensive schemes |
 | `PlayerGameInstructions.cs` | Per-player game focus and tendencies |
 | `CourtPosition.cs` | Spatial positioning system |
+| `ShotMarkerData.cs` | Shot attempt event data for court visualization |
 
 ### Deep Coaching Strategy System (NEW)
 
@@ -414,7 +415,7 @@ The following files have been removed as part of the personnel refactor:
 | InboxPanel | `InboxPanel.cs` | Messages and notifications |
 | StaffPanel | `StaffPanel.cs` | Staff management |
 | StaffHiringPanel | `StaffHiringPanel.cs` | Staff hiring interface |
-| MatchPanel | `MatchPanel.cs` | In-game coaching |
+| MatchPanel | `MatchPanel.cs` | In-game coaching with animated court visualization |
 | PreGamePanel | `PreGamePanel.cs` | Pre-game preparation |
 | PostGamePanel | `PostGamePanel.cs` | Post-game results |
 | PlayoffBracketPanel | `PlayoffBracketPanel.cs` | Playoff bracket view |
@@ -429,10 +430,14 @@ The following files have been removed as part of the personnel refactor:
 | Component | Description |
 |-----------|-------------|
 | StaffRow | Staff member display row |
-| CourtDiagramView | 2D court visualization |
+| CourtDiagramView | 2D court visualization (static formations) |
 | CoachingMenuView | Tabbed coaching interface |
 | AttributeDisplayFactory | Rating/attribute display |
 | ScrollingTicker | News ticker |
+| **AnimatedCourtView** | **NEW** - Animated 2D court with smooth player/ball movement |
+| **AnimatedPlayerDot** | **NEW** - Player dot with team color, jersey number, hover tooltip |
+| **BallAnimator** | **NEW** - Ball positioning with parabolic arc animations |
+| **ShotMarkerUI** | **NEW** - Persistent shot location markers (green make/red miss) |
 
 ---
 
@@ -490,6 +495,11 @@ Procedural name generation using Markov chains with realistic NBA demographics.
 | Coach-Only Mode | Submit roster requests to AI GM for approval |
 | Job Market | After firing, search and apply for new positions |
 | AI Personality Discovery | Learn AI traits through interactions over time |
+| **Animated Court Visualization** | **NEW** - Real-time court visualization with moving players and ball |
+| Animated Player Dots | Team-colored dots with jersey numbers, smooth interpolation |
+| Ball Animation | Parabolic arc passes and shots with shadow effects |
+| Shot Markers | Persistent make/miss markers on court with auto-fade |
+| Spatial State Events | Real-time position updates from possession simulator |
 
 ### Outstanding Issues / TODOs
 
@@ -667,6 +677,20 @@ GetInsights(aiProfileId) → List<string>
 ---
 
 ## CHANGE LOG
+
+### December 2024 - Animated Court Visualization
+- **Animated Court View** - Real-time 2D court visualization with smooth player movement
+- **Player Dots** - Team-colored circles with jersey numbers, smooth position interpolation
+- **Ball Animator** - Ball attaches to carrier, parabolic arc animations for passes/shots
+- **Shot Markers** - Persistent shot location markers (green makes, red misses) with auto-fade
+- Added `AnimatedCourtView.cs` - Main court visualization component with state buffer
+- Added `AnimatedPlayerDot.cs` - Player dot with tooltip showing name, stats, energy
+- Added `BallAnimator.cs` - Ball flight coroutines with shadow depth effect
+- Added `ShotMarkerUI.cs` - Shot marker with appear/fade animations
+- Added `ShotMarkerData.cs` - Shot event data struct
+- Enhanced `MatchSimulationController.cs` with `OnSpatialStateUpdate` and `OnShotAttempt` events
+- Enhanced `MatchPanel.cs` with animated court integration and layout support
+- Coordinate transformation: Court (X: 0-47, Y: -25 to +25) → UI rect positions
 
 ### December 2024 - Dual-Role System
 - **Phase 1: Role Selection** - Added role choice (GM/Coach/Both) to new game wizard

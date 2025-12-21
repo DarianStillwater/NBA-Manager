@@ -4,6 +4,8 @@ using UnityEngine;
 using UnityEngine.UI;
 using NBAHeadCoach.Core;
 using NBAHeadCoach.Core.Data;
+using NBAHeadCoach.Core.Simulation;
+using NBAHeadCoach.UI.Components;
 
 namespace NBAHeadCoach.UI.Panels
 {
@@ -47,6 +49,10 @@ namespace NBAHeadCoach.UI.Panels
         [Header("Court Diagram Section")]
         [SerializeField] private RectTransform _courtDiagramSection;
         [SerializeField] private CourtDiagramView _courtDiagram;
+
+        [Header("Animated Court View")]
+        [SerializeField] private AnimatedCourtView _animatedCourt;
+        [SerializeField] private bool _useAnimatedCourt = true;
 
         [Header("Speed Controls")]
         [SerializeField] private Button _pauseButton;
@@ -156,6 +162,13 @@ namespace NBAHeadCoach.UI.Panels
             _simController.OnCoachingDecisionRequired += HandleCoachingDecision;
             _simController.OnSimulationPaused += HandleSimulationPaused;
             _simController.OnSimulationResumed += HandleSimulationResumed;
+
+            // Animated court events
+            if (_useAnimatedCourt && _animatedCourt != null)
+            {
+                _simController.OnSpatialStateUpdate += HandleSpatialStateUpdate;
+                _simController.OnShotAttempt += HandleShotAttempt;
+            }
         }
 
         private void UnsubscribeFromEvents()
@@ -172,6 +185,10 @@ namespace NBAHeadCoach.UI.Panels
             _simController.OnCoachingDecisionRequired -= HandleCoachingDecision;
             _simController.OnSimulationPaused -= HandleSimulationPaused;
             _simController.OnSimulationResumed -= HandleSimulationResumed;
+
+            // Animated court events
+            _simController.OnSpatialStateUpdate -= HandleSpatialStateUpdate;
+            _simController.OnShotAttempt -= HandleShotAttempt;
         }
 
         /// <summary>
@@ -199,6 +216,14 @@ namespace NBAHeadCoach.UI.Panels
             // Initialize lineups display
             RefreshLineups();
 
+            // Initialize animated court view
+            if (_animatedCourt != null && _useAnimatedCourt)
+            {
+                var homeLineup = GetStartingLineupIds(homeTeam);
+                var awayLineup = GetStartingLineupIds(awayTeam);
+                _animatedCourt.Initialize(homeTeam, awayTeam, homeLineup, awayLineup);
+            }
+
             // Hide game end overlay
             if (_gameEndOverlay != null) _gameEndOverlay.SetActive(false);
 
@@ -207,6 +232,45 @@ namespace NBAHeadCoach.UI.Panels
             UpdateSpeedButtonStates();
 
             Debug.Log($"[MatchPanel] Initialized: {awayTeam.Name} @ {homeTeam.Name}");
+        }
+
+        /// <summary>
+        /// Get starting lineup player IDs for a team
+        /// </summary>
+        private List<string> GetStartingLineupIds(Team team)
+        {
+            var ids = new List<string>();
+            if (team?.Roster == null) return ids;
+
+            // Get the starting 5 by position priority (PG, SG, SF, PF, C)
+            var starters = new List<Player>();
+            var positions = new[] { Position.PG, Position.SG, Position.SF, Position.PF, Position.C };
+
+            foreach (var pos in positions)
+            {
+                var player = team.Roster.Find(p => p.PrimaryPosition == pos && !starters.Contains(p));
+                if (player != null)
+                {
+                    starters.Add(player);
+                }
+            }
+
+            // Fill remaining spots if needed
+            foreach (var player in team.Roster)
+            {
+                if (starters.Count >= 5) break;
+                if (!starters.Contains(player))
+                {
+                    starters.Add(player);
+                }
+            }
+
+            foreach (var player in starters)
+            {
+                ids.Add(player.PlayerId);
+            }
+
+            return ids;
         }
 
         #endregion
@@ -245,6 +309,12 @@ namespace NBAHeadCoach.UI.Panels
             if (_courtDiagram != null)
             {
                 _courtDiagram.SetPossession(homeHasPossession);
+            }
+
+            // Update animated court
+            if (_animatedCourt != null && _useAnimatedCourt)
+            {
+                _animatedCourt.SetOffense(homeHasPossession);
             }
         }
 
@@ -298,6 +368,22 @@ namespace NBAHeadCoach.UI.Panels
         private void HandleSimulationResumed()
         {
             UpdatePlayPauseButtons(false);
+        }
+
+        private void HandleSpatialStateUpdate(SpatialState state)
+        {
+            if (_animatedCourt != null && _useAnimatedCourt)
+            {
+                _animatedCourt.EnqueueState(state);
+            }
+        }
+
+        private void HandleShotAttempt(ShotMarkerData data)
+        {
+            if (_animatedCourt != null && _useAnimatedCourt)
+            {
+                _animatedCourt.AddShotMarker(data);
+            }
         }
 
         #endregion
