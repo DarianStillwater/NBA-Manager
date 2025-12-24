@@ -267,6 +267,11 @@ namespace NBAHeadCoach.Core.Data
             _ => "??"
         };
 
+        /// <summary>
+        /// Alias for PositionString - primary position as string.
+        /// </summary>
+        public string PrimaryPosition => PositionString;
+
         // ==================== UI ATTRIBUTE HELPERS ====================
         // These provide simplified attribute access for UI panels
 

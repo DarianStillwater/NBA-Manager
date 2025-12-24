@@ -14,6 +14,7 @@ namespace NBAHeadCoach.Core.Manager
         private SalaryCapManager _capManager;
         private TradeValidator _validator;
         private PlayerDatabase _playerDatabase;
+        private DraftPickRegistry _draftPickRegistry;
 
         // Trade history for AI learning
         private List<TradeRecord> _tradeHistory = new List<TradeRecord>();
@@ -23,12 +24,23 @@ namespace NBAHeadCoach.Core.Manager
         private float _vetoThreshold = -30f; // How lopsided before veto
 
         public event Action<TradeProposal, string> OnTradeVetoed;
+        public event Action<TradeProposal> OnTradeExecuted;
 
-        public TradeSystem(SalaryCapManager capManager, PlayerDatabase playerDatabase)
+        public TradeSystem(SalaryCapManager capManager, PlayerDatabase playerDatabase, DraftPickRegistry draftPickRegistry = null)
         {
             _capManager = capManager;
             _playerDatabase = playerDatabase;
-            _validator = new TradeValidator(capManager);
+            _draftPickRegistry = draftPickRegistry;
+            _validator = new TradeValidator(capManager, draftPickRegistry);
+        }
+
+        /// <summary>
+        /// Set or update the draft pick registry reference.
+        /// </summary>
+        public void SetDraftPickRegistry(DraftPickRegistry registry)
+        {
+            _draftPickRegistry = registry;
+            _validator.SetDraftPickRegistry(registry);
         }
 
         /// <summary>
@@ -374,8 +386,11 @@ namespace NBAHeadCoach.Core.Manager
                 Proposal = proposal,
                 ExecutedDate = DateTime.Now
             });
-            
-            Debug.Log($"Trade executed successfully involving {proposal.GetInvolvedTeams().Count} teams");
+
+            // Fire trade executed event for announcements and UI updates
+            OnTradeExecuted?.Invoke(proposal);
+
+            Debug.Log($"[TradeSystem] Trade executed successfully involving {proposal.GetInvolvedTeams().Count} teams");
         }
 
         private void TransferPlayer(TradeAsset asset)
@@ -400,9 +415,44 @@ namespace NBAHeadCoach.Core.Manager
 
         private void TransferDraftPick(TradeAsset asset)
         {
-            // In a full implementation, this would update draft pick ownership records
-            Debug.Log($"Transferred {asset.Year} {(asset.IsFirstRound ? "1st" : "2nd")} round pick " +
-                     $"from {asset.SendingTeamId} to {asset.ReceivingTeamId}");
+            if (_draftPickRegistry != null)
+            {
+                // Use registry to transfer pick ownership
+                int round = asset.IsFirstRound ? 1 : 2;
+                string originalTeam = asset.OriginalTeamId ?? asset.SendingTeamId;
+
+                bool transferred = _draftPickRegistry.TransferPick(
+                    originalTeam,
+                    asset.Year,
+                    round,
+                    asset.SendingTeamId,
+                    asset.ReceivingTeamId);
+
+                // Add any protections from the trade asset
+                if (transferred && asset.DraftPickDetails?.Protections?.Count > 0)
+                {
+                    _draftPickRegistry.AddProtections(
+                        originalTeam,
+                        asset.Year,
+                        round,
+                        asset.DraftPickDetails.Protections);
+                }
+
+                // Handle swap rights
+                if (transferred && asset.DraftPickDetails?.IsSwapRight == true)
+                {
+                    _draftPickRegistry.CreateSwapRight(
+                        originalTeam,
+                        asset.Year,
+                        asset.DraftPickDetails.SwapBeneficiaryTeamId);
+                }
+            }
+            else
+            {
+                // Fallback logging if registry not available
+                Debug.Log($"[TradeSystem] Transferred {asset.Year} {(asset.IsFirstRound ? "1st" : "2nd")} round pick " +
+                         $"from {asset.SendingTeamId} to {asset.ReceivingTeamId}");
+            }
         }
 
         // ==================== UTILITY ====================

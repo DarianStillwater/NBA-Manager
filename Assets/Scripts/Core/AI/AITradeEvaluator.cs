@@ -16,14 +16,9 @@ namespace NBAHeadCoach.Core.AI
         private Dictionary<string, PlayerTradeStatus> _playerTradeStatus;
         private SalaryCapManager _capManager;
         private PlayerDatabase _playerDatabase;
+        private PlayerValueCalculator _valueCalculator;
 
-        // Value constants for trade evaluation
-        private const float STAR_PLAYER_BASE = 100f;
-        private const float ALL_STAR_BASE = 70f;
-        private const float STARTER_BASE = 40f;
-        private const float ROTATION_BASE = 20f;
-        private const float BENCH_BASE = 10f;
-
+        // Draft pick value constants
         private const float FIRST_ROUND_PICK_BASE = 25f;
         private const float SECOND_ROUND_PICK_BASE = 5f;
         private const float TOP_5_PICK_BONUS = 30f;
@@ -33,6 +28,7 @@ namespace NBAHeadCoach.Core.AI
         {
             _capManager = capManager;
             _playerDatabase = playerDatabase;
+            _valueCalculator = new PlayerValueCalculator(playerDatabase, capManager);
             _frontOffices = new Dictionary<string, FrontOfficeProfile>();
             _playerTradeStatus = new Dictionary<string, PlayerTradeStatus>();
         }
@@ -70,6 +66,11 @@ namespace NBAHeadCoach.Core.AI
             _playerTradeStatus.TryGetValue(playerId, out var status);
             return status;
         }
+
+        /// <summary>
+        /// Get the PlayerValueCalculator for external access (e.g., UI display).
+        /// </summary>
+        public PlayerValueCalculator ValueCalculator => _valueCalculator;
 
         // === Main Trade Evaluation ===
 
@@ -163,7 +164,7 @@ namespace NBAHeadCoach.Core.AI
         }
 
         /// <summary>
-        /// Evaluate player value for trade purposes
+        /// Evaluate player value for trade purposes using stats-based calculation.
         /// </summary>
         private float EvaluatePlayerValue(TradeAsset asset, FrontOfficeProfile frontOffice)
         {
@@ -172,31 +173,11 @@ namespace NBAHeadCoach.Core.AI
 
             if (player == null) return asset.Salary / 2_000_000f; // Fallback based on salary
 
-            float value = 0f;
+            // Use PlayerValueCalculator for comprehensive stats-based evaluation
+            var assessment = _valueCalculator.CalculateValue(player, contract, frontOffice);
+            float value = assessment.TotalValue;
 
-            // Base value from player tier (estimated from salary and hidden attributes)
-            value = EstimatePlayerTierValue(player, contract);
-
-            // Age modifier
-            value *= GetAgeMultiplier(player.Age);
-
-            // Contract value modifier
-            if (contract != null)
-            {
-                value *= GetContractMultiplier(contract, frontOffice);
-            }
-
-            // Apply FO preference modifiers
-            if (player.Age <= 24)
-            {
-                value *= (1f + frontOffice.ValuePreferences.ValuesYoungPlayers * 0.3f);
-            }
-            else if (player.Age >= 30)
-            {
-                value *= (1f + frontOffice.ValuePreferences.ValuesVeterans * 0.2f);
-            }
-
-            // Trade availability discount
+            // Trade availability discount (on top of calculated value)
             var tradeStatus = GetPlayerTradeStatus(asset.PlayerId);
             if (tradeStatus != null)
             {
@@ -207,16 +188,13 @@ namespace NBAHeadCoach.Core.AI
             if (frontOffice.IsFormerPlayer && frontOffice.FormerPlayerTraits != null)
             {
                 // Position scouting bonus: Former player GMs evaluate their position better
-                // +10-20% value bonus for players at the GM's position
-                int positionBonus = frontOffice.GetPositionScoutingBonus(player.PrimaryPosition);
+                int positionBonus = frontOffice.GetPositionScoutingBonus(player.Position);
                 if (positionBonus > 0)
                 {
-                    // Position bonus increases perceived value (better evaluation)
                     value *= (1f + positionBonus / 100f);
                 }
 
-                // Former teammate preference bonus: GMs value their former teammates more
-                // +15% value for acquiring former teammates
+                // Former teammate preference bonus
                 float teammateBonus = frontOffice.GetFormerTeammateSigningBonus(asset.PlayerId);
                 if (teammateBonus > 0)
                 {
@@ -225,75 +203,6 @@ namespace NBAHeadCoach.Core.AI
             }
 
             return value;
-        }
-
-        /// <summary>
-        /// Estimate player tier value based on salary and attributes
-        /// </summary>
-        private float EstimatePlayerTierValue(Player player, Contract contract)
-        {
-            long salary = contract?.CurrentYearSalary ?? 0;
-
-            // Use salary as proxy for player quality (since attributes are hidden)
-            if (salary >= 35_000_000) return STAR_PLAYER_BASE;
-            if (salary >= 20_000_000) return ALL_STAR_BASE;
-            if (salary >= 12_000_000) return STARTER_BASE;
-            if (salary >= 5_000_000) return ROTATION_BASE;
-            return BENCH_BASE;
-        }
-
-        /// <summary>
-        /// Get age multiplier for player value
-        /// </summary>
-        private float GetAgeMultiplier(int age)
-        {
-            if (age <= 22) return 1.3f;  // Young with upside
-            if (age <= 26) return 1.15f; // Prime developing
-            if (age <= 30) return 1.0f;  // Peak
-            if (age <= 33) return 0.8f;  // Beginning decline
-            if (age <= 35) return 0.6f;  // Declining
-            return 0.4f;                  // Old
-        }
-
-        /// <summary>
-        /// Get contract value multiplier
-        /// </summary>
-        private float GetContractMultiplier(Contract contract, FrontOfficeProfile frontOffice)
-        {
-            float multiplier = 1.0f;
-
-            // Years remaining
-            switch (contract.YearsRemaining)
-            {
-                case 1:
-                    // Expiring - valuable for teams wanting flexibility
-                    if (frontOffice.ValuePreferences.ValuesSalaryRelief > 0.5f)
-                        multiplier = 1.1f;
-                    else
-                        multiplier = 0.8f; // Risk of losing player
-                    break;
-                case 2:
-                    multiplier = 1.0f;
-                    break;
-                case 3:
-                    multiplier = 0.95f;
-                    break;
-                case 4:
-                    multiplier = 0.9f;
-                    break;
-                default:
-                    multiplier = 0.85f; // Very long contract = risk
-                    break;
-            }
-
-            // Bad contract penalty
-            if (contract.CurrentYearSalary > 20_000_000 && contract.YearsRemaining >= 3)
-            {
-                // Potentially overpaid
-                multiplier *= 0.85f;
-            }
-
-            return multiplier;
         }
 
         /// <summary>

@@ -64,6 +64,10 @@ namespace NBAHeadCoach.Core
         [Header("Personality System")]
         public PersonalitySystemSaveData PersonalityData;
 
+        [Header("Trade AI System")]
+        public DraftPickRegistrySaveData DraftPickRegistryData;
+        public IncomingOffersSaveData IncomingOffersData;
+
         /// <summary>
         /// Create a display-friendly summary of the save
         /// </summary>

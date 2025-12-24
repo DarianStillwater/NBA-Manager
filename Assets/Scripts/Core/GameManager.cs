@@ -6,6 +6,7 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using NBAHeadCoach.Core.Data;
 using NBAHeadCoach.Core.Manager;
+using NBAHeadCoach.Core.AI;
 using NBAHeadCoach.UI;
 
 namespace NBAHeadCoach.Core
@@ -113,6 +114,14 @@ namespace NBAHeadCoach.Core
         private TradeNegotiationManager _tradeNegotiationManager;
         public TradeNegotiationManager TradeNegotiationManager => _tradeNegotiationManager;
 
+        // Trade AI Enhancement Managers
+        private DraftPickRegistry _draftPickRegistry;
+        public DraftPickRegistry DraftPickRegistry => _draftPickRegistry;
+        private AITradeOfferGenerator _tradeOfferGenerator;
+        public AITradeOfferGenerator TradeOfferGenerator => _tradeOfferGenerator;
+        private TradeAnnouncementSystem _tradeAnnouncementSystem;
+        public TradeAnnouncementSystem TradeAnnouncementSystem => _tradeAnnouncementSystem;
+
         // MatchSimulationController uses its own singleton pattern
         public MatchSimulationController MatchSimulation => MatchSimulationController.Instance;
 
@@ -178,10 +187,25 @@ namespace NBAHeadCoach.Core
             _financeManager = new FinanceManager();
 
             // Initialize Trade & AI Systems
-            _tradeSystem = new TradeSystem(_salaryCapManager, PlayerDatabase);
+            _draftPickRegistry = new DraftPickRegistry();
+            _tradeSystem = new TradeSystem(_salaryCapManager, PlayerDatabase, _draftPickRegistry);
             _tradeEvaluator = new AITradeEvaluator(_salaryCapManager, PlayerDatabase);
             _tradeFinder = new TradeFinder(_tradeEvaluator, _salaryCapManager, PlayerDatabase);
             _tradeNegotiationManager = new TradeNegotiationManager(_tradeEvaluator, _tradeSystem, _tradeFinder);
+
+            // Initialize Trade AI Enhancement Systems
+            _tradeAnnouncementSystem = new TradeAnnouncementSystem(PlayerDatabase, _tradeEvaluator?.ValueCalculator);
+            _tradeOfferGenerator = new AITradeOfferGenerator(
+                PlayerDatabase, _salaryCapManager, _tradeEvaluator?.ValueCalculator, _draftPickRegistry);
+
+            // Wire up trade execution -> announcements
+            if (_tradeSystem != null)
+            {
+                _tradeSystem.OnTradeExecuted += (proposal) =>
+                {
+                    _tradeAnnouncementSystem?.GenerateAnnouncement(proposal);
+                };
+            }
 
             // Load player/team data
             StartCoroutine(LoadGameData());
@@ -220,6 +244,13 @@ namespace NBAHeadCoach.Core
 
             Debug.Log($"[GameManager] Loaded {_allTeams.Count} teams, {PlayerDatabase.GetAllPlayers().Count} players");
             Debug.Log($"[GameManager] GameManager.Instance is {(Instance != null ? "SET" : "NULL")}");
+
+            // Initialize draft pick registry with all teams
+            if (_draftPickRegistry != null && _allTeams.Count > 0)
+            {
+                int currentYear = DateTime.Now.Year;
+                _draftPickRegistry.InitializeForSeason(currentYear, _allTeams);
+            }
 
             // Transition to main menu
             ChangeState(GameState.MainMenu);
@@ -510,6 +541,32 @@ namespace NBAHeadCoach.Core
             // Generate initial draft class for upcoming draft
             var draftGen = DraftClassGenerator.Instance;
             draftGen?.GenerateDraftClass(_currentSeason + 1);
+
+            // Initialize trade AI enhancement systems with player team
+            SetupTradeSystemsForTeam(_playerTeamId);
+        }
+
+        /// <summary>
+        /// Set up trade systems with the player's team ID.
+        /// Called when starting a new game or loading a save.
+        /// </summary>
+        private void SetupTradeSystemsForTeam(string teamId)
+        {
+            if (string.IsNullOrEmpty(teamId)) return;
+
+            // Set player team on trade offer generator
+            _tradeOfferGenerator?.SetPlayerTeamId(teamId);
+
+            // Set player team on announcement system for priority highlighting
+            _tradeAnnouncementSystem?.SetPlayerTeamId(teamId);
+
+            // Initialize draft pick registry if not done yet
+            if (_draftPickRegistry != null && _allTeams.Count > 0)
+            {
+                _draftPickRegistry.InitializeForSeason(_currentSeason, _allTeams);
+            }
+
+            Debug.Log($"[GameManager] Trade systems configured for team: {teamId}");
         }
 
         #endregion
@@ -584,6 +641,26 @@ namespace NBAHeadCoach.Core
             {
                 PersonnelManager.Instance?.LoadSaveData(data.UnifiedCareers);
             }
+
+            // Restore draft pick registry
+            if (data.DraftPickRegistryData != null)
+            {
+                _draftPickRegistry?.RestoreFromSave(data.DraftPickRegistryData);
+            }
+            else if (_draftPickRegistry != null && _allTeams.Count > 0)
+            {
+                // Initialize with defaults if no saved data
+                _draftPickRegistry.InitializeForSeason(_currentSeason, _allTeams);
+            }
+
+            // Restore incoming trade offers
+            if (data.IncomingOffersData != null)
+            {
+                _tradeOfferGenerator?.RestoreFromSave(data.IncomingOffersData);
+            }
+
+            // Set up trade systems with loaded player team
+            SetupTradeSystemsForTeam(_playerTeamId);
         }
 
         /// <summary>
@@ -605,7 +682,9 @@ namespace NBAHeadCoach.Core
                 CalendarData = SeasonController.CreateCalendarSaveData(),
                 PlayoffData = _playoffManager?.CreateSaveData(),
                 PersonalityData = _personalityManager?.CreateSaveData(),
-                UnifiedCareers = PersonnelManager.Instance?.GetSaveData()
+                UnifiedCareers = PersonnelManager.Instance?.GetSaveData(),
+                DraftPickRegistryData = _draftPickRegistry?.CreateSaveData(),
+                IncomingOffersData = _tradeOfferGenerator?.CreateSaveData()
             };
         }
 
@@ -640,6 +719,10 @@ namespace NBAHeadCoach.Core
         {
             _currentDate = _currentDate.AddDays(1);
             SeasonController.AdvanceDay();
+
+            // Process daily trade offers from AI teams
+            _tradeOfferGenerator?.ProcessDailyOffers();
+
             OnDayAdvanced?.Invoke(_currentDate);
         }
 

@@ -12,10 +12,20 @@ namespace NBAHeadCoach.Core.Manager
     public class TradeValidator
     {
         private SalaryCapManager _capManager;
+        private DraftPickRegistry _draftPickRegistry;
 
-        public TradeValidator(SalaryCapManager capManager)
+        public TradeValidator(SalaryCapManager capManager, DraftPickRegistry draftPickRegistry = null)
         {
             _capManager = capManager;
+            _draftPickRegistry = draftPickRegistry;
+        }
+
+        /// <summary>
+        /// Set or update the draft pick registry reference.
+        /// </summary>
+        public void SetDraftPickRegistry(DraftPickRegistry registry)
+        {
+            _draftPickRegistry = registry;
         }
 
         // ==================== MAIN VALIDATION ====================
@@ -341,47 +351,58 @@ namespace NBAHeadCoach.Core.Manager
         public TradeValidationResult ValidateStepienRule(TradeProposal proposal, string teamId)
         {
             var result = new TradeValidationResult { IsValid = true };
-            
+
             // Get picks team is trading away in this proposal
             var outgoingFirstRounders = proposal.GetOutgoingPicks(teamId)
-                .Where(p => p.IsFirstRound && p.OriginalTeamId == teamId)
-                .Select(p => p.Year)
-                .ToHashSet();
-            
+                .Where(p => p.IsFirstRound)
+                .Select(p => p.DraftPickDetails ?? DraftPick.CreateFirstRound(p.Year, p.OriginalTeamId, teamId))
+                .ToList();
+
             if (outgoingFirstRounders.Count == 0)
                 return result; // Not trading any first-rounders
-            
-            // Get team's current first-round pick portfolio
+
+            // Use registry if available for accurate validation
+            if (_draftPickRegistry != null)
+            {
+                bool valid = _draftPickRegistry.ValidateStepienRule(teamId, outgoingFirstRounders);
+                if (!valid)
+                {
+                    result.IsValid = false;
+                    result.Issues.Add($"{teamId}: STEPIEN RULE VIOLATION - Cannot trade these picks. " +
+                        "Would leave team without first-round picks in consecutive years.");
+                }
+                return result;
+            }
+
+            // Fallback to manual calculation if registry not available
             var ownedPicks = GetTeamFirstRoundPicks(teamId);
-            
+
             // Simulate pick ownership after this trade
             var picksAfterTrade = new HashSet<int>(ownedPicks);
-            foreach (var year in outgoingFirstRounders)
+            foreach (var pick in outgoingFirstRounders)
             {
-                picksAfterTrade.Remove(year);
+                picksAfterTrade.Remove(pick.Year);
             }
-            
+
             // Add any first-rounders being acquired
             var incomingFirstRounders = proposal.AllAssets
                 .Where(a => a.ReceivingTeamId == teamId && a.Type == TradeAssetType.DraftPick && a.IsFirstRound)
                 .Select(a => a.Year);
-            
+
             foreach (var year in incomingFirstRounders)
             {
                 picksAfterTrade.Add(year);
             }
-            
+
             // Check for consecutive years without a first-round pick
-            // Rule: Must have at least one first-rounder every other year
             int currentYear = DateTime.Now.Year;
-            int checkWindow = 7; // Check 7 years into the future
-            
+            int checkWindow = 7;
+
             for (int year = currentYear; year < currentYear + checkWindow - 1; year++)
             {
                 bool hasThisYear = picksAfterTrade.Contains(year);
                 bool hasNextYear = picksAfterTrade.Contains(year + 1);
-                
-                // Cannot have two consecutive years without a first-round pick
+
                 if (!hasThisYear && !hasNextYear)
                 {
                     result.IsValid = false;
@@ -390,21 +411,32 @@ namespace NBAHeadCoach.Core.Manager
                     break;
                 }
             }
-            
+
             return result;
         }
-        
+
         /// <summary>
-        /// Gets a team's owned first-round picks (their own, not acquired from others).
+        /// Gets a team's owned first-round picks.
+        /// Uses registry if available, otherwise falls back to cached/default data.
         /// </summary>
         private HashSet<int> GetTeamFirstRoundPicks(string teamId)
         {
-            // Check if we have tracked picks for this team
-            if (_teamFirstRoundPicks.TryGetValue(teamId, out var picks))
+            // Use registry if available
+            if (_draftPickRegistry != null)
             {
+                var picks = _draftPickRegistry.GetPicksOwnedBy(teamId)
+                    .Where(p => p.Round == 1)
+                    .Select(p => p.Year)
+                    .ToHashSet();
                 return picks;
             }
-            
+
+            // Check if we have tracked picks for this team (legacy support)
+            if (_teamFirstRoundPicks.TryGetValue(teamId, out var cachedPicks))
+            {
+                return cachedPicks;
+            }
+
             // Default: assume team owns their own pick for next 7 years
             int currentYear = DateTime.Now.Year;
             var defaultPicks = new HashSet<int>();
@@ -412,7 +444,7 @@ namespace NBAHeadCoach.Core.Manager
             {
                 defaultPicks.Add(currentYear + i);
             }
-            
+
             _teamFirstRoundPicks[teamId] = defaultPicks;
             return defaultPicks;
         }

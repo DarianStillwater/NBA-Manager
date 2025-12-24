@@ -6,6 +6,7 @@ using NBAHeadCoach.Core;
 using NBAHeadCoach.Core.Data;
 using NBAHeadCoach.Core.Simulation;
 using NBAHeadCoach.UI.Panels;
+using NBAHeadCoach.UI.Modals;
 using CalendarEvent = NBAHeadCoach.Core.Data.CalendarEvent;
 using GameState = NBAHeadCoach.Core.GameState;
 
@@ -56,6 +57,19 @@ namespace NBAHeadCoach.UI
         [SerializeField] private PreGamePanel _preGamePanelComponent;
         [SerializeField] private PostGamePanel _postGamePanelComponent;
         [SerializeField] private StaffPanel _staffPanelComponent;
+
+        [Header("Modals")]
+        [SerializeField] private SlidePanelBackdrop _modalBackdrop;
+        [SerializeField] private ContractDetailPanel _contractDetailPanel;
+        [SerializeField] private ConfirmationPanel _confirmationPanel;
+
+        [Header("Selection Modals")]
+        [SerializeField] private PlayerSelectionPanel _playerSelectionPanel;
+        [SerializeField] private TeamSelectionPanel _teamSelectionPanel;
+        [SerializeField] private ProspectSelectionPanel _prospectSelectionPanel;
+
+        [Header("Trade Modals")]
+        [SerializeField] private IncomingTradeOffersPanel _incomingTradeOffersPanel;
 
         private GameManager _gameManager;
 
@@ -312,6 +326,285 @@ namespace NBAHeadCoach.UI
         private void ShowStaff() => ShowPanel("Staff");
         private void ShowPreGame() => ShowPanel("PreGame");
         private void ShowPostGame() => ShowPanel("PostGame");
+
+        #endregion
+
+        #region Modal Management
+
+        /// <summary>
+        /// Show staff contract details in a slide-in panel.
+        /// </summary>
+        public void ShowContractDetail(UnifiedCareerProfile profile)
+        {
+            if (_contractDetailPanel == null)
+            {
+                Debug.LogWarning("[GameSceneController] ContractDetailPanel not assigned");
+                return;
+            }
+
+            ShowBackdrop(() => HideContractDetail());
+            _contractDetailPanel.ShowStaffContract(profile);
+        }
+
+        /// <summary>
+        /// Show player contract details in a slide-in panel.
+        /// </summary>
+        public void ShowContractDetail(Player player)
+        {
+            if (_contractDetailPanel == null)
+            {
+                Debug.LogWarning("[GameSceneController] ContractDetailPanel not assigned");
+                return;
+            }
+
+            ShowBackdrop(() => HideContractDetail());
+            _contractDetailPanel.ShowPlayerContract(player);
+        }
+
+        /// <summary>
+        /// Hide the contract detail panel.
+        /// </summary>
+        public void HideContractDetail()
+        {
+            _contractDetailPanel?.HideSlide();
+            HideBackdrop();
+        }
+
+        /// <summary>
+        /// Show a confirmation dialog.
+        /// </summary>
+        /// <param name="title">Dialog title</param>
+        /// <param name="message">Main message</param>
+        /// <param name="onConfirm">Called when user confirms</param>
+        /// <param name="onCancel">Called when user cancels (optional)</param>
+        public void ShowConfirmation(string title, string message, Action onConfirm, Action onCancel = null)
+        {
+            if (_confirmationPanel == null)
+            {
+                Debug.LogWarning("[GameSceneController] ConfirmationPanel not assigned");
+                onConfirm?.Invoke(); // Fall back to immediate action
+                return;
+            }
+
+            ShowBackdrop(null, false); // Don't allow click-away for confirmations
+            _confirmationPanel.Show(title, message, () =>
+            {
+                HideBackdrop();
+                onConfirm?.Invoke();
+            }, () =>
+            {
+                HideBackdrop();
+                onCancel?.Invoke();
+            });
+        }
+
+        /// <summary>
+        /// Show a destructive action confirmation (red button).
+        /// </summary>
+        public void ShowDestructiveConfirmation(string title, string message, Action onConfirm,
+            string confirmText = "Delete", string cancelText = "Cancel")
+        {
+            if (_confirmationPanel == null)
+            {
+                Debug.LogWarning("[GameSceneController] ConfirmationPanel not assigned");
+                return;
+            }
+
+            ShowBackdrop(null, false);
+            _confirmationPanel.ShowDestructive(title, message, () =>
+            {
+                HideBackdrop();
+                onConfirm?.Invoke();
+            }, confirmText, cancelText);
+        }
+
+        /// <summary>
+        /// Show an alert/info dialog (single button).
+        /// </summary>
+        public void ShowAlert(string title, string message, Action onDismiss = null)
+        {
+            if (_confirmationPanel == null)
+            {
+                Debug.LogWarning("[GameSceneController] ConfirmationPanel not assigned");
+                onDismiss?.Invoke();
+                return;
+            }
+
+            ShowBackdrop(null, false);
+            _confirmationPanel.ShowAlert(title, message, () =>
+            {
+                HideBackdrop();
+                onDismiss?.Invoke();
+            });
+        }
+
+        /// <summary>
+        /// Show incoming trade offers panel.
+        /// </summary>
+        public void ShowIncomingTradeOffers()
+        {
+            if (_incomingTradeOffersPanel == null)
+            {
+                Debug.LogWarning("[GameSceneController] IncomingTradeOffersPanel not assigned");
+                return;
+            }
+
+            var offerGenerator = _gameManager?.TradeOfferGenerator;
+            if (offerGenerator == null)
+            {
+                Debug.LogWarning("[GameSceneController] TradeOfferGenerator not available");
+                return;
+            }
+
+            ShowBackdrop(() => _incomingTradeOffersPanel.HideSlide());
+            _incomingTradeOffersPanel.ShowWithOffers(offerGenerator);
+        }
+
+        /// <summary>
+        /// Get count of pending trade offers (for notification badge).
+        /// </summary>
+        public int GetPendingTradeOfferCount()
+        {
+            return _gameManager?.TradeOfferGenerator?.GetPendingOfferCount() ?? 0;
+        }
+
+        /// <summary>
+        /// Hide all modal panels.
+        /// </summary>
+        public void HideAllModals()
+        {
+            _contractDetailPanel?.HideImmediate();
+            _confirmationPanel?.HideImmediate();
+            _playerSelectionPanel?.HideImmediate();
+            _teamSelectionPanel?.HideImmediate();
+            _incomingTradeOffersPanel?.HideImmediate();
+            _prospectSelectionPanel?.HideImmediate();
+            HideBackdropImmediate();
+        }
+
+        /// <summary>
+        /// Show player selection for coach assignment.
+        /// </summary>
+        /// <param name="coach">The coach to assign players to</param>
+        /// <param name="maxPlayers">Maximum number of players</param>
+        /// <param name="onConfirm">Callback with selected player IDs</param>
+        public void ShowPlayerSelectionForCoach(UnifiedCareerProfile coach, int maxPlayers, Action<List<string>> onConfirm)
+        {
+            if (_playerSelectionPanel == null)
+            {
+                Debug.LogWarning("[GameSceneController] PlayerSelectionPanel not assigned");
+                return;
+            }
+
+            ShowBackdrop(() => HidePlayerSelection());
+            _playerSelectionPanel.ShowForCoachAssignment(coach, maxPlayers,
+                (playerIds) => {
+                    HideBackdrop();
+                    onConfirm?.Invoke(playerIds);
+                },
+                () => HideBackdrop());
+        }
+
+        /// <summary>
+        /// Show player selection for scout evaluation.
+        /// </summary>
+        public void ShowPlayerSelectionForScout(UnifiedCareerProfile scout, int maxPlayers, Action<List<string>> onConfirm)
+        {
+            if (_playerSelectionPanel == null)
+            {
+                Debug.LogWarning("[GameSceneController] PlayerSelectionPanel not assigned");
+                return;
+            }
+
+            ShowBackdrop(() => HidePlayerSelection());
+            _playerSelectionPanel.ShowForScoutEvaluation(scout, maxPlayers,
+                (playerIds) => {
+                    HideBackdrop();
+                    onConfirm?.Invoke(playerIds);
+                },
+                () => HideBackdrop());
+        }
+
+        private void HidePlayerSelection()
+        {
+            _playerSelectionPanel?.HideSlide();
+            HideBackdrop();
+        }
+
+        /// <summary>
+        /// Show team selection for opponent scouting.
+        /// </summary>
+        /// <param name="scout">The scout to assign</param>
+        /// <param name="onConfirm">Callback with selected team ID</param>
+        public void ShowTeamSelectionForScouting(UnifiedCareerProfile scout, Action<string> onConfirm)
+        {
+            if (_teamSelectionPanel == null)
+            {
+                Debug.LogWarning("[GameSceneController] TeamSelectionPanel not assigned");
+                return;
+            }
+
+            ShowBackdrop(() => HideTeamSelection());
+            _teamSelectionPanel.ShowForOpponentScouting(scout,
+                (teamId) => {
+                    HideBackdrop();
+                    onConfirm?.Invoke(teamId);
+                },
+                () => HideBackdrop());
+        }
+
+        private void HideTeamSelection()
+        {
+            _teamSelectionPanel?.HideSlide();
+            HideBackdrop();
+        }
+
+        /// <summary>
+        /// Show prospect selection for draft scouting.
+        /// </summary>
+        /// <param name="scout">The scout to assign</param>
+        /// <param name="maxProspects">Maximum number of prospects</param>
+        /// <param name="onConfirm">Callback with selected prospect IDs</param>
+        public void ShowProspectSelectionForScouting(UnifiedCareerProfile scout, int maxProspects, Action<List<string>> onConfirm)
+        {
+            if (_prospectSelectionPanel == null)
+            {
+                Debug.LogWarning("[GameSceneController] ProspectSelectionPanel not assigned");
+                return;
+            }
+
+            ShowBackdrop(() => HideProspectSelection());
+            _prospectSelectionPanel.ShowForProspectScouting(scout, maxProspects,
+                (prospectIds) => {
+                    HideBackdrop();
+                    onConfirm?.Invoke(prospectIds);
+                },
+                () => HideBackdrop());
+        }
+
+        private void HideProspectSelection()
+        {
+            _prospectSelectionPanel?.HideSlide();
+            HideBackdrop();
+        }
+
+        private void ShowBackdrop(Action onClickAway = null, bool allowClickAway = true)
+        {
+            if (_modalBackdrop != null)
+            {
+                _modalBackdrop.Show(onClickAway, allowClickAway);
+            }
+        }
+
+        private void HideBackdrop()
+        {
+            _modalBackdrop?.Hide();
+        }
+
+        private void HideBackdropImmediate()
+        {
+            _modalBackdrop?.HideImmediate();
+        }
 
         #endregion
 
