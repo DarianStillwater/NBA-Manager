@@ -1,0 +1,212 @@
+{
+  "dataAsOf": "2025-12-01",
+  "tradedPicks": [
+    {
+      "originalTeamId": "PHI",
+      "year": 2026,
+      "round": 1,
+      "currentOwnerId": "OKC",
+      "protections": [
+        { "year": 2026, "type": "TopN", "threshold": 4 },
+        { "year": 2027, "type": "TopN", "threshold": 4 }
+      ],
+      "finalConveyance": "ConveyUnprotected"
+    },
+    {
+      "originalTeamId": "UTA",
+      "year": 2026,
+      "round": 1,
+      "currentOwnerId": "OKC",
+      "protections": [
+        { "year": 2026, "type": "TopN", "threshold": 8 }
+      ],
+      "finalConveyance": "Void"
+    },
+    {
+      "originalTeamId": "LAC",
+      "year": 2026,
+      "round": 1,
+      "currentOwnerId": "OKC",
+      "protections": [],
+      "finalConveyance": "ConveyUnprotected"
+    },
+    {
+      "originalTeamId": "HOU",
+      "year": 2026,
+      "round": 1,
+      "currentOwnerId": "BKN",
+      "protections": [
+        { "year": 2026, "type": "TopN", "threshold": 4 }
+      ],
+      "finalConveyance": "ConveyUnprotected"
+    },
+    {
+      "originalTeamId": "DEN",
+      "year": 2027,
+      "round": 1,
+      "currentOwnerId": "OKC",
+      "protections": [
+        { "year": 2027, "type": "TopN", "threshold": 5 },
+        { "year": 2028, "type": "TopN", "threshold": 5 }
+      ],
+      "finalConveyance": "ConveyUnprotected"
+    },
+    {
+      "originalTeamId": "DEN",
+      "year": 2029,
+      "round": 1,
+      "currentOwnerId": "OKC",
+      "protections": [
+        { "year": 2029, "type": "TopN", "threshold": 5 }
+      ],
+      "finalConveyance": "BecomeSecondRound"
+    },
+    {
+      "originalTeamId": "CLE",
+      "year": 2027,
+      "round": 1,
+      "currentOwnerId": "UTA",
+      "protections": [],
+      "finalConveyance": "ConveyUnprotected"
+    },
+    {
+      "originalTeamId": "LAL",
+      "year": 2027,
+      "round": 1,
+      "currentOwnerId": "UTA",
+      "protections": [
+        { "year": 2027, "type": "TopN", "threshold": 4 },
+        { "year": 2028, "type": "TopN", "threshold": 4 }
+      ],
+      "finalConveyance": "ConveyUnprotected"
+    },
+    {
+      "originalTeamId": "MIN",
+      "year": 2027,
+      "round": 1,
+      "currentOwnerId": "UTA",
+      "protections": [],
+      "finalConveyance": "ConveyUnprotected"
+    },
+    {
+      "originalTeamId": "CLE",
+      "year": 2029,
+      "round": 1,
+      "currentOwnerId": "UTA",
+      "protections": [],
+      "finalConveyance": "ConveyUnprotected"
+    },
+    {
+      "originalTeamId": "MIN",
+      "year": 2029,
+      "round": 1,
+      "currentOwnerId": "UTA",
+      "protections": [
+        { "year": 2029, "type": "TopN", "threshold": 5 },
+        { "year": 2030, "type": "TopN", "threshold": 5 }
+      ],
+      "finalConveyance": "ConveyUnprotected"
+    },
+    {
+      "originalTeamId": "POR",
+      "year": 2026,
+      "round": 1,
+      "currentOwnerId": "CHI",
+      "protections": [
+        { "year": 2026, "type": "TopN", "threshold": 14 },
+        { "year": 2027, "type": "TopN", "threshold": 14 }
+      ],
+      "finalConveyance": "BecomeSecondRound"
+    },
+    {
+      "originalTeamId": "CHI",
+      "year": 2026,
+      "round": 1,
+      "currentOwnerId": "SAS",
+      "protections": [
+        { "year": 2026, "type": "TopN", "threshold": 10 },
+        { "year": 2027, "type": "TopN", "threshold": 10 }
+      ],
+      "finalConveyance": "BecomeSecondRound"
+    },
+    {
+      "originalTeamId": "DAL",
+      "year": 2026,
+      "round": 1,
+      "currentOwnerId": "NYK",
+      "protections": [
+        { "year": 2026, "type": "TopN", "threshold": 10 }
+      ],
+      "finalConveyance": "ConveyUnprotected"
+    },
+    {
+      "originalTeamId": "WAS",
+      "year": 2026,
+      "round": 1,
+      "currentOwnerId": "DAL",
+      "protections": [
+        { "year": 2026, "type": "TopN", "threshold": 12 },
+        { "year": 2027, "type": "TopN", "threshold": 10 }
+      ],
+      "finalConveyance": "BecomeSecondRound"
+    },
+    {
+      "originalTeamId": "MEM",
+      "year": 2026,
+      "round": 1,
+      "currentOwnerId": "CLE",
+      "protections": [
+        { "year": 2026, "type": "TopN", "threshold": 6 }
+      ],
+      "finalConveyance": "ConveyUnprotected"
+    },
+    {
+      "originalTeamId": "PHX",
+      "year": 2027,
+      "round": 1,
+      "currentOwnerId": "BKN",
+      "protections": [],
+      "finalConveyance": "ConveyUnprotected"
+    },
+    {
+      "originalTeamId": "PHX",
+      "year": 2029,
+      "round": 1,
+      "currentOwnerId": "BKN",
+      "protections": [],
+      "finalConveyance": "ConveyUnprotected"
+    },
+    {
+      "originalTeamId": "ATL",
+      "year": 2027,
+      "round": 1,
+      "currentOwnerId": "SAS",
+      "protections": [
+        { "year": 2027, "type": "TopN", "threshold": 1 }
+      ],
+      "finalConveyance": "ConveyUnprotected"
+    }
+  ],
+  "swapRights": [
+    {
+      "originalTeamId": "CLE",
+      "year": 2026,
+      "beneficiaryTeamId": "UTA"
+    },
+    {
+      "originalTeamId": "CLE",
+      "year": 2028,
+      "beneficiaryTeamId": "UTA"
+    },
+    {
+      "originalTeamId": "HOU",
+      "year": 2027,
+      "beneficiaryTeamId": "BKN"
+    },
+    {
+      "originalTeamId": "PHX",
+      "year": 2028,
+      "beneficiaryTeamId": "BKN"
+    }
+  ]
+}

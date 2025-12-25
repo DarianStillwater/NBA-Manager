@@ -18,23 +18,28 @@ namespace NBAHeadCoach.Core.Simulation
 
         private PossessionSimulator _possessionSimulator;
         private PlayerDatabase _playerDatabase;
-        
+        private FoulSystem _foulSystem;
+        private FreeThrowHandler _freeThrowHandler;
+
         private Team _homeTeam;
         private Team _awayTeam;
         private BoxScore _boxScore;
         private SpatialTracker _gameTracker;
-        
+
         private int _currentQuarter;
         private float _gameClock;
         private bool _homeHasPossession;
 
         public BoxScore BoxScore => _boxScore;
         public SpatialTracker GameTracker => _gameTracker;
+        public FoulSystem FoulSystem => _foulSystem;
 
         public GameSimulator(PlayerDatabase playerDatabase, int? seed = null)
         {
             _playerDatabase = playerDatabase;
-            _possessionSimulator = new PossessionSimulator(seed);
+            _foulSystem = new FoulSystem();
+            _freeThrowHandler = new FreeThrowHandler();
+            _possessionSimulator = new PossessionSimulator(seed, _foulSystem);
             _gameTracker = new SpatialTracker();
         }
 
@@ -47,6 +52,9 @@ namespace NBAHeadCoach.Core.Simulation
             _awayTeam = awayTeam;
             _boxScore = new BoxScore(homeTeam.TeamId, awayTeam.TeamId);
             _gameTracker.Clear();
+
+            // Reset foul system for new game
+            _foulSystem.ResetGame();
 
             // Initialize player stats
             InitializePlayerStats(homeTeam);
@@ -215,6 +223,9 @@ namespace NBAHeadCoach.Core.Simulation
             _gameClock = quarterLengthSeconds;
             _homeHasPossession = _currentQuarter % 2 == 1; // Home starts Q1/Q3, Away starts Q2/Q4
 
+            // Reset team fouls at the start of each quarter
+            _foulSystem.ResetQuarterFouls();
+
             while (_gameClock > 0)
             {
                 // Get active players
@@ -222,6 +233,13 @@ namespace NBAHeadCoach.Core.Simulation
                 var defensePlayers = GetActivePlayers(_homeHasPossession ? _awayTeam : _homeTeam);
                 var offenseStrategy = _homeHasPossession ? _homeTeam.OffensiveStrategy : _awayTeam.OffensiveStrategy;
                 var defenseStrategy = _homeHasPossession ? _awayTeam.DefensiveStrategy : _homeTeam.DefensiveStrategy;
+
+                // Determine team IDs for this possession
+                string offenseTeamId = _homeHasPossession ? _homeTeam.TeamId : _awayTeam.TeamId;
+                string defenseTeamId = _homeHasPossession ? _awayTeam.TeamId : _homeTeam.TeamId;
+                int scoreDifferential = _homeHasPossession
+                    ? _boxScore.HomeScore - _boxScore.AwayScore
+                    : _boxScore.AwayScore - _boxScore.HomeScore;
 
                 // Simulate possession
                 var result = _possessionSimulator.SimulatePossession(
@@ -231,11 +249,17 @@ namespace NBAHeadCoach.Core.Simulation
                     defenseStrategy,
                     _gameClock,
                     _currentQuarter,
-                    _homeHasPossession
+                    _homeHasPossession,
+                    offenseTeamId,
+                    defenseTeamId,
+                    scoreDifferential
                 );
 
                 // Record stats
                 ProcessPossessionResult(result, _homeHasPossession);
+
+                // Process any free throws from foul events
+                ProcessFreeThrows(result, _homeHasPossession);
 
                 // Add spatial states to game tracker
                 foreach (var state in result.SpatialStates)
@@ -246,13 +270,38 @@ namespace NBAHeadCoach.Core.Simulation
                 // Update game clock
                 _gameClock = result.EndGameClock;
 
-                // Possession ALWAYS changes after any possession ends
-                _homeHasPossession = !_homeHasPossession;
+                // Possession changes unless free throws retain possession (flagrant, technical)
+                bool retainsPossession = CheckRetainsPossession(result);
+                if (!retainsPossession)
+                {
+                    _homeHasPossession = !_homeHasPossession;
+                }
 
                 // Energy drain for active players
                 DrainEnergy(offensePlayers, result.Duration * 0.2f);
                 DrainEnergy(defensePlayers, result.Duration * 0.15f);
             }
+        }
+
+        /// <summary>
+        /// Check if the offensive team retains possession (flagrant fouls, technicals).
+        /// </summary>
+        private bool CheckRetainsPossession(PossessionResult result)
+        {
+            foreach (var evt in result.Events)
+            {
+                if (evt.Type == EventType.Foul && evt.FoulDetail != null)
+                {
+                    // Flagrant fouls and technicals give ball back to fouled team
+                    if (evt.FoulDetail.FoulType == FoulType.Flagrant1 ||
+                        evt.FoulDetail.FoulType == FoulType.Flagrant2 ||
+                        evt.FoulDetail.FoulType == FoulType.Technical)
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
         }
 
         /// <summary>
@@ -284,14 +333,15 @@ namespace NBAHeadCoach.Core.Simulation
         /// </summary>
         private void ProcessPossessionResult(PossessionResult result, bool isHomePossession)
         {
-            string teamId = isHomePossession ? _homeTeam.TeamId : _awayTeam.TeamId;
+            string offenseTeamId = isHomePossession ? _homeTeam.TeamId : _awayTeam.TeamId;
+            string defenseTeamId = isHomePossession ? _awayTeam.TeamId : _homeTeam.TeamId;
 
             foreach (var evt in result.Events)
             {
                 switch (evt.Type)
                 {
                     case EventType.Shot:
-                        ProcessShot(evt, teamId);
+                        ProcessShot(evt, offenseTeamId);
                         break;
                     case EventType.Steal:
                         ProcessSteal(evt);
@@ -300,13 +350,16 @@ namespace NBAHeadCoach.Core.Simulation
                         ProcessBlock(evt);
                         break;
                     case EventType.Rebound:
-                        ProcessRebound(evt, teamId);
+                        ProcessRebound(evt, offenseTeamId);
                         break;
                     case EventType.Pass when evt.Outcome == EventOutcome.Success:
                         // Potential assist - tracked when shot made
                         break;
                     case EventType.Turnover:
                         ProcessTurnover(evt);
+                        break;
+                    case EventType.Foul:
+                        ProcessFoul(evt, defenseTeamId);
                         break;
                 }
             }
@@ -375,10 +428,74 @@ namespace NBAHeadCoach.Core.Simulation
             _boxScore.AddTurnover(evt.ActorPlayerId);
         }
 
-        private bool CheckForFreeThrows(PossessionResult result)
+        /// <summary>
+        /// Process foul events and update box score.
+        /// </summary>
+        private void ProcessFoul(PossessionEvent evt, string defenseTeamId)
         {
-            // Simplified: no free throws in this version
-            return false;
+            if (evt.FoulDetail == null) return;
+
+            // Record personal foul in box score
+            if (evt.DefenderPlayerId != null &&
+                evt.FoulDetail.FoulType != FoulType.Technical)
+            {
+                _boxScore.AddFoul(evt.DefenderPlayerId);
+            }
+
+            // Track team fouls in box score
+            _boxScore.AddTeamFoul(defenseTeamId, _currentQuarter);
+        }
+
+        /// <summary>
+        /// Process free throws from foul events.
+        /// </summary>
+        private void ProcessFreeThrows(PossessionResult result, bool isHomePossession)
+        {
+            foreach (var evt in result.Events)
+            {
+                if (evt.Type == EventType.Foul && evt.FoulDetail != null &&
+                    evt.FoulDetail.FreeThrowsAwarded > 0)
+                {
+                    // Get the fouled player (shooter)
+                    var shooter = _playerDatabase?.GetPlayer(evt.ActorPlayerId);
+                    if (shooter == null) continue;
+
+                    // Create game context for free throw calculation
+                    var context = new GameContext
+                    {
+                        Quarter = _currentQuarter,
+                        GameClock = _gameClock,
+                        ScoreDifferential = isHomePossession
+                            ? _boxScore.HomeScore - _boxScore.AwayScore
+                            : _boxScore.AwayScore - _boxScore.HomeScore,
+                        IsClutchTime = _currentQuarter >= 4 && _gameClock <= 300 &&
+                            Mathf.Abs(_boxScore.HomeScore - _boxScore.AwayScore) <= 5,
+                        TimeoutJustCalled = false
+                    };
+
+                    // Calculate free throw results
+                    var ftResult = _freeThrowHandler.CalculateFreeThrows(
+                        shooter,
+                        evt.FoulDetail.FreeThrowsAwarded,
+                        context
+                    );
+
+                    // Update box score with free throw stats
+                    _boxScore.AddFreeThrows(shooter.PlayerId, ftResult.Made, ftResult.Attempts);
+
+                    // Add points to team score
+                    if (ftResult.Made > 0)
+                    {
+                        if (isHomePossession)
+                            _boxScore.HomeScore += ftResult.Made;
+                        else
+                            _boxScore.AwayScore += ftResult.Made;
+                    }
+
+                    // Store result in event for play-by-play
+                    evt.FreeThrowResult = ftResult;
+                }
+            }
         }
 
         private void DrainEnergy(Player[] players, float amount)
@@ -487,6 +604,38 @@ namespace NBAHeadCoach.Core.Simulation
         {
             if (PlayerStats.ContainsKey(playerId))
                 PlayerStats[playerId].PersonalFouls++;
+        }
+
+        public void AddFreeThrows(string playerId, int made, int attempts)
+        {
+            if (!PlayerStats.ContainsKey(playerId)) return;
+            PlayerStats[playerId].FreeThrowsMade += made;
+            PlayerStats[playerId].FreeThrowAttempts += attempts;
+            PlayerStats[playerId].Points += made;
+        }
+
+        // Team foul tracking per quarter
+        private Dictionary<string, Dictionary<int, int>> _teamFoulsPerQuarter = new Dictionary<string, Dictionary<int, int>>();
+
+        public void AddTeamFoul(string teamId, int quarter)
+        {
+            if (!_teamFoulsPerQuarter.ContainsKey(teamId))
+                _teamFoulsPerQuarter[teamId] = new Dictionary<int, int>();
+            if (!_teamFoulsPerQuarter[teamId].ContainsKey(quarter))
+                _teamFoulsPerQuarter[teamId][quarter] = 0;
+            _teamFoulsPerQuarter[teamId][quarter]++;
+        }
+
+        public int GetTeamFouls(string teamId, int quarter)
+        {
+            if (!_teamFoulsPerQuarter.ContainsKey(teamId)) return 0;
+            if (!_teamFoulsPerQuarter[teamId].ContainsKey(quarter)) return 0;
+            return _teamFoulsPerQuarter[teamId][quarter];
+        }
+
+        public bool IsInBonus(string teamId, int quarter)
+        {
+            return GetTeamFouls(teamId, quarter) >= 5;
         }
 
         /// <summary>

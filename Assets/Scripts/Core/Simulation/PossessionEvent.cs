@@ -38,6 +38,15 @@ namespace NBAHeadCoach.Core.Simulation
         public bool IsAndOne;
         public string Description;
 
+        // Foul details (populated when Type == Foul)
+        public FoulEventDetail FoulDetail;
+
+        // Violation details (populated when Type == Turnover with violation)
+        public ViolationEventDetail ViolationDetail;
+
+        // Free throw details (populated when free throws awarded)
+        public FreeThrowResult FreeThrowResult;
+
         /// <summary>
         /// Creates a text description for play-by-play.
         /// </summary>
@@ -65,9 +74,9 @@ namespace NBAHeadCoach.Core.Simulation
                 
                 EventType.Steal => $"{actor} steals it from {target}!",
                 
-                EventType.Turnover => $"{actor} turns it over",
-                
-                EventType.Foul => $"Foul on {defender}",
+                EventType.Turnover => GetTurnoverDescription(actor),
+
+                EventType.Foul => GetFoulDescription(actor, defender),
                 
                 EventType.FreeThrow => Outcome == EventOutcome.Success
                     ? $"{actor} makes the free throw"
@@ -114,6 +123,57 @@ namespace NBAHeadCoach.Core.Simulation
                 : ContestLevel > 0.4f ? " (contested)" : "";
 
             return $"{shotDesc} {zoneDesc}{contestDesc}";
+        }
+
+        private string GetTurnoverDescription(string actor)
+        {
+            if (ViolationDetail != null)
+            {
+                return ViolationDetail.ViolationType switch
+                {
+                    ViolationType.Traveling => $"Traveling on {actor}. Turnover.",
+                    ViolationType.Backcourt => $"Backcourt violation on {actor}. Turnover.",
+                    ViolationType.ThreeSecond => $"3-second violation on {actor}. Turnover.",
+                    ViolationType.ShotClock => "Shot clock violation. Turnover.",
+                    ViolationType.OutOfBounds => $"{actor} steps out of bounds. Turnover.",
+                    ViolationType.DoubleDribble => $"Double dribble on {actor}. Turnover.",
+                    _ => $"{actor} turns it over"
+                };
+            }
+            return Description ?? $"{actor} turns it over";
+        }
+
+        private string GetFoulDescription(string fouled, string fouler)
+        {
+            if (FoulDetail == null)
+                return $"Foul on {fouler}";
+
+            string prefix = FoulDetail.IsBonusSituation ? "[BONUS] " : "";
+            if (FoulDetail.IsDoubleBonusSituation)
+                prefix = "[DOUBLE BONUS] ";
+
+            string foulTypeDesc = FoulDetail.FoulType switch
+            {
+                FoulType.Shooting => "Shooting foul",
+                FoulType.Offensive => "Offensive foul",
+                FoulType.Technical => "TECHNICAL FOUL",
+                FoulType.Flagrant1 => "FLAGRANT 1",
+                FoulType.Flagrant2 => "FLAGRANT 2 - EJECTION",
+                FoulType.Loose => "Loose ball foul",
+                _ => "Personal foul"
+            };
+
+            string result = $"{prefix}{foulTypeDesc} on {fouler}";
+
+            if (FoulDetail.FreeThrowsAwarded > 0)
+                result += $". {fouled} shoots {FoulDetail.FreeThrowsAwarded}.";
+
+            if (FoulDetail.FoulerFouledOut)
+                result += $" {fouler} fouls out!";
+            else if (FoulDetail.FoulerEjected)
+                result += $" {fouler} is ejected!";
+
+            return result;
         }
     }
 

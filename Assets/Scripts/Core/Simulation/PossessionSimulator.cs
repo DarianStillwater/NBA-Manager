@@ -16,10 +16,15 @@ namespace NBAHeadCoach.Core.Simulation
         private const float SHOT_CLOCK = 24f;
         private const float MIN_POSSESSION_TIME = 6f;   // Minimum seconds before shot
         private const float AVG_POSSESSION_TIME = 12f;  // Average possession length (~100 possessions per team)
-        
+
         private System.Random _random;
         private SpatialTracker _tracker;
-        
+
+        // Rules systems
+        private FoulSystem _foulSystem;
+        private ViolationChecker _violationChecker;
+        private FreeThrowHandler _freeThrowHandler;
+
         // Current game state
         private Player[] _offensePlayers = new Player[5];
         private Player[] _defensePlayers = new Player[5];
@@ -29,12 +34,29 @@ namespace NBAHeadCoach.Core.Simulation
         private TeamStrategy _offenseStrategy;
         private TeamStrategy _defenseStrategy;
         private bool _isOffenseHome;
+        private string _offenseTeamId;
+        private string _defenseTeamId;
+        private GameContext _gameContext;
+        private ViolationEventDetail _currentViolation;  // Stores violation from DeterminePossessionOutcome
 
-        public PossessionSimulator(int? seed = null)
+        public PossessionSimulator(int? seed = null, FoulSystem foulSystem = null)
         {
             _random = seed.HasValue ? new System.Random(seed.Value) : new System.Random();
             _tracker = new SpatialTracker();
+            _foulSystem = foulSystem ?? new FoulSystem();
+            _violationChecker = new ViolationChecker();
+            _freeThrowHandler = new FreeThrowHandler();
         }
+
+        /// <summary>
+        /// Access to foul system for external tracking.
+        /// </summary>
+        public FoulSystem FoulSystem => _foulSystem;
+
+        /// <summary>
+        /// Access to free throw handler.
+        /// </summary>
+        public FreeThrowHandler FreeThrowHandler => _freeThrowHandler;
 
         /// <summary>
         /// Simulates a single possession and returns the result with full spatial data.
@@ -46,13 +68,31 @@ namespace NBAHeadCoach.Core.Simulation
             TeamStrategy defenseStrategy,
             float gameClock,
             int quarter,
-            bool isOffenseHome)
+            bool isOffenseHome,
+            string offenseTeamId = null,
+            string defenseTeamId = null,
+            int scoreDifferential = 0)
         {
             _offensePlayers = offensePlayers;
             _defensePlayers = defensePlayers;
             _offenseStrategy = offenseStrategy;
             _defenseStrategy = defenseStrategy;
             _isOffenseHome = isOffenseHome;
+            _offenseTeamId = offenseTeamId;
+            _defenseTeamId = defenseTeamId;
+
+            // Create game context for foul/FT calculations
+            _gameContext = new GameContext
+            {
+                Quarter = quarter,
+                GameClock = gameClock,
+                ShotClock = SHOT_CLOCK,
+                ScoreDifferential = scoreDifferential,
+                IsClutchTime = quarter >= 4 && gameClock <= 300f && Math.Abs(scoreDifferential) <= 5,
+                TimeoutJustCalled = false,
+                OpponentRunPoints = 0,
+                OpponentJustScored = false
+            };
 
             var result = new PossessionResult
             {
@@ -96,34 +136,68 @@ namespace NBAHeadCoach.Core.Simulation
 
             // Execute the possession outcome
             float endGameClock = gameClock - possessionDuration;
-            
+
+            // Clear stored violation for this possession
+            _currentViolation = null;
+
             if (outcomeType == PossessionOutcomeType.Turnover)
             {
                 result.Events.Add(CreateTurnoverEvent(endGameClock, quarter));
                 result.Outcome = PossessionOutcome.Turnover;
                 result.PointsScored = 0;
             }
-            else // Shot attempt
+            else if (outcomeType == PossessionOutcomeType.Violation)
+            {
+                // Violation detected - create turnover event with violation details
+                var violationEvent = CreateViolationTurnoverEvent(endGameClock, quarter);
+                result.Events.Add(violationEvent);
+                result.Outcome = PossessionOutcome.Turnover;
+                result.PointsScored = 0;
+            }
+            else // Shot attempt (may include foul check)
             {
                 // Select shooter (could be different from ball handler after ball movement)
                 int shooterIndex = SelectShooter();
-                var shotEvent = ExecuteShot(_offensePlayers[shooterIndex], shooterIndex, endGameClock, quarter, possessionClock);
-                result.Events.Add(shotEvent);
-                
-                if (shotEvent.Type == EventType.Block)
+                var shooter = _offensePlayers[shooterIndex];
+                var defender = _defensePlayers[shooterIndex];
+
+                // Check for defensive foul before shot
+                var shotType = ShotCalculator.DetermineShotType(
+                    shooter, _offensePositions[shooterIndex],
+                    _offensePositions[shooterIndex].DistanceTo(_defensePositions[shooterIndex]), false);
+
+                float foulChance = _foulSystem.CalculateFoulProbability(defender, shooter, shotType, _gameContext);
+                bool defenderFouls = _random.NextDouble() < foulChance;
+
+                if (defenderFouls)
                 {
-                    result.Outcome = PossessionOutcome.Block;
-                    result.PointsScored = 0;
-                }
-                else if (shotEvent.Outcome == EventOutcome.Success)
-                {
-                    result.Outcome = PossessionOutcome.Score;
-                    result.PointsScored = shotEvent.PointsScored;
+                    // Foul occurred - determine outcome
+                    var shotResult = ExecuteShotWithFoul(shooter, shooterIndex, defender, shotType, endGameClock, quarter, possessionClock);
+                    result.Events.AddRange(shotResult.Events);
+                    result.Outcome = shotResult.Outcome;
+                    result.PointsScored = shotResult.Points;
                 }
                 else
                 {
-                    result.Outcome = PossessionOutcome.Miss;
-                    result.PointsScored = 0;
+                    // Normal shot attempt
+                    var shotEvent = ExecuteShot(shooter, shooterIndex, endGameClock, quarter, possessionClock);
+                    result.Events.Add(shotEvent);
+
+                    if (shotEvent.Type == EventType.Block)
+                    {
+                        result.Outcome = PossessionOutcome.Block;
+                        result.PointsScored = 0;
+                    }
+                    else if (shotEvent.Outcome == EventOutcome.Success)
+                    {
+                        result.Outcome = PossessionOutcome.Score;
+                        result.PointsScored = shotEvent.PointsScored;
+                    }
+                    else
+                    {
+                        result.Outcome = PossessionOutcome.Miss;
+                        result.PointsScored = 0;
+                    }
                 }
             }
 
@@ -132,15 +206,32 @@ namespace NBAHeadCoach.Core.Simulation
         }
 
         /// <summary>
-        /// Determines the outcome type of the possession (shot or turnover).
+        /// Determines the outcome type of the possession (shot, turnover, violation, or foul).
         /// </summary>
         private PossessionOutcomeType DeterminePossessionOutcome()
         {
+            Player handler = _offensePlayers[_ballHandlerIndex];
+
+            // Check for violations first (traveling, backcourt, 3-second, etc.)
+            var violation = _violationChecker.CheckForViolation(
+                handler,
+                _offensePlayers.ToList(),
+                null,  // No shot type yet
+                SHOT_CLOCK,
+                true   // Assume crossed halfcourt for half-court possessions
+            );
+
+            if (violation != null)
+            {
+                // Store violation for later use in CreateTurnoverEvent
+                _currentViolation = violation;
+                return PossessionOutcomeType.Violation;
+            }
+
             // Base turnover rate is ~13% in NBA
             float turnoverChance = 0.13f;
 
             // Adjust for ball handler skill
-            Player handler = _offensePlayers[_ballHandlerIndex];
             turnoverChance -= (handler.BallHandling - 50) / 500f;
             turnoverChance -= (handler.BasketballIQ - 50) / 500f;
 
@@ -206,7 +297,7 @@ namespace NBAHeadCoach.Core.Simulation
             return total / players.Length;
         }
 
-        private enum PossessionOutcomeType { Shot, Turnover }
+        private enum PossessionOutcomeType { Shot, Turnover, Violation, Foul }
 
         /// <summary>
         /// Selects the ball handler based on position and playmaking skill.
@@ -505,6 +596,121 @@ namespace NBAHeadCoach.Core.Simulation
                 Description = description,
                 Outcome = EventOutcome.Fail
             };
+        }
+
+        /// <summary>
+        /// Creates a turnover event for a violation.
+        /// </summary>
+        private PossessionEvent CreateViolationTurnoverEvent(float gameClock, int quarter)
+        {
+            var handler = _offensePlayers[_ballHandlerIndex];
+
+            return new PossessionEvent
+            {
+                Type = EventType.Turnover,
+                GameClock = gameClock,
+                Quarter = quarter,
+                ActorPlayerId = handler.PlayerId,
+                ActorPosition = _offensePositions[_ballHandlerIndex],
+                Description = _currentViolation?.Description ?? "Violation",
+                ViolationDetail = _currentViolation,
+                Outcome = EventOutcome.Fail
+            };
+        }
+
+        /// <summary>
+        /// Result of a shot attempt with a foul.
+        /// </summary>
+        private class ShotWithFoulResult
+        {
+            public List<PossessionEvent> Events = new List<PossessionEvent>();
+            public PossessionOutcome Outcome;
+            public int Points;
+        }
+
+        /// <summary>
+        /// Executes a shot attempt where a foul occurred.
+        /// Handles shooting fouls, and-ones, and free throw results.
+        /// </summary>
+        private ShotWithFoulResult ExecuteShotWithFoul(
+            Player shooter,
+            int shooterIndex,
+            Player defender,
+            ShotType shotType,
+            float gameClock,
+            int quarter,
+            float possessionClock)
+        {
+            var result = new ShotWithFoulResult();
+            var position = _offensePositions[shooterIndex];
+            var zone = position.GetZone(_isOffenseHome);
+            bool isThreePointer = zone == CourtZone.ThreePoint;
+
+            // First, check if the shot was attempted and potentially made
+            float defenderDistance = position.DistanceTo(_defensePositions[shooterIndex]);
+            float shotProb = ShotCalculator.CalculateShotProbability(
+                shooter, position, defender, defenderDistance, shotType,
+                isFastBreak: false, secondsRemaining: possessionClock, isHomeTeam: _isOffenseHome);
+
+            // Fouled shooters get a slightly lower percentage (disrupted)
+            shotProb *= 0.85f;
+            bool shotMade = _random.NextDouble() < shotProb;
+
+            // Create foul event
+            var foulEvent = _foulSystem.CreateFoulEvent(
+                shooter,
+                defender,
+                _defenseTeamId,
+                FoulType.Shooting,  // Shooting foul
+                isShootingFoul: true,
+                shotWasMade: shotMade,
+                isBehindArc: isThreePointer,
+                shotType: shotType,
+                gameClock: gameClock,
+                quarter: quarter,
+                context: _gameContext);
+
+            result.Events.Add(foulEvent);
+
+            int fieldGoalPoints = 0;
+            int freeThrowPoints = 0;
+
+            // If shot was made, count the points
+            if (shotMade)
+            {
+                fieldGoalPoints = isThreePointer ? 3 : 2;
+
+                // Add shot event for and-one
+                result.Events.Add(new PossessionEvent
+                {
+                    Type = EventType.Shot,
+                    GameClock = gameClock,
+                    Quarter = quarter,
+                    ActorPlayerId = shooter.PlayerId,
+                    ActorPosition = position,
+                    DefenderPlayerId = defender.PlayerId,
+                    Outcome = EventOutcome.Success,
+                    PointsScored = fieldGoalPoints,
+                    ShotType = shotType,
+                    IsAndOne = true
+                });
+            }
+
+            // Process free throws
+            int freeThrows = foulEvent.FoulDetail?.FreeThrowsAwarded ?? 0;
+            if (freeThrows > 0)
+            {
+                var ftResult = _freeThrowHandler.CalculateFreeThrows(shooter, freeThrows, _gameContext);
+                freeThrowPoints = ftResult.Made;
+
+                // Add free throw event
+                result.Events.Add(_freeThrowHandler.CreateFreeThrowEvent(shooter, ftResult, gameClock, quarter));
+            }
+
+            result.Points = fieldGoalPoints + freeThrowPoints;
+            result.Outcome = result.Points > 0 ? PossessionOutcome.Score : PossessionOutcome.Foul;
+
+            return result;
         }
     }
 

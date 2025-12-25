@@ -55,8 +55,16 @@ namespace NBAHeadCoach.Core
 
         // Simulation state
         private PossessionSimulator _possessionSimulator;
+        private FoulSystem _foulSystem;
+        private TimeoutIntelligence _timeoutIntelligence;
         private List<PossessionEvent> _allEvents = new List<PossessionEvent>();
         private List<PlayByPlayEntry> _playByPlay = new List<PlayByPlayEntry>();
+
+        // Dead ball state
+        private bool _isDeadBall = false;
+        private int _homeUnansweredPoints = 0;
+        private int _awayUnansweredPoints = 0;
+        private bool _lastPossessionScored = false;
 
         // Game clock
         private int _currentQuarter = 1;
@@ -197,8 +205,12 @@ namespace NBAHeadCoach.Core
                 _playerIsHome ? awayTeam.Strategy : homeTeam.Strategy,
                 null, null);
 
-            // Initialize simulator
-            _possessionSimulator = new PossessionSimulator();
+            // Initialize rules systems
+            _foulSystem = new FoulSystem();
+            _timeoutIntelligence = new TimeoutIntelligence();
+
+            // Initialize simulator with foul system
+            _possessionSimulator = new PossessionSimulator(null, _foulSystem);
 
             // Reset state
             _currentQuarter = 1;
@@ -210,6 +222,13 @@ namespace NBAHeadCoach.Core
             _isComplete = false;
             _isPaused = false;
             _isRunning = false;
+            _isDeadBall = false;
+            _homeUnansweredPoints = 0;
+            _awayUnansweredPoints = 0;
+            _lastPossessionScored = false;
+
+            // Reset foul system for new game
+            _foulSystem.ResetGame();
 
             _allEvents.Clear();
             _playByPlay.Clear();
@@ -411,7 +430,12 @@ namespace NBAHeadCoach.Core
             var offenseStrategy = offenseTeam.Strategy ?? new TeamStrategy();
             var defenseStrategy = defenseTeam.Strategy ?? new TeamStrategy();
 
-            // Simulate
+            // Calculate score differential from offense perspective
+            int scoreDifferential = _homeHasPossession
+                ? _homeScore - _awayScore
+                : _awayScore - _homeScore;
+
+            // Simulate with team IDs for foul tracking
             var result = _possessionSimulator.SimulatePossession(
                 offensePlayers,
                 defensePlayers,
@@ -419,11 +443,17 @@ namespace NBAHeadCoach.Core
                 defenseStrategy,
                 _gameClock,
                 _currentQuarter,
-                _homeHasPossession
+                _homeHasPossession,
+                offenseTeam.TeamId,
+                defenseTeam.TeamId,
+                scoreDifferential
             );
 
             // Process result
             ProcessPossessionResult(result, _homeHasPossession);
+
+            // Process free throws from foul events
+            yield return ProcessFreeThrowsFromResult(result, _homeHasPossession);
 
             // Update clock
             _gameClock = result.EndGameClock;
@@ -437,8 +467,21 @@ namespace NBAHeadCoach.Core
                     _playerMinutes[playerId] += minutesElapsed;
             }
 
-            // Change possession
-            _homeHasPossession = !_homeHasPossession;
+            // Detect dead ball situations
+            _isDeadBall = IsDeadBall(result);
+
+            // Check for AI timeout before possession changes
+            if (_isDeadBall)
+            {
+                yield return CheckAITimeout(_homeHasPossession);
+            }
+
+            // Change possession (unless flagrant/technical retains possession)
+            bool retainsPossession = CheckRetainsPossession(result);
+            if (!retainsPossession)
+            {
+                _homeHasPossession = !_homeHasPossession;
+            }
             OnPossessionChange?.Invoke(_homeHasPossession);
 
             // Check auto-pause conditions
@@ -447,6 +490,246 @@ namespace NBAHeadCoach.Core
                 PauseSimulation();
                 yield return null;
             }
+
+            // Offer substitution opportunity at dead balls for player team
+            if (_isDeadBall && !_autoCoachEnabled)
+            {
+                var playerLineup = _playerIsHome ? _homeLineup : _awayLineup;
+                var fatigueCount = playerLineup.Count(id => GetPlayerEnergy(id) < _autoSubFatigueThreshold);
+                var foulTroubleCount = playerLineup.Count(id => _playerFouls.GetValueOrDefault(id, 0) >= 4);
+
+                if (fatigueCount > 0 || foulTroubleCount > 0)
+                {
+                    OnCoachingDecisionRequired?.Invoke(new CoachingDecisionRequired
+                    {
+                        Type = CoachingDecisionType.Substitution,
+                        Message = $"Dead ball opportunity. {fatigueCount} player(s) fatigued, {foulTroubleCount} in foul trouble."
+                    });
+                }
+            }
+        }
+
+        /// <summary>
+        /// Check if a possession result creates a dead ball situation.
+        /// </summary>
+        private bool IsDeadBall(PossessionResult result)
+        {
+            foreach (var evt in result.Events)
+            {
+                // Fouls create dead balls
+                if (evt.Type == EventType.Foul)
+                    return true;
+
+                // Timeouts are dead balls
+                if (evt.Type == EventType.Timeout)
+                    return true;
+
+                // Out of bounds turnovers
+                if (evt.Type == EventType.Turnover &&
+                    evt.ViolationDetail?.ViolationType == ViolationType.OutOfBounds)
+                    return true;
+
+                // Made baskets (technically a dead ball before inbound)
+                if (evt.Type == EventType.Shot && evt.Outcome == EventOutcome.Success)
+                    return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Check if the offensive team retains possession (flagrant fouls, technicals).
+        /// </summary>
+        private bool CheckRetainsPossession(PossessionResult result)
+        {
+            foreach (var evt in result.Events)
+            {
+                if (evt.Type == EventType.Foul && evt.FoulDetail != null)
+                {
+                    // Flagrant fouls and technicals give ball back to fouled team
+                    if (evt.FoulDetail.FoulType == FoulType.Flagrant1 ||
+                        evt.FoulDetail.FoulType == FoulType.Flagrant2 ||
+                        evt.FoulDetail.FoulType == FoulType.Technical)
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Check if AI coach should call timeout.
+        /// </summary>
+        private IEnumerator CheckAITimeout(bool offenseIsHome)
+        {
+            // Determine which AI coach to check (the one not on offense)
+            bool checkHome = !offenseIsHome;
+            var aiTeam = checkHome ? _homeTeam : _awayTeam;
+            var coach = (checkHome == _playerIsHome) ? _playerCoach : _aiCoach;
+
+            // Skip if player team (unless auto-coach is enabled)
+            if ((checkHome == _playerIsHome) && !_autoCoachEnabled)
+                yield break;
+
+            // Skip if no timeouts remaining
+            if (coach.TimeoutsRemaining <= 0)
+                yield break;
+
+            // Get players on court for energy check
+            var lineup = checkHome ? _homeLineup : _awayLineup;
+            var players = GetPlayersFromLineup(lineup);
+
+            // Calculate unanswered points against this team
+            int unansweredAgainst = checkHome ? _awayUnansweredPoints : _homeUnansweredPoints;
+
+            // Create game context for AI decision
+            int teamScoreDiff = checkHome
+                ? _homeScore - _awayScore
+                : _awayScore - _homeScore;
+
+            var gameContext = new GameContext
+            {
+                Quarter = _currentQuarter,
+                GameClock = _gameClock,
+                ScoreDifferential = teamScoreDiff,
+                IsClutchTime = IsClutchTime,
+                TimeoutJustCalled = false,
+                OpponentRunPoints = unansweredAgainst,
+                OpponentJustScored = _lastPossessionScored && (offenseIsHome != checkHome)
+            };
+
+            // Get AI timeout decision
+            var decision = _timeoutIntelligence.ShouldCallTimeout(
+                players,
+                gameContext,
+                coach.TimeoutsRemaining,
+                isPlayerTeam: false);
+
+            if (decision.ShouldCall)
+            {
+                // AI calls timeout
+                coach.UseTimeout();
+
+                AddPlayByPlayEntry(new PlayByPlayEntry
+                {
+                    Clock = FormattedClock,
+                    Quarter = _currentQuarter,
+                    Team = aiTeam.Abbreviation,
+                    Description = GetTimeoutDescription(decision.Reason),
+                    IsHighlight = true,
+                    Type = PlayByPlayType.Timeout
+                });
+
+                OnTimeout?.Invoke(aiTeam.TeamId, decision.Reason);
+
+                // Reset unanswered points after timeout
+                if (checkHome)
+                    _awayUnansweredPoints = 0;
+                else
+                    _homeUnansweredPoints = 0;
+
+                // Brief pause to show timeout
+                yield return new WaitForSeconds(0.5f);
+            }
+        }
+
+        private string GetTimeoutDescription(TimeoutReason reason)
+        {
+            return reason switch
+            {
+                TimeoutReason.StopRun => "TIMEOUT called to stop the run!",
+                TimeoutReason.IcingShooter => "TIMEOUT called - icing the shooter!",
+                TimeoutReason.AdvanceBall => "TIMEOUT called to advance the ball.",
+                TimeoutReason.DrawUpPlay => "TIMEOUT called to draw up a play.",
+                TimeoutReason.RestPlayers => "TIMEOUT called to rest players.",
+                TimeoutReason.Mandatory => "Full timeout.",
+                _ => "TIMEOUT"
+            };
+        }
+
+        /// <summary>
+        /// Process free throws from foul events.
+        /// </summary>
+        private IEnumerator ProcessFreeThrowsFromResult(PossessionResult result, bool offenseIsHome)
+        {
+            foreach (var evt in result.Events)
+            {
+                if (evt.Type == EventType.Foul && evt.FoulDetail != null &&
+                    evt.FoulDetail.FreeThrowsAwarded > 0)
+                {
+                    // Get the fouled player (shooter)
+                    var shooter = GetPlayer(evt.ActorPlayerId);
+                    if (shooter == null) continue;
+
+                    // Calculate FT results using the handler
+                    var ftHandler = _possessionSimulator.FreeThrowHandler;
+                    var ftContext = new GameContext
+                    {
+                        Quarter = _currentQuarter,
+                        GameClock = _gameClock,
+                        ScoreDifferential = offenseIsHome
+                            ? _homeScore - _awayScore
+                            : _awayScore - _homeScore,
+                        IsClutchTime = IsClutchTime,
+                        TimeoutJustCalled = false
+                    };
+
+                    var ftResult = ftHandler.CalculateFreeThrows(
+                        shooter,
+                        evt.FoulDetail.FreeThrowsAwarded,
+                        ftContext);
+
+                    // Update score
+                    if (ftResult.Made > 0)
+                    {
+                        if (offenseIsHome)
+                            _homeScore += ftResult.Made;
+                        else
+                            _awayScore += ftResult.Made;
+
+                        // Track for unanswered points
+                        if (offenseIsHome)
+                        {
+                            _homeUnansweredPoints += ftResult.Made;
+                            _awayUnansweredPoints = 0;
+                        }
+                        else
+                        {
+                            _awayUnansweredPoints += ftResult.Made;
+                            _homeUnansweredPoints = 0;
+                        }
+                    }
+
+                    // Add play-by-play entry for free throws
+                    AddPlayByPlayEntry(new PlayByPlayEntry
+                    {
+                        Clock = FormattedClock,
+                        Quarter = _currentQuarter,
+                        Team = offenseIsHome ? _homeTeam.Abbreviation : _awayTeam.Abbreviation,
+                        Description = ftResult.PlayByPlayText,
+                        IsHighlight = ftResult.Made == ftResult.Attempts && ftResult.Attempts > 1,
+                        Type = ftResult.Made > 0 ? PlayByPlayType.Score : PlayByPlayType.Regular,
+                        ActorPlayerId = shooter.PlayerId,
+                        Points = ftResult.Made,
+                        HomeScore = _homeScore,
+                        AwayScore = _awayScore
+                    });
+
+                    FireScoreboardUpdate();
+
+                    // Brief delay for free throw display
+                    float delay = GetDelayForSpeed() * 0.5f;
+                    if (delay > 0)
+                        yield return new WaitForSeconds(delay);
+                }
+            }
+        }
+
+        private float GetPlayerEnergy(string playerId)
+        {
+            var player = GetPlayer(playerId);
+            return player?.Energy ?? 100f;
         }
 
         private void ProcessPossessionResult(PossessionResult result, bool offenseIsHome)
@@ -517,11 +800,24 @@ namespace NBAHeadCoach.Core
                 if (evt.PointsScored > 0)
                 {
                     if (offenseIsHome)
+                    {
                         _homeScore += evt.PointsScored;
+                        _homeUnansweredPoints += evt.PointsScored;
+                        _awayUnansweredPoints = 0;
+                    }
                     else
+                    {
                         _awayScore += evt.PointsScored;
+                        _awayUnansweredPoints += evt.PointsScored;
+                        _homeUnansweredPoints = 0;
+                    }
 
+                    _lastPossessionScored = true;
                     FireScoreboardUpdate();
+                }
+                else
+                {
+                    _lastPossessionScored = false;
                 }
 
                 // Fire shot marker event for court visualization
@@ -654,6 +950,9 @@ namespace NBAHeadCoach.Core
             _currentQuarter++;
             _gameClock = _currentQuarter <= 4 ? 720f : 300f;
             _homeHasPossession = _currentQuarter % 2 == 1; // Alternate
+
+            // Reset team fouls for new quarter
+            _foulSystem.ResetQuarterFouls();
 
             context = CreateGameContext();
             var eventType = _currentQuarter > 4 ? GameEventType.OvertimeStart : GameEventType.QuarterStart;

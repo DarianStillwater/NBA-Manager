@@ -52,7 +52,95 @@ namespace NBAHeadCoach.Core.Manager
                 }
             }
 
+            // Load real-world draft pick trades (Dec 2025 data)
+            LoadInitialDraftData();
+
             Debug.Log($"[DraftPickRegistry] Initialized with {_allPicks.Count} picks for {teams.Count} teams");
+        }
+
+        /// <summary>
+        /// Load initial draft pick ownership data from JSON resource.
+        /// Applies real-world traded picks, protections, and swap rights.
+        /// </summary>
+        private void LoadInitialDraftData()
+        {
+            var jsonAsset = Resources.Load<TextAsset>("Data/initial_draft_picks");
+            if (jsonAsset == null)
+            {
+                Debug.Log("[DraftPickRegistry] No initial draft pick data found - using default ownership");
+                return;
+            }
+
+            try
+            {
+                var data = JsonUtility.FromJson<InitialDraftPickData>(jsonAsset.text);
+                if (data == null)
+                {
+                    Debug.LogWarning("[DraftPickRegistry] Failed to parse initial draft pick data");
+                    return;
+                }
+
+                int tradedCount = 0;
+                int swapCount = 0;
+
+                // Apply traded picks
+                if (data.tradedPicks != null)
+                {
+                    foreach (var traded in data.tradedPicks)
+                    {
+                        var pick = GetPick(traded.originalTeamId, traded.year, traded.round);
+                        if (pick != null)
+                        {
+                            // Update ownership
+                            pick.CurrentOwnerId = traded.currentOwnerId;
+
+                            // Apply protections
+                            if (traded.protections != null)
+                            {
+                                pick.Protections.Clear();
+                                foreach (var protection in traded.protections)
+                                {
+                                    pick.Protections.Add(protection.ToDraftProtection());
+                                }
+                            }
+
+                            // Apply final conveyance type
+                            pick.FinalConveyance = InitialDraftPickDataExtensions.ParseConveyanceType(traded.finalConveyance);
+
+                            tradedCount++;
+                        }
+                        else
+                        {
+                            Debug.LogWarning($"[DraftPickRegistry] Initial data: Pick not found - {traded.originalTeamId} {traded.year} Rd{traded.round}");
+                        }
+                    }
+                }
+
+                // Apply swap rights
+                if (data.swapRights != null)
+                {
+                    foreach (var swap in data.swapRights)
+                    {
+                        var pick = GetPick(swap.originalTeamId, swap.year, 1);
+                        if (pick != null)
+                        {
+                            pick.IsSwapRight = true;
+                            pick.SwapBeneficiaryTeamId = swap.beneficiaryTeamId;
+                            swapCount++;
+                        }
+                        else
+                        {
+                            Debug.LogWarning($"[DraftPickRegistry] Initial data: Pick not found for swap - {swap.originalTeamId} {swap.year}");
+                        }
+                    }
+                }
+
+                Debug.Log($"[DraftPickRegistry] Loaded initial data: {tradedCount} traded picks, {swapCount} swap rights (as of {data.dataAsOf})");
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogError($"[DraftPickRegistry] Error loading initial draft data: {ex.Message}");
+            }
         }
 
         /// <summary>
