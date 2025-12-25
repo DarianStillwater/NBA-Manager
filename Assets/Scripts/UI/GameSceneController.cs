@@ -71,6 +71,9 @@ namespace NBAHeadCoach.UI
         [Header("Trade Modals")]
         [SerializeField] private IncomingTradeOffersPanel _incomingTradeOffersPanel;
 
+        [Header("Captain Selection")]
+        [SerializeField] private CaptainSelectionPanel _captainSelectionPanel;
+
         [Header("Staff Panels")]
         [SerializeField] private GameObject _staffHiringPanel;
         [SerializeField] private StaffHiringPanel _staffHiringPanelComponent;
@@ -102,6 +105,7 @@ namespace NBAHeadCoach.UI
             // Subscribe to events
             _gameManager.OnStateChanged += OnGameStateChanged;
             _gameManager.OnDayAdvanced += OnDayAdvanced;
+            _gameManager.OnCaptainSelectionRequired += OnCaptainSelectionRequired;
 
             if (_gameManager.SeasonController != null)
             {
@@ -191,6 +195,7 @@ namespace NBAHeadCoach.UI
             {
                 _gameManager.OnStateChanged -= OnGameStateChanged;
                 _gameManager.OnDayAdvanced -= OnDayAdvanced;
+                _gameManager.OnCaptainSelectionRequired -= OnCaptainSelectionRequired;
 
                 if (_gameManager.SeasonController != null)
                 {
@@ -484,6 +489,7 @@ namespace NBAHeadCoach.UI
             _teamSelectionPanel?.HideImmediate();
             _incomingTradeOffersPanel?.HideImmediate();
             _prospectSelectionPanel?.HideImmediate();
+            _captainSelectionPanel?.HideImmediate();
             HideBackdropImmediate();
         }
 
@@ -593,6 +599,29 @@ namespace NBAHeadCoach.UI
             HideBackdrop();
         }
 
+        /// <summary>
+        /// Show captain selection panel. This is a MANDATORY selection - user cannot dismiss.
+        /// </summary>
+        /// <param name="team">The team to select captain for</param>
+        /// <param name="onCaptainSelected">Callback with selected player ID</param>
+        /// <param name="isReplacement">True if replacing a traded/cut captain</param>
+        public void ShowCaptainSelection(Team team, Action<string> onCaptainSelected, bool isReplacement = false)
+        {
+            if (_captainSelectionPanel == null)
+            {
+                Debug.LogWarning("[GameSceneController] CaptainSelectionPanel not assigned");
+                return;
+            }
+
+            // No click-away allowed - captain selection is mandatory
+            ShowBackdrop(null, false);
+            _captainSelectionPanel.ShowForCaptainSelection(team, (playerId) =>
+            {
+                HideBackdrop();
+                onCaptainSelected?.Invoke(playerId);
+            }, isReplacement);
+        }
+
         private void ShowBackdrop(Action onClickAway = null, bool allowClickAway = true)
         {
             if (_modalBackdrop != null)
@@ -689,6 +718,22 @@ namespace NBAHeadCoach.UI
 
             // Show pre-game panel or prompt
             ShowPreGame();
+        }
+
+        private void OnCaptainSelectionRequired(Team team, bool isReplacement)
+        {
+            Debug.Log($"[GameSceneController] Captain selection required for {team?.Name}, isReplacement: {isReplacement}");
+
+            ShowCaptainSelection(team, (playerId) =>
+            {
+                // Assign the selected player as captain
+                _gameManager?.AssignCaptain(playerId);
+
+                // Show confirmation alert
+                var captain = _gameManager?.PlayerDatabase?.GetPlayer(playerId);
+                string captainName = captain?.FullName ?? "Player";
+                ShowAlert("Captain Assigned", $"{captainName} has been designated as team captain.");
+            }, isReplacement);
         }
 
         #endregion

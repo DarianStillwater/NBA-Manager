@@ -1,16 +1,16 @@
 # NBA Head Coach – Complete Design Document
 
 > **Purpose**: This document is the single source of truth for understanding the entire game design. An AI or developer can reference this without scanning all project files.
-> 
-> **Last Updated**: December 2024 (Animated Court Visualization Update)
+>
+> **Last Updated**: December 2024 (Captain System & Trade AI Update)
 
 ---
 
 ## GAME OVERVIEW
 
-**Genre**: Single-player NBA franchise management simulation  
-**Platform**: Unity (Windows)  
-**Perspective**: You play as an NBA head coach managing your team through seasons  
+**Genre**: Single-player NBA franchise management simulation
+**Platform**: Unity (Windows)
+**Perspective**: You play as an NBA head coach managing your team through seasons
 
 **Core Loop**:
 1. Manage roster (trades, free agency, contracts) - *GM role*
@@ -53,10 +53,10 @@
 ```
 Assets/Scripts/
 ├── Core/
-│   ├── AI/                 # AI coach personalities, coordinators, predictions (8 files)
-│   ├── Data/               # All data models - 40+ classes (see Data Models section)
+│   ├── AI/                 # AI coach personalities, trade evaluation, coordinators (12 files)
+│   ├── Data/               # All data models - 50+ classes (see Data Models section)
 │   ├── Gameplay/           # In-game coaching logic (1 file)
-│   ├── Manager/            # Domain managers - 32 managers (see Manager Systems)
+│   ├── Manager/            # Domain managers - 38 managers (see Manager Systems)
 │   ├── Simulation/         # Game/possession simulation engine (6 files)
 │   ├── Util/               # Utilities like NameGenerator
 │   ├── GameManager.cs      # Central game orchestrator
@@ -66,8 +66,9 @@ Assets/Scripts/
 │   ├── PlayByPlayGenerator.cs # Broadcast-style text
 │   └── SaveLoadManager.cs  # Persistence with Ironman mode
 ├── UI/
-│   ├── Panels/             # 13 UI panels (Dashboard, Roster, Trade, etc.)
-│   ├── Components/         # 14 reusable UI components
+│   ├── Panels/             # 15 UI panels (Dashboard, Roster, Trade, etc.)
+│   ├── Modals/             # 8 modal dialogs (Captain Selection, Trade Offers, etc.)
+│   ├── Components/         # 16 reusable UI components
 │   ├── Match/              # Match-specific UI components
 │   ├── GameSceneController.cs # Panel navigation
 │   └── MainMenuController.cs # Main menu flow
@@ -105,13 +106,17 @@ Central controller managing game state, scene loading, and manager coordination.
 - `OnGameLoaded` - Save loaded
 - `OnDayAdvanced` - Calendar progressed
 - `OnSeasonChanged` - New season started
+- `OnCaptainSelectionRequired` - **NEW** - Captain needs to be selected
 
 ### SeasonController
 **File**: `Assets/Scripts/Core/SeasonController.cs`
 
 Manages the 82-game schedule, calendar, standings, and season phases.
 
-**Phases**: Preseason → Regular Season → Play-In → Playoffs → Draft → Free Agency → Offseason
+**Phases**: TrainingCamp → Preseason → Regular Season → Play-In → Playoffs → Draft → Free Agency → Offseason
+
+**Events**:
+- `OnPhaseChanged` - Season phase transitions (triggers captain selection at RegularSeason start)
 
 ### MatchFlowController
 **File**: `Assets/Scripts/Core/MatchFlowController.cs`
@@ -126,7 +131,7 @@ Bridges calendar events to simulation; handles pre-game, match, and post-game fl
 
 | File | Description | Size |
 |------|-------------|------|
-| `Player.cs` | Complete player data (attributes, career, personality) | 42KB |
+| `Player.cs` | Complete player data (attributes, career, personality, IsCaptain) | 45KB |
 | `Team.cs` | Team identity, roster, strategy | 8KB |
 | `Contract.cs` | CBA-compliant contracts with options | 15KB |
 | `UnifiedCareerProfile.cs` | **Unified career system for all personnel** | 45KB |
@@ -164,7 +169,7 @@ The following files have been removed as part of the personnel refactor:
 
 | File | Description |
 |------|-------------|
-| `SaveData.cs` | Complete save file structure (38KB) |
+| `SaveData.cs` | Complete save file structure (42KB) |
 | `SeasonCalendar.cs` | Schedule, game dates, season phases |
 | `SeasonStats.cs` | Player/team statistical records |
 | `PlayoffData.cs` | Playoff bracket, series tracking |
@@ -181,7 +186,7 @@ The following files have been removed as part of the personnel refactor:
 | `CourtPosition.cs` | Spatial positioning system |
 | `ShotMarkerData.cs` | Shot attempt event data for court visualization |
 
-### Deep Coaching Strategy System (NEW)
+### Deep Coaching Strategy System
 
 > **Recent Addition**: Comprehensive coaching strategy simulation with 6 integrated phases.
 
@@ -233,7 +238,7 @@ The following files have been removed as part of the personnel refactor:
 | `CoordinatorAI.cs` | Enhanced AI for offensive/defensive coordinators, delegation support |
 | `StaffMeeting.cs` | Pre-game/halftime meetings, staff contributions, disagreement handling |
 
-### Dual-Role System (NEW)
+### Dual-Role System
 
 > **Recent Addition**: Comprehensive role selection system allowing play as GM, Coach, or Both with AI counterparts.
 
@@ -270,6 +275,28 @@ The following files have been removed as part of the personnel refactor:
 |------|-------------|
 | `AIPersonalityDiscovery.cs` | Trait observation, confidence levels, personality insights, relationship tracking |
 
+### Trade AI System (NEW)
+
+> **Recent Addition**: Intelligent AI trade system with value-based evaluation and proactive offers.
+
+| File | Description |
+|------|-------------|
+| `PlayerValueCalculator.cs` | **NEW** - Stats-based player value evaluation (production, potential, contract value) |
+| `DraftPickRegistry.cs` | **NEW** - Central registry for tracking draft pick ownership and trades |
+| `AITradeOfferGenerator.cs` | **NEW** - AI teams proactively propose trades to the player |
+| `TradeAnnouncementSystem.cs` | **NEW** - News generation when trades execute |
+| `IncomingTradeOffer.cs` | **NEW** - Incoming offer data with expiration |
+
+### Morale & Chemistry System (NEW)
+
+> **Recent Addition**: Enhanced morale system with captain influence, contract satisfaction, and escalating effects.
+
+| File | Description |
+|------|-------------|
+| `Personality.cs` | 13 personality traits, morale events, trait multipliers, **ContractSatisfaction**, **DiscontentLevel** |
+| `MoraleChemistryManager.cs` | Game processing, locker room events, **team meetings**, **individual conversations** |
+| `PersonalityManager.cs` | Pair/team chemistry, **captain influence**, **escalation processing** |
+
 ### Supporting Data
 
 | File | Description |
@@ -304,7 +331,7 @@ The following files have been removed as part of the personnel refactor:
 
 | Manager | File | Description |
 |---------|------|-------------|
-| RosterManager | `RosterManager.cs` | Roster moves, waiving, signing |
+| RosterManager | `RosterManager.cs` | Roster moves, waiving, signing, **OnPlayerRemoved event** |
 | ContractNegotiationManager | `ContractNegotiationManager.cs` | Contract offers and negotiation |
 | AgentManager | `AgentManager.cs` | Agent relationship management |
 | SalaryCapManager | `SalaryCapManager.cs` | Cap calculations, exceptions |
@@ -318,6 +345,11 @@ The following files have been removed as part of the personnel refactor:
 | TradeNegotiationManager | `TradeNegotiationManager.cs` | Multi-step negotiations |
 | TradeValidator | `TradeValidator.cs` | CBA compliance checking |
 | TradeFinder | `TradeFinder.cs` | AI trade partner matching |
+| **AITradeEvaluator** | `AITradeEvaluator.cs` | **ENHANCED** - Uses PlayerValueCalculator for stats-based evaluation |
+| **PlayerValueCalculator** | `PlayerValueCalculator.cs` | **NEW** - Production, potential, contract value assessment |
+| **DraftPickRegistry** | `DraftPickRegistry.cs` | **NEW** - Draft pick ownership tracking |
+| **AITradeOfferGenerator** | `AITradeOfferGenerator.cs` | **NEW** - AI proactive trade offers |
+| **TradeAnnouncementSystem** | `TradeAnnouncementSystem.cs` | **NEW** - Trade news generation |
 
 ### Season & Competition
 
@@ -325,7 +357,7 @@ The following files have been removed as part of the personnel refactor:
 |---------|------|-------------|
 | PlayoffManager | `PlayoffManager.cs` | Playoffs and play-in tournament |
 | AllStarManager | `AllStarManager.cs` | All-Star game selection |
-| AwardManager | `AwardManager.cs` | MVP, DPOY, All-NBA voting |
+| AwardManager | `AwardManager.cs` | MVP, DPOY, ROY, 6MOY, MIP, COY, All-Teams |
 | HistoryManager | `HistoryManager.cs` | Records, Hall of Fame |
 | LeagueEventsManager | `LeagueEventsManager.cs` | League-wide events |
 
@@ -334,9 +366,9 @@ The following files have been removed as part of the personnel refactor:
 | Manager | File | Description |
 |---------|------|-------------|
 | PlayerDevelopmentManager | `PlayerDevelopmentManager.cs` | Attribute progression with mentorship integration |
-| MentorshipManager | `MentorshipManager.cs` | **NEW** - Mentor-mentee relationships, development bonuses |
-| TendencyCoachingManager | `TendencyCoachingManager.cs` | **NEW** - Player tendency training |
-| PracticeManager | `PracticeManager.cs` | **NEW** - Practice sessions, drills, schedule |
+| MentorshipManager | `MentorshipManager.cs` | Mentor-mentee relationships, development bonuses |
+| TendencyCoachingManager | `TendencyCoachingManager.cs` | Player tendency training |
+| PracticeManager | `PracticeManager.cs` | Practice sessions, drills, schedule |
 | DraftSystem | `DraftSystem.cs` | Draft lottery and execution |
 | DraftClassGenerator | `DraftClassGenerator.cs` | Prospect generation |
 | ProspectGenerator | `ProspectGenerator.cs` | Procedural prospects |
@@ -344,27 +376,34 @@ The following files have been removed as part of the personnel refactor:
 | SummerLeagueManager | `SummerLeagueManager.cs` | Summer league simulation |
 | TrainingCampManager | `TrainingCampManager.cs` | Training camp and cuts |
 
-### In-Game Coaching & AI (NEW)
+### In-Game Coaching & AI
 
 | Manager/AI | File | Description |
 |------------|------|-------------|
 | GameCoach | `GameCoach.cs` | Central in-game coaching with coordinator integration |
-| CoordinatorAI | `CoordinatorAI.cs` | **NEW** - Offensive/defensive coordinator AI, delegation |
-| CoachingAdvisor | `CoachingAdvisor.cs` | **NEW** - AI suggestion system during games |
-| GameAnalyticsTracker | `GameAnalyticsTracker.cs` | **NEW** - Real-time game statistics |
-| PlayEffectivenessTracker | `PlayEffectivenessTracker.cs` | **NEW** - Hot/cold play tracking |
-| MatchupEvaluator | `MatchupEvaluator.cs` | **NEW** - Matchup quality and mismatch detection |
-| OpponentAdjustmentPredictor | `OpponentAdjustmentPredictor.cs` | **NEW** - Predict opponent coach moves |
-| GamePlanBuilder | `GamePlanBuilder.cs` | **NEW** - Pre-game preparation and contingencies |
+| CoordinatorAI | `CoordinatorAI.cs` | Offensive/defensive coordinator AI, delegation |
+| CoachingAdvisor | `CoachingAdvisor.cs` | AI suggestion system during games |
+| GameAnalyticsTracker | `GameAnalyticsTracker.cs` | Real-time game statistics |
+| PlayEffectivenessTracker | `PlayEffectivenessTracker.cs` | Hot/cold play tracking |
+| MatchupEvaluator | `MatchupEvaluator.cs` | Matchup quality and mismatch detection |
+| OpponentAdjustmentPredictor | `OpponentAdjustmentPredictor.cs` | Predict opponent coach moves |
+| GamePlanBuilder | `GamePlanBuilder.cs` | Pre-game preparation and contingencies |
 
-### Dual-Role & Job Market (NEW)
+### Dual-Role & Job Market
 
 | Manager/AI | File | Description |
 |------------|------|-------------|
-| JobMarketManager | `JobMarketManager.cs` | **NEW** - Job openings, applications, interviews, offers |
-| AIGMController | `AIGMController.cs` | **NEW** - AI GM decision-making with hidden personality |
-| AutonomousGameSimulator | `AutonomousGameSimulator.cs` | **NEW** - Simulates games with AI coach |
-| PersonalityDiscoveryManager | `AIPersonalityDiscovery.cs` | **NEW** - Tracks AI personality trait discovery |
+| JobMarketManager | `JobMarketManager.cs` | Job openings, applications, interviews, offers |
+| AIGMController | `AIGMController.cs` | AI GM decision-making with hidden personality |
+| AutonomousGameSimulator | `AutonomousGameSimulator.cs` | Simulates games with AI coach |
+| PersonalityDiscoveryManager | `AIPersonalityDiscovery.cs` | Tracks AI personality trait discovery |
+
+### Morale & Chemistry
+
+| Manager | File | Description |
+|---------|------|-------------|
+| **MoraleChemistryManager** | `MoraleChemistryManager.cs` | **ENHANCED** - Team meetings, individual conversations, captain effects |
+| **PersonalityManager** | `PersonalityManager.cs` | **ENHANCED** - Captain influence, escalation processing |
 
 ### Team Operations
 
@@ -406,13 +445,13 @@ The following files have been removed as part of the personnel refactor:
 
 | Panel | File | Description |
 |-------|------|-------------|
-| DashboardPanel | `DashboardPanel.cs` | Main hub with team overview |
+| DashboardPanel | `DashboardPanel.cs` | Main hub with team overview, **trade news ticker** |
 | RosterPanel | `RosterPanel.cs` | Team roster management |
 | CalendarPanel | `CalendarPanel.cs` | Schedule view |
 | StandingsPanel | `StandingsPanel.cs` | League standings |
 | TradePanel | `TradePanel.cs` | Trade interface |
 | DraftPanel | `DraftPanel.cs` | Draft experience |
-| InboxPanel | `InboxPanel.cs` | Messages and notifications |
+| InboxPanel | `InboxPanel.cs` | Messages, notifications, **trade offer notifications** |
 | StaffPanel | `StaffPanel.cs` | Staff management |
 | StaffHiringPanel | `StaffHiringPanel.cs` | Staff hiring interface |
 | MatchPanel | `MatchPanel.cs` | In-game coaching with animated court visualization |
@@ -421,9 +460,21 @@ The following files have been removed as part of the personnel refactor:
 | PlayoffBracketPanel | `PlayoffBracketPanel.cs` | Playoff bracket view |
 | NewGamePanel | `NewGamePanel.cs` | New game wizard (with role selection) |
 | TeamSelectionPanel | `TeamSelectionPanel.cs` | Team selection |
-| GameSummaryPanel | `GameSummaryPanel.cs` | **NEW** - GM-only game results view |
-| RosterRequestPanel | `RosterRequestPanel.cs` | **NEW** - Coach roster requests to AI GM |
-| JobMarketPanel | `JobMarketPanel.cs` | **NEW** - Job search when unemployed |
+| GameSummaryPanel | `GameSummaryPanel.cs` | GM-only game results view |
+| RosterRequestPanel | `RosterRequestPanel.cs` | Coach roster requests to AI GM |
+| JobMarketPanel | `JobMarketPanel.cs` | Job search when unemployed |
+
+### Modal Dialogs (NEW)
+
+| Modal | File | Description |
+|-------|------|-------------|
+| **CaptainSelectionPanel** | `CaptainSelectionPanel.cs` | **NEW** - Mandatory captain selection modal |
+| **IncomingTradeOffersPanel** | `IncomingTradeOffersPanel.cs` | **NEW** - View and respond to AI trade offers |
+| SlidePanel | `SlidePanel.cs` | Base class for animated slide-in modals |
+| ConfirmationPanel | `ConfirmationPanel.cs` | Yes/No confirmation dialogs |
+| PlayerSelectionPanel | `PlayerSelectionPanel.cs` | Generic player selection |
+| ContractDetailPanel | `ContractDetailPanel.cs` | Contract details view |
+| ProspectSelectionPanel | `ProspectSelectionPanel.cs` | Draft prospect selection |
 
 ### UI Components
 
@@ -434,10 +485,258 @@ The following files have been removed as part of the personnel refactor:
 | CoachingMenuView | Tabbed coaching interface |
 | AttributeDisplayFactory | Rating/attribute display |
 | ScrollingTicker | News ticker |
-| **AnimatedCourtView** | **NEW** - Animated 2D court with smooth player/ball movement |
-| **AnimatedPlayerDot** | **NEW** - Player dot with team color, jersey number, hover tooltip |
-| **BallAnimator** | **NEW** - Ball positioning with parabolic arc animations |
-| **ShotMarkerUI** | **NEW** - Persistent shot location markers (green make/red miss) |
+| **AnimatedCourtView** | Animated 2D court with smooth player/ball movement |
+| **AnimatedPlayerDot** | Player dot with team color, jersey number, hover tooltip |
+| **BallAnimator** | Ball positioning with parabolic arc animations |
+| **ShotMarkerUI** | Persistent shot location markers (green make/red miss) |
+| **CaptainSelectionRow** | **NEW** - Row component for captain selection list |
+
+---
+
+## CAPTAIN SYSTEM (NEW)
+
+### Overview
+
+The Captain System allows users to designate a team captain who influences team morale and chemistry.
+
+### Captain Selection Timing
+
+| Trigger | Description |
+|---------|-------------|
+| **Season Start** | When transitioning from Preseason → RegularSeason, if no captain exists |
+| **Trade** | If captain is traded away, prompt for new captain immediately |
+| **Cut/Release** | If captain is waived/released, prompt for new captain immediately |
+
+### Captain Effects
+
+| Effect | Description |
+|--------|-------------|
+| **Morale Amplification** | Happy captain: +20% morale boost to teammates |
+| **Negative Influence** | Unhappy captain: -10% morale penalty spread to team |
+| **Staff Guidance** | Coaching staff recommends candidates based on leadership qualities (no numbers shown) |
+
+### UI: CaptainSelectionPanel
+
+**Features** (No Visible Attributes Philosophy):
+- Players sorted by leadership (internally - numbers never shown)
+- **Coaching staff provides qualitative recommendations** instead of numerical ratings
+- Years of experience displayed (e.g., "7-year veteran")
+- Staff feedback when selecting players with low leadership potential
+- **MANDATORY**: Cannot be dismissed without selecting (no cancel button)
+- Selection blocks game progression until captain is chosen
+
+**Staff Recommendation Tiers** (based on hidden Leadership stat):
+- "Staff's Top Choice" (gold) - highest leadership players
+- "Recommended by Staff" (green) - strong leadership
+- "Shows Leadership Potential" (white) - adequate leadership
+- No badge - low leadership players
+
+**Staff Feedback on Selection**:
+- Players with concerns: "Your coaching staff has concerns about [Name]'s ability to command the locker room."
+- Developing leaders: "Your coaching staff notes that [Name] is still developing as a vocal leader."
+
+### Event Flow
+
+```
+SeasonController.OnPhaseChanged(RegularSeason)
+    → GameManager checks for captain
+    → If none: OnCaptainSelectionRequired event
+    → GameSceneController shows CaptainSelectionPanel
+    → User selects captain
+    → GameManager.AssignCaptain(playerId)
+
+TradeSystem.OnTradeExecuted(proposal)
+    → GameManager checks if captain was traded
+    → If yes: OnCaptainSelectionRequired(team, isReplacement=true)
+
+RosterManager.OnPlayerRemoved(teamId, playerId)
+    → GameManager checks if removed player was captain
+    → If yes: OnCaptainSelectionRequired(team, isReplacement=true)
+```
+
+---
+
+## TRADE AI SYSTEM (NEW)
+
+### Overview
+
+Intelligent trade AI that evaluates players based on production and potential rather than salary alone.
+
+### PlayerValueCalculator
+
+Stats-based player evaluation with the following factors:
+
+| Factor | Weight | Description |
+|--------|--------|-------------|
+| **Production Value** | 40% | Based on OverallRating (0-100 scale) |
+| **Potential Value** | 25% | HiddenPotential + age adjustment |
+| **Contract Value** | 20% | Production vs. salary efficiency |
+| **Age Curve** | 10% | Position-specific peak/decline curves |
+| **Position Scarcity** | 5% | Rare positions worth more |
+
+**Age Curves by Position**:
+- Guards: Peak 27-30, decline at 31
+- Wings: Peak 26-30, decline at 32
+- Bigs: Peak 26-29, decline at 30
+
+**FO Personality Modifiers**:
+- Aggressive FOs: Higher value on young players
+- Conservative FOs: Prefer proven veterans
+- Analytics-focused: Weight contract efficiency higher
+
+### DraftPickRegistry
+
+Central registry tracking draft pick ownership across all teams.
+
+**Features**:
+- Initialize picks for each season
+- Transfer picks between teams
+- Stepien Rule validation (can't trade consecutive first-rounders)
+- Save/load support
+
+### AITradeOfferGenerator
+
+AI teams proactively propose trades to the player.
+
+**Frequency**: ~15% daily chance (1-2 offers per week average)
+
+**Offer Lifecycle**:
+1. AI evaluates player team roster for desirable targets
+2. Generates offer based on FO personality
+3. Offer expires in 3-7 days if no response
+4. Player can Accept, Reject, or Counter
+
+### TradeAnnouncementSystem
+
+Generates news when trades execute.
+
+**Output**:
+- Headline: "BREAKING: Lakers acquire..."
+- Summary: Trade breakdown
+- Analysis: "Who won" breakdown
+- Team grades: "LAL: A-", "BOS: B+"
+
+**Display**:
+- News ticker on Dashboard (scrolling headlines)
+- Full details in Inbox
+- Player team trades get priority treatment
+
+---
+
+## MORALE & CHEMISTRY SYSTEM (ENHANCED)
+
+### Overview
+
+Enhanced morale system with captain influence, contract satisfaction, expectation-based effects, and player intervention options.
+
+### Morale Factors
+
+| Factor | Impact | Description |
+|--------|--------|-------------|
+| **Playing Time** | High | Minutes played vs expected (based on salary/rating) |
+| **Team Performance** | Medium | Win/loss effects based on team expectations |
+| **Personal Performance** | Medium | Stats vs career averages, awards |
+| **Contract Satisfaction** | Medium | New contract boost, underpaid penalty |
+| **Captain Influence** | High | Captain morale amplifies/spreads to team |
+
+### Expectation-Based Win/Loss Effects
+
+| Team Type | Win Effect | Loss Effect |
+|-----------|------------|-------------|
+| Contenders (>60% expected) | +1 morale | -5 morale |
+| Playoff teams (40-60%) | +3 morale | -3 morale |
+| Lottery teams (<40%) | +5 morale | -1 morale |
+
+### Contract Satisfaction
+
+| Situation | Effect |
+|-----------|--------|
+| New contract signed | +30 boost, decays over time |
+| Underpaid (salary < market) | -20 ongoing |
+| Contract year | ±10 mixed anxiety/motivation |
+| Passed over for extension | -25 immediate |
+
+### Escalating Behavioral Effects
+
+Players who remain unhappy escalate through a 5-step ladder:
+
+| Level | Effect | Description |
+|-------|--------|-------------|
+| 1 | Private Complaint | Inbox message from player |
+| 2 | Reduced Effort | Mental stats -5% |
+| 3 | Media Comments | News ticker comment |
+| 4 | Trade Request | Formal demand to be traded |
+| 5 | Holdout | Refuses to play |
+
+**Trigger**: Morale below 30 for 7+ days → escalate
+**De-escalate**: Morale above 50 for 14+ days → reduce level
+
+### Player Intervention Options
+
+#### Team Meetings
+```
+Success (70%): All players +5 morale
+Backfire (30%): Volatile players -5, others +2
+Cooldown: 14 days between meetings
+Coach Leadership improves success odds
+```
+
+#### Individual Conversations
+| Type | Effect |
+|------|--------|
+| Promise Playing Time | +10 morale, creates expectation |
+| Explain Role | +5 morale, reduces expected role |
+| Offer Trade | Variable based on destination |
+| Praise | +8 morale (Sensitive players: +12) |
+| Constructive Criticism | ±0 morale, improves development |
+
+### Enhanced Pairwise Chemistry
+
+High chemistry pairs (+0.5 or higher):
+- +15% assist success rate when passing to each other
+- +10% screen effectiveness
+- +5% defensive rotation timing
+
+Low chemistry pairs (-0.3 or lower):
+- -10% pass success rate
+- Reluctant to pass (lower pass frequency)
+- -5% defensive communication
+
+---
+
+## FORMER PLAYER CAREER SYSTEM
+
+### Overview
+
+Former players can enter coaching, scouting, or front office careers after retirement.
+
+### Career Pipelines
+
+| Pipeline | Entry Point | Requirements |
+|----------|-------------|--------------|
+| **Coaching** | Assistant Coach | 5+ NBA seasons, Leadership ≥60 |
+| **Scouting** | Regional Scout | 3+ NBA seasons, BasketballIQ ≥65 |
+| **Front Office** | Scout/Assistant | 8+ NBA seasons, Leadership ≥70 |
+
+### Progression
+
+**Coaching Track**:
+Assistant Coach → Position Coach → Coordinator → Head Coach
+
+**Scouting Track**:
+Regional Scout → National Scout → Director of Scouting
+
+**Front Office Track**:
+Scout → Assistant GM → General Manager
+
+### Cross-Track Transitions
+
+| Transition | Requirements |
+|------------|--------------|
+| HC → GM | 5+ years as HC, 60%+ win rate |
+| GM → HC | 3+ years as GM, playoff success |
+| Scout → Coach | 3+ years scouting, recommendation |
+| Coordinator → AGM | 4+ years as coordinator |
 
 ---
 
@@ -495,11 +794,29 @@ Procedural name generation using Markov chains with realistic NBA demographics.
 | Coach-Only Mode | Submit roster requests to AI GM for approval |
 | Job Market | After firing, search and apply for new positions |
 | AI Personality Discovery | Learn AI traits through interactions over time |
-| **Animated Court Visualization** | **NEW** - Real-time court visualization with moving players and ball |
+| **Animated Court Visualization** | Real-time court visualization with moving players and ball |
 | Animated Player Dots | Team-colored dots with jersey numbers, smooth interpolation |
 | Ball Animation | Parabolic arc passes and shots with shadow effects |
 | Shot Markers | Persistent make/miss markers on court with auto-fade |
 | Spatial State Events | Real-time position updates from possession simulator |
+| **Trade AI System** | **NEW** - Stats-based player evaluation, proactive AI offers |
+| PlayerValueCalculator | Production, potential, contract value assessment |
+| DraftPickRegistry | Central pick ownership tracking with Stepien Rule |
+| AITradeOfferGenerator | AI teams propose trades to player (~1-2/week) |
+| TradeAnnouncementSystem | News generation for executed trades |
+| IncomingTradeOffersPanel | UI for viewing/responding to AI offers |
+| **Captain System** | **NEW** - Captain designation with morale influence |
+| Captain Selection Modal | Mandatory selection at season start |
+| Captain Replacement | Automatic prompt when captain traded/cut |
+| Captain Morale Effects | +20%/-10% morale amplification |
+| **Enhanced Morale System** | **NEW** - Contract satisfaction, escalation, interventions |
+| Contract Satisfaction | Morale effects from contract situations |
+| Expectation-Based Effects | Win/loss morale scaled to team expectations |
+| Escalating Behavior | 5-step discontent ladder (complaint → holdout) |
+| Team Meetings | Coach intervention with success/backfire odds |
+| Individual Conversations | One-on-one talks with various approaches |
+| Enhanced Pair Chemistry | On-court bonuses for high/low chemistry pairs |
+| **Former Player Careers** | **NEW** - Coaching/scouting/GM career paths |
 
 ### Outstanding Issues / TODOs
 
@@ -512,9 +829,8 @@ Procedural name generation using Markov chains with realistic NBA demographics.
 ### Known Gaps
 
 1. **Contract Popup System** - No modal/popup infrastructure; contract details shown in debug log
-2. **Trade AI** - Basic trade finding; could use smarter partner matching
-3. **Summer League UI** - Manager exists but limited UI integration
-4. **Training Camp UI** - Manager exists but no dedicated panel
+2. **Summer League UI** - Manager exists but limited UI integration
+3. **Training Camp UI** - Manager exists but no dedicated panel
 
 ---
 
@@ -529,6 +845,7 @@ Procedural name generation using Markov chains with realistic NBA demographics.
 - `NBAHeadCoach.Core.Util` - Utilities
 - `NBAHeadCoach.UI` - UI base classes
 - `NBAHeadCoach.UI.Panels` - Panel implementations
+- `NBAHeadCoach.UI.Modals` - Modal dialogs
 - `NBAHeadCoach.UI.Components` - Reusable components
 
 ### Patterns Used
@@ -536,6 +853,7 @@ Procedural name generation using Markov chains with realistic NBA demographics.
 - **Registry**: Panel registration in GameSceneController
 - **Event System**: C# events for loose coupling
 - **Factory**: AttributeDisplayFactory, name generation
+- **Facade**: StaffManagementManager (central staff operations)
 
 ### Key APIs
 
@@ -584,6 +902,46 @@ GetDelegatedDefensiveCall() → DelegatedDefensiveCall
 // Staff Meetings
 SetPreGameMeeting(meeting)
 GetGamePlanBonus() → float
+```
+
+**MoraleChemistryManager** (Enhanced morale API):
+```csharp
+// Captain System
+AssignCaptain(playerId, teamId)
+GetCaptain(teamId) → Player
+GetCaptainMoraleModifier(teamId) → float
+
+// Interventions
+CallTeamMeeting(coachId) → MeetingResult
+TalkToPlayer(playerId, conversationType) → ConversationResult
+
+// Processing
+ProcessGameResult(teamId, won, isHome, opponentStrength)
+ProcessDailyMorale(teamId)
+GetExpectationBasedMoraleChange(teamId, won) → float
+```
+
+**TradeSystem** (Enhanced trade API):
+```csharp
+// Incoming offers
+GetPendingIncomingOffers() → List<IncomingTradeOffer>
+RespondToOffer(offerId, response) → TradeOfferResponse
+
+// Announcements
+OnTradeAnnounced → event Action<TradeAnnouncement>
+
+// Execution
+ExecuteTrade(proposal) → TradeResult
+```
+
+**GameManager** (Captain system additions):
+```csharp
+// Captain events
+OnCaptainSelectionRequired → event Action<Team, bool>  // Team, isReplacement
+
+// Captain operations
+AssignCaptain(playerId)
+GetPlayerTeamCaptain() → Player
 ```
 
 **PersonnelManager** (Coordinator management additions):
@@ -677,6 +1035,40 @@ GetInsights(aiProfileId) → List<string>
 ---
 
 ## CHANGE LOG
+
+### December 2024 - Captain System & Trade AI
+- **Captain System** - Designate team captain with morale influence
+  - Captain selection modal at season start (Preseason → RegularSeason)
+  - Automatic replacement prompt when captain traded or cut
+  - Leadership-based recommendations (≥70 green, ≥60 yellow, <60 red)
+  - Captain morale amplification (+20% happy, -10% unhappy)
+  - `CaptainSelectionPanel.cs` - Mandatory selection modal
+  - `RosterManager.OnPlayerRemoved` event for cut/waive detection
+  - `GameManager.OnCaptainSelectionRequired` event
+- **Trade AI System** - Intelligent value-based trade evaluation
+  - `PlayerValueCalculator.cs` - Stats-based player value (production, potential, contract)
+  - `DraftPickRegistry.cs` - Central pick ownership tracking
+  - `AITradeOfferGenerator.cs` - AI proactive trade offers (~1-2/week)
+  - `TradeAnnouncementSystem.cs` - Trade news generation
+  - `IncomingTradeOffersPanel.cs` - UI for AI trade offers
+  - Age curves by position (guards peak 27-30, wings 26-30, bigs 26-29)
+  - FO personality affects value assessment
+- **Enhanced Morale System** - Contract satisfaction and escalation
+  - Contract satisfaction (+30 new contract, -20 underpaid, -25 passed over)
+  - Expectation-based win/loss (contenders: +1/-5, lottery: +5/-1)
+  - 5-step escalation ladder (complaint → reduced effort → media → trade request → holdout)
+  - Team meetings (70% success, 14-day cooldown)
+  - Individual conversations (promise time, explain role, praise, constructive)
+  - Enhanced pair chemistry on-court bonuses
+
+### December 2024 - Former Player Career System
+- **Former Player Careers** - Coaching/scouting/GM career paths for retired players
+  - Coaching track: Assistant → Position Coach → Coordinator → Head Coach
+  - Scouting track: Regional → National → Director
+  - Front Office track: Scout → Assistant GM → GM
+  - Cross-track transitions (HC↔GM, Scout→Coach, Coordinator→AGM)
+  - `FormerPlayerCareerManager.cs` - Pipeline management
+  - `FormerPlayerProgressionData.cs` - Progression tracking
 
 ### December 2024 - Animated Court Visualization
 - **Animated Court View** - Real-time 2D court visualization with smooth player movement

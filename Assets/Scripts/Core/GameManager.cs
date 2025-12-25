@@ -145,6 +145,9 @@ namespace NBAHeadCoach.Core
         /// <summary>Fired when season changes</summary>
         public event Action<int> OnSeasonChanged;
 
+        /// <summary>Fired when captain selection is required (season start or captain traded/cut)</summary>
+        public event Action<Team, bool> OnCaptainSelectionRequired; // Team, isReplacement
+
         #endregion
 
         #region Scene Names
@@ -199,13 +202,22 @@ namespace NBAHeadCoach.Core
             _tradeOfferGenerator = new AITradeOfferGenerator(
                 PlayerDatabase, _salaryCapManager, _tradeEvaluator?.ValueCalculator, _draftPickRegistry);
 
-            // Wire up trade execution -> announcements
+            // Wire up trade execution -> announcements and captain detection
             if (_tradeSystem != null)
             {
-                _tradeSystem.OnTradeExecuted += (proposal) =>
-                {
-                    _tradeAnnouncementSystem?.GenerateAnnouncement(proposal);
-                };
+                _tradeSystem.OnTradeExecuted += OnTradeExecutedHandler;
+            }
+
+            // Wire up roster manager -> captain removal detection
+            if (_rosterManager != null)
+            {
+                _rosterManager.OnPlayerRemoved += OnPlayerRemovedHandler;
+            }
+
+            // Wire up season phase changes -> captain selection at season start
+            if (SeasonController != null)
+            {
+                SeasonController.OnPhaseChanged += OnSeasonPhaseChangedHandler;
             }
 
             // Load player/team data
@@ -848,6 +860,121 @@ namespace NBAHeadCoach.Core
         {
             if (_userRoleConfig?.HasAIGM != true) return null;
             return PersonnelManager.Instance?.GetProfile(_userRoleConfig.AIGMProfileId);
+        }
+
+        #endregion
+
+        #region Captain System
+
+        /// <summary>
+        /// Handle trade execution - check if captain was traded away.
+        /// </summary>
+        private void OnTradeExecutedHandler(TradeProposal proposal)
+        {
+            // Generate trade announcement
+            _tradeAnnouncementSystem?.GenerateAnnouncement(proposal);
+
+            // Check if player team's captain was traded away
+            if (string.IsNullOrEmpty(_playerTeamId)) return;
+
+            foreach (var asset in proposal.AllAssets)
+            {
+                if (asset.Type == TradeAssetType.Player && asset.SendingTeamId == _playerTeamId)
+                {
+                    var player = PlayerDatabase?.GetPlayer(asset.PlayerId);
+                    if (player != null && player.IsCaptain)
+                    {
+                        // Clear captain status since they're no longer on the team
+                        player.IsCaptain = false;
+
+                        Debug.Log($"[GameManager] Captain {player.FullName} was traded - requiring new captain selection");
+
+                        // Fire event to show captain selection
+                        var team = GetPlayerTeam();
+                        if (team != null)
+                        {
+                            OnCaptainSelectionRequired?.Invoke(team, true);
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Handle player removed from roster - check if captain was cut/waived.
+        /// </summary>
+        private void OnPlayerRemovedHandler(string teamId, string playerId)
+        {
+            // Only care about player team
+            if (teamId != _playerTeamId) return;
+
+            var player = PlayerDatabase?.GetPlayer(playerId);
+            if (player != null && player.IsCaptain)
+            {
+                // Clear captain status
+                player.IsCaptain = false;
+
+                Debug.Log($"[GameManager] Captain {player.FullName} was removed from roster - requiring new captain selection");
+
+                // Fire event to show captain selection
+                var team = GetPlayerTeam();
+                if (team != null)
+                {
+                    OnCaptainSelectionRequired?.Invoke(team, true);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Handle season phase changes - prompt for captain at start of regular season.
+        /// </summary>
+        private void OnSeasonPhaseChangedHandler(SeasonPhase newPhase)
+        {
+            // Only care about transition to RegularSeason
+            if (newPhase != SeasonPhase.RegularSeason) return;
+
+            // Check if player team has a captain
+            var team = GetPlayerTeam();
+            if (team == null) return;
+
+            bool hasCaptain = team.Roster?.Any(p => p.IsCaptain) ?? false;
+
+            if (!hasCaptain)
+            {
+                Debug.Log("[GameManager] Season starting - captain selection required");
+                OnCaptainSelectionRequired?.Invoke(team, false);
+            }
+        }
+
+        /// <summary>
+        /// Assign a player as team captain.
+        /// Called by UI after user selection.
+        /// </summary>
+        public void AssignCaptain(string playerId)
+        {
+            var team = GetPlayerTeam();
+            if (team == null) return;
+
+            // Remove captain status from any existing captain
+            if (team.Roster != null)
+            {
+                foreach (var player in team.Roster)
+                {
+                    player.IsCaptain = false;
+                }
+            }
+
+            // Assign new captain
+            var newCaptain = PlayerDatabase?.GetPlayer(playerId);
+            if (newCaptain != null)
+            {
+                newCaptain.IsCaptain = true;
+                Debug.Log($"[GameManager] {newCaptain.FullName} assigned as team captain");
+
+                // Also use MoraleChemistryManager if available
+                _moraleChemistryManager?.AssignCaptain(team, playerId);
+            }
         }
 
         #endregion

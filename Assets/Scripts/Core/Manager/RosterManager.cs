@@ -26,6 +26,9 @@ namespace NBAHeadCoach.Core.Manager
         private Dictionary<string, TeamRoster> _teamRosters = new Dictionary<string, TeamRoster>();
         private SalaryCapManager _capManager;
 
+        // Events
+        public event Action<string, string> OnPlayerRemoved; // teamId, playerId
+
         public RosterManager(SalaryCapManager capManager)
         {
             _capManager = capManager;
@@ -240,33 +243,47 @@ namespace NBAHeadCoach.Core.Manager
 
         /// <summary>
         /// Removes player from roster (waive, trade, etc).
+        /// Fires OnPlayerRemoved event on success.
         /// </summary>
         public bool RemoveFromRoster(string teamId, string playerId)
         {
             var roster = GetRoster(teamId);
-            
+            bool removed = false;
+
             var standard = roster.StandardPlayers.FirstOrDefault(p => p.PlayerId == playerId);
             if (standard != null)
             {
                 roster.StandardPlayers.Remove(standard);
-                return true;
+                removed = true;
             }
 
-            var twoWay = roster.TwoWayPlayers.FirstOrDefault(p => p.PlayerId == playerId);
-            if (twoWay != null)
+            if (!removed)
             {
-                roster.TwoWayPlayers.Remove(twoWay);
-                return true;
+                var twoWay = roster.TwoWayPlayers.FirstOrDefault(p => p.PlayerId == playerId);
+                if (twoWay != null)
+                {
+                    roster.TwoWayPlayers.Remove(twoWay);
+                    removed = true;
+                }
             }
 
-            var hardship = roster.HardshipPlayers.FirstOrDefault(p => p.PlayerId == playerId);
-            if (hardship != null)
+            if (!removed)
             {
-                roster.HardshipPlayers.Remove(hardship);
-                return true;
+                var hardship = roster.HardshipPlayers.FirstOrDefault(p => p.PlayerId == playerId);
+                if (hardship != null)
+                {
+                    roster.HardshipPlayers.Remove(hardship);
+                    removed = true;
+                }
             }
 
-            return false;
+            // Fire event if player was removed
+            if (removed)
+            {
+                OnPlayerRemoved?.Invoke(teamId, playerId);
+            }
+
+            return removed;
         }
 
         // ==================== INJURY TRACKING ====================
