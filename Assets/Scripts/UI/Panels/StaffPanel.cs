@@ -34,11 +34,22 @@ namespace NBAHeadCoach.UI.Panels
         [SerializeField] private GameObject _detailPanel;
         [SerializeField] private Text _staffNameText;
         [SerializeField] private Text _staffPositionText;
-        [SerializeField] private Text _staffRatingText;
+        [SerializeField] private Text _staffTierText;
+        [SerializeField] private Image _staffTierIndicator;
         [SerializeField] private Text _staffSalaryText;
         [SerializeField] private Text _staffContractText;
         [SerializeField] private Text _staffAgeText;
         [SerializeField] private Text _staffExperienceText;
+
+        [Header("Text-Based Evaluation")]
+        [SerializeField] private Text _overallAssessmentText;
+        [SerializeField] private Text _strengthsSummaryText;
+        [SerializeField] private Text _weaknessesSummaryText;
+        [SerializeField] private Text _careerTrajectoryText;
+        [SerializeField] private Transform _skillAssessmentsContainer;
+        [SerializeField] private GameObject _skillAssessmentRowPrefab;
+
+        [Header("Legacy Attributes (Hidden)")]
         [SerializeField] private Transform _attributesContainer;
 
         [Header("Assignment Section")]
@@ -341,13 +352,17 @@ namespace NBAHeadCoach.UI.Panels
                 _staffNameText.text = profile.PersonName;
 
             if (_staffPositionText != null)
-                _staffPositionText.text = profile.CurrentRole.ToString();
+                _staffPositionText.text = FormatRoleName(profile.CurrentRole);
 
-            if (_staffRatingText != null)
-            {
-                _staffRatingText.text = $"Rating: {profile.OverallRating}";
-                AttributeDisplayFactory.ApplyRatingColor(_staffRatingText, profile.OverallRating);
-            }
+            // Generate text-based evaluation
+            var evaluation = StaffEvaluationGenerator.Instance.GenerateEvaluation(profile);
+
+            // Show tier instead of numeric rating
+            if (_staffTierText != null)
+                _staffTierText.text = evaluation.Tier.GetLabel();
+
+            if (_staffTierIndicator != null)
+                _staffTierIndicator.color = evaluation.Tier.GetColor();
 
             if (_staffSalaryText != null)
                 _staffSalaryText.text = $"Salary: ${profile.AnnualSalary:N0}/yr";
@@ -364,38 +379,143 @@ namespace NBAHeadCoach.UI.Panels
                 _staffExperienceText.text = $"Experience: {exp} years";
             }
 
-            // Show attributes based on role
-            ShowAttributes(profile);
+            // Show text-based evaluation
+            ShowEvaluation(evaluation);
 
             UpdateAssignmentUI(profile);
         }
 
-        private void ShowAttributes(UnifiedCareerProfile profile)
+        private void ShowEvaluation(StaffEvaluation evaluation)
         {
-            if (_attributesContainer == null) return;
+            if (evaluation == null) return;
 
-            var attributes = new Dictionary<string, int>();
+            // Overall assessment
+            if (_overallAssessmentText != null)
+                _overallAssessmentText.text = evaluation.OverallAssessment;
 
-            if (profile.CurrentTrack == UnifiedCareerTrack.Coaching)
+            // Strengths
+            if (_strengthsSummaryText != null)
+                _strengthsSummaryText.text = evaluation.StrengthsSummary;
+
+            // Weaknesses
+            if (_weaknessesSummaryText != null)
+                _weaknessesSummaryText.text = evaluation.WeaknessesSummary;
+
+            // Career trajectory
+            if (_careerTrajectoryText != null)
+                _careerTrajectoryText.text = evaluation.CareerTrajectory;
+
+            // Skill assessments
+            PopulateSkillAssessments(evaluation.SkillAssessments);
+
+            // Hide legacy attributes container
+            if (_attributesContainer != null)
+                _attributesContainer.gameObject.SetActive(false);
+        }
+
+        private void PopulateSkillAssessments(List<StaffSkillAssessment> assessments)
+        {
+            if (_skillAssessmentsContainer == null) return;
+
+            // Clear existing
+            foreach (Transform child in _skillAssessmentsContainer)
+                Destroy(child.gameObject);
+
+            if (assessments == null) return;
+
+            foreach (var assessment in assessments)
             {
-                attributes.Add("Offensive Scheme", profile.OffensiveScheme);
-                attributes.Add("Defensive Scheme", profile.DefensiveScheme);
-                attributes.Add("Game Management", profile.GameManagement);
-                attributes.Add("Player Development", profile.PlayerDevelopment);
-                attributes.Add("Motivation", profile.Motivation);
-                attributes.Add("Communication", profile.Communication);
+                CreateSkillAssessmentRow(assessment);
+            }
+        }
+
+        private void CreateSkillAssessmentRow(StaffSkillAssessment assessment)
+        {
+            if (_skillAssessmentsContainer == null) return;
+
+            GameObject row;
+
+            if (_skillAssessmentRowPrefab != null)
+            {
+                row = Instantiate(_skillAssessmentRowPrefab, _skillAssessmentsContainer);
+                var texts = row.GetComponentsInChildren<Text>();
+                if (texts.Length >= 3)
+                {
+                    texts[0].text = assessment.SkillName;
+                    texts[1].text = assessment.Grade;
+                    texts[2].text = assessment.Description;
+                }
             }
             else
             {
-                attributes.Add("Evaluation Accuracy", profile.EvaluationAccuracy);
-                attributes.Add("Prospect Evaluation", profile.ProspectEvaluation);
-                attributes.Add("Pro Evaluation", profile.ProEvaluation);
-                attributes.Add("Potential Assessment", profile.PotentialAssessment);
-                attributes.Add("Work Rate", profile.WorkRate);
-                attributes.Add("Attention to Detail", profile.AttentionToDetail);
-            }
+                // Create dynamically if no prefab
+                row = new GameObject("SkillRow");
+                row.transform.SetParent(_skillAssessmentsContainer, false);
 
-            AttributeDisplayFactory.PopulateAttributeContainer(_attributesContainer, attributes);
+                var layout = row.AddComponent<VerticalLayoutGroup>();
+                layout.spacing = 2;
+                layout.childForceExpandWidth = true;
+                layout.childForceExpandHeight = false;
+
+                // Header: Skill Name + Grade
+                var headerObj = new GameObject("Header");
+                headerObj.transform.SetParent(row.transform, false);
+                var headerLayout = headerObj.AddComponent<HorizontalLayoutGroup>();
+                headerLayout.spacing = 10;
+
+                var nameText = CreateText(headerObj, assessment.SkillName, 14, FontStyle.Bold);
+                var gradeText = CreateText(headerObj, assessment.Grade, 14, FontStyle.Normal);
+
+                // Set grade color based on text
+                gradeText.color = GetGradeColor(assessment.Grade);
+
+                // Description
+                var descText = CreateText(row, assessment.Description, 12, FontStyle.Normal);
+                descText.color = new Color(0.8f, 0.8f, 0.8f);
+            }
+        }
+
+        private Text CreateText(GameObject parent, string content, int fontSize, FontStyle style)
+        {
+            var textObj = new GameObject("Text");
+            textObj.transform.SetParent(parent.transform, false);
+            var text = textObj.AddComponent<Text>();
+            text.text = content;
+            text.fontSize = fontSize;
+            text.fontStyle = style;
+            text.color = Color.white;
+            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            return text;
+        }
+
+        private Color GetGradeColor(string grade)
+        {
+            return grade switch
+            {
+                "Elite" => new Color(0.2f, 0.8f, 0.2f),
+                "Excellent" => new Color(0.3f, 0.7f, 0.3f),
+                "Very Good" => new Color(0.4f, 0.7f, 0.9f),
+                "Solid" => new Color(0.6f, 0.8f, 0.4f),
+                "Average" => new Color(0.9f, 0.7f, 0.2f),
+                "Below Average" => new Color(0.9f, 0.5f, 0.3f),
+                "Poor" => new Color(0.9f, 0.3f, 0.3f),
+                _ => Color.white
+            };
+        }
+
+        private string FormatRoleName(UnifiedRole role)
+        {
+            return role switch
+            {
+                UnifiedRole.HeadCoach => "Head Coach",
+                UnifiedRole.AssistantCoach => "Assistant Coach",
+                UnifiedRole.OffensiveCoordinator => "Offensive Coordinator",
+                UnifiedRole.DefensiveCoordinator => "Defensive Coordinator",
+                UnifiedRole.Scout => "Scout",
+                UnifiedRole.GeneralManager => "General Manager",
+                UnifiedRole.AssistantGM => "Assistant GM",
+                _ => role.ToString()
+            };
         }
 
         private void ClearStaffDetail()
@@ -494,40 +614,117 @@ namespace NBAHeadCoach.UI.Panels
 
             Debug.Log($"[StaffPanel] Assigning {_selectedStaff.PersonName} to task: {taskName}");
 
+            var teamId = GameManager.Instance?.PlayerTeamId;
+            if (string.IsNullOrEmpty(teamId)) return;
+
+            var controller = FindObjectOfType<GameSceneController>();
+
             if (_selectedStaff.CurrentRole == UnifiedRole.Scout)
             {
-                // Mapping task name to StaffTask (this is a bit fragile, should use enum)
-                StaffTask task = taskName switch
-                {
-                    "Draft Prospect Scouting" => StaffTask.DraftProspectScouting,
-                    "Opponent Scouting" => StaffTask.OpponentScouting,
-                    "Trade Target Evaluation" => StaffTask.TradeTargetEvaluation,
-                    "Free Agent Evaluation" => StaffTask.FreeAgentEvaluation,
-                    _ => StaffTask.None
-                };
+                var task = MapToScoutTaskType(taskName);
 
-                if (task != StaffTask.None)
+                if (task == ScoutTaskType.Unassigned)
                 {
-                    PersonnelManager.Instance.AssignScoutToTask(_selectedStaff.ProfileId, task, "Global"); // Target dummy
+                    PersonnelManager.Instance?.UnassignStaff(_selectedStaff.ProfileId);
+                    UpdateAssignmentUI(_selectedStaff);
+                    return;
                 }
-                else
+
+                // Show appropriate selection panel based on task type
+                switch (task)
                 {
-                    PersonnelManager.Instance.UnassignStaff(_selectedStaff.ProfileId);
+                    case ScoutTaskType.DraftProspectScouting:
+                        if (controller != null)
+                        {
+                            controller.ShowProspectSelectionForScouting(_selectedStaff, 5, (prospectIds) =>
+                            {
+                                PersonnelManager.Instance?.AssignScoutToTask(
+                                    _selectedStaff.ProfileId,
+                                    teamId,
+                                    task,
+                                    prospectIds,
+                                    null);
+                                UpdateAssignmentUI(_selectedStaff);
+                            });
+                        }
+                        break;
+
+                    case ScoutTaskType.OpponentAdvanceScouting:
+                        if (controller != null)
+                        {
+                            controller.ShowTeamSelectionForScouting(_selectedStaff, (targetTeamId) =>
+                            {
+                                PersonnelManager.Instance?.AssignScoutToTask(
+                                    _selectedStaff.ProfileId,
+                                    teamId,
+                                    task,
+                                    null,
+                                    targetTeamId);
+                                UpdateAssignmentUI(_selectedStaff);
+                            });
+                        }
+                        break;
+
+                    case ScoutTaskType.TradeTargetEvaluation:
+                    case ScoutTaskType.FreeAgentEvaluation:
+                        if (controller != null)
+                        {
+                            controller.ShowPlayerSelectionForScout(_selectedStaff, 5, (playerIds) =>
+                            {
+                                PersonnelManager.Instance?.AssignScoutToTask(
+                                    _selectedStaff.ProfileId,
+                                    teamId,
+                                    task,
+                                    playerIds,
+                                    null);
+                                UpdateAssignmentUI(_selectedStaff);
+                            });
+                        }
+                        break;
                 }
             }
             else if (_selectedStaff.CurrentRole == UnifiedRole.AssistantCoach)
             {
                 if (taskName == "Player Development")
                 {
-                    PersonnelManager.Instance.AssignCoachToPlayers(_selectedStaff.ProfileId, new List<string>()); // Dummy empty list
+                    int capacity = DevelopmentAssignment.CalculateCoachCapacity(_selectedStaff.PlayerDevelopment);
+
+                    if (controller != null)
+                    {
+                        controller.ShowPlayerSelectionForCoach(_selectedStaff, capacity, (playerIds) =>
+                        {
+                            var (success, message) = PersonnelManager.Instance?.AssignCoachToPlayers(
+                                _selectedStaff.ProfileId,
+                                teamId,
+                                playerIds) ?? (false, "PersonnelManager not available");
+
+                            if (!success)
+                            {
+                                controller.ShowAlert("Assignment Failed", message);
+                            }
+
+                            UpdateAssignmentUI(_selectedStaff);
+                        });
+                    }
                 }
                 else
                 {
-                    PersonnelManager.Instance.UnassignStaff(_selectedStaff.ProfileId);
+                    PersonnelManager.Instance?.UnassignStaff(_selectedStaff.ProfileId);
+                    UpdateAssignmentUI(_selectedStaff);
                 }
             }
+        }
 
-            UpdateAssignmentUI(_selectedStaff);
+        private ScoutTaskType MapToScoutTaskType(string taskName)
+        {
+            return taskName switch
+            {
+                "Draft Prospect Scouting" => ScoutTaskType.DraftProspectScouting,
+                "Opponent Scouting" => ScoutTaskType.OpponentAdvanceScouting,
+                "Trade Target Evaluation" => ScoutTaskType.TradeTargetEvaluation,
+                "Free Agent Evaluation" => ScoutTaskType.FreeAgentEvaluation,
+                _ => ScoutTaskType.Unassigned
+            };
         }
 
         private void OnFireClicked()
@@ -544,37 +741,56 @@ namespace NBAHeadCoach.UI.Panels
                 return;
             }
 
-            // Perform fire operation
-            personnelManager.FirePersonnel(_selectedStaff.ProfileId, "Fired by team management");
-            
-            OnStaffFired?.Invoke(_selectedStaff);
-            Debug.Log($"[StaffPanel] Fired: {_selectedStaff.PersonName}");
+            // Show confirmation dialog
+            var controller = FindObjectOfType<GameSceneController>();
+            if (controller != null)
+            {
+                var staffName = _selectedStaff.PersonName;
+                var staffRole = _selectedStaff.CurrentRole.ToString();
+                var staffToFire = _selectedStaff;
 
-            RefreshStaffList();
-            ClearStaffDetail();
+                controller.ShowDestructiveConfirmation(
+                    "Fire Staff Member?",
+                    $"Are you sure you want to fire {staffName} ({staffRole})?\n\nThis action cannot be undone.",
+                    () =>
+                    {
+                        // Perform fire operation
+                        personnelManager.FirePersonnel(staffToFire.ProfileId, "Fired by team management");
+                        OnStaffFired?.Invoke(staffToFire);
+                        RefreshStaffList();
+                        ClearStaffDetail();
+                    },
+                    "Fire",
+                    "Cancel"
+                );
+            }
+            else
+            {
+                // Fallback: fire without confirmation
+                personnelManager.FirePersonnel(_selectedStaff.ProfileId, "Fired by team management");
+                OnStaffFired?.Invoke(_selectedStaff);
+                RefreshStaffList();
+                ClearStaffDetail();
+            }
         }
 
         private void OnViewContractClicked()
         {
             if (_selectedStaff == null) return;
-            
-            // Display detailed contract info (would be a popup in full implementation)
-            var staff = _selectedStaff;
-            string contractDetails = $"=== CONTRACT DETAILS ===\n" +
-                $"Staff: {staff.PersonName}\n" +
-                $"Role: {staff.CurrentRole}\n" +
-                $"Team: {staff.CurrentTeamName ?? "Free Agent"}\n" +
-                $"Annual Salary: ${staff.AnnualSalary:N0}\n" +
-                $"Contract Years Remaining: {staff.ContractYearsRemaining}\n" +
-                $"Market Value: ${staff.MarketValue:N0}\n" +
-                $"Overall Rating: {staff.OverallRating}";
-            
-            Debug.Log($"[StaffPanel] {contractDetails}");
-            
-            // Update the detail panel contract text with more info if available
-            if (_staffContractText != null)
+
+            // Show contract detail modal
+            var controller = FindObjectOfType<GameSceneController>();
+            if (controller != null)
             {
-                _staffContractText.text = $"Contract: {staff.ContractYearsRemaining}yr @ ${staff.AnnualSalary:N0}/yr";
+                controller.ShowContractDetail(_selectedStaff);
+            }
+            else
+            {
+                // Fallback: update inline text
+                if (_staffContractText != null)
+                {
+                    _staffContractText.text = $"Contract: {_selectedStaff.ContractYearsRemaining}yr @ ${_selectedStaff.AnnualSalary:N0}/yr";
+                }
             }
         }
 

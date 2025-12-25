@@ -166,8 +166,8 @@ namespace NBAHeadCoach.UI.Modals
         {
             var prospects = new List<ProspectInfo>();
 
-            // Try to get prospects from DraftManager or ProspectManager
-            var draftManager = GameManager.Instance?.DraftManager;
+            // Try to get prospects from DraftSystem
+            var draftManager = GameManager.Instance?.DraftSystem;
             if (draftManager != null)
             {
                 var draftProspects = draftManager.GetCurrentDraftClass();

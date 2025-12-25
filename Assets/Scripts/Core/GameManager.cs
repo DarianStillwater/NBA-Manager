@@ -74,6 +74,7 @@ namespace NBAHeadCoach.Core
         private TradeSystem _tradeSystem;
         private FreeAgentManager _freeAgentManager;
         private DraftSystem _draftSystem;
+        public DraftSystem DraftSystem => _draftSystem;
         private OffseasonManager _offseasonManager;
         private PlayerDevelopmentManager _developmentManager;
         private JobSecurityManager _jobSecurityManager;

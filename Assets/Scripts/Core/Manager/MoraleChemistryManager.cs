@@ -29,6 +29,26 @@ namespace NBAHeadCoach.Core.Manager
         [Header("Streak Bonuses")]
         [SerializeField] private int _streakThreshold = 3;  // Games to trigger streak bonus
 
+        [Header("Captain Settings")]
+        [SerializeField] private float _captainMoraleAmplifier = 0.20f;  // +20% morale effect for happy captain
+        [SerializeField] private float _captainNegativeAmplifier = 0.10f; // -10% for unhappy captain
+        [SerializeField] private int _captainLeadershipThreshold = 60;    // Min Leadership to be effective captain
+
+        [Header("Escalation Settings")]
+        [SerializeField] private int _unhappyThreshold = 30;    // Morale below this triggers discontent
+        [SerializeField] private int _contentThreshold = 50;    // Morale above this allows de-escalation
+        [SerializeField] private int _daysToEscalate = 7;       // Days unhappy before escalating
+        [SerializeField] private int _daysToDeescalate = 14;    // Days content before de-escalating
+
+        [Header("Meeting Settings")]
+        [SerializeField] private int _meetingCooldownDays = 14;
+
+        #endregion
+
+        #region Meeting State
+
+        private DateTime? _lastTeamMeetingDate;
+
         #endregion
 
         #region State
@@ -206,9 +226,18 @@ namespace NBAHeadCoach.Core.Manager
                 teamEvent = isClose || isPlayoff ? MoraleEvent.ToughLoss : MoraleEvent.Loss;
             }
 
-            // Apply team-wide morale event
+            // Apply team-wide morale event with expectation-based amounts
             var playerIds = playerTeam.Roster.Select(p => p.PlayerId).ToList();
-            _personalityManager.ApplyTeamMoraleEvent(playerIds, teamEvent);
+            int baseAmount = GetExpectationBasedMoraleChange(playerTeam, won, isPlayoff);
+
+            // Apply with captain modifier
+            float captainModifier = GetCaptainMoraleModifier(playerTeam);
+            int adjustedAmount = Mathf.RoundToInt(baseAmount * (1f + captainModifier));
+
+            foreach (var playerId in playerIds)
+            {
+                _personalityManager.ApplyPlayerMoraleEvent(playerId, teamEvent, adjustedAmount);
+            }
             report.TeamMoraleEvent = teamEvent;
 
             // Process individual performance-based morale
@@ -531,6 +560,12 @@ namespace NBAHeadCoach.Core.Manager
                         personality.Morale + _moraleDecayPerDay);
                 }
 
+                // Process contract satisfaction effects
+                ProcessContractSatisfaction(player);
+
+                // Process escalation/de-escalation
+                ProcessEscalation(player, team);
+
                 // Sync to player
                 player.Morale = personality.Morale;
             }
@@ -643,6 +678,587 @@ namespace NBAHeadCoach.Core.Manager
         public PersonalityManager PersonalityManager => _personalityManager;
 
         #endregion
+
+        #region Expectation-Based Morale
+
+        /// <summary>
+        /// Gets morale change based on team expectations (contenders vs lottery).
+        /// </summary>
+        private int GetExpectationBasedMoraleChange(Team team, bool won, bool isPlayoff)
+        {
+            float expectedWinPct = GetProjectedWinPct(team);
+
+            if (won)
+            {
+                // Contenders expect wins - less boost
+                // Lottery teams celebrate more
+                if (isPlayoff) return 8; // Playoff wins always big
+                if (expectedWinPct > 0.6f) return 1;  // Contenders
+                if (expectedWinPct > 0.4f) return 3;  // Playoff teams
+                return 5;  // Lottery teams
+            }
+            else
+            {
+                // Contenders hurt more by losses
+                // Lottery teams expect losses
+                if (isPlayoff) return -8; // Playoff losses always hurt
+                if (expectedWinPct > 0.6f) return -5; // Contenders
+                if (expectedWinPct > 0.4f) return -3; // Playoff teams
+                return -1; // Lottery teams
+            }
+        }
+
+        /// <summary>
+        /// Estimates team's expected win percentage based on roster strength.
+        /// </summary>
+        private float GetProjectedWinPct(Team team)
+        {
+            if (team?.Roster == null || team.Roster.Count == 0)
+                return 0.5f;
+
+            // Simple projection based on top 8 player ratings
+            var topPlayers = team.Roster
+                .OrderByDescending(p => p.GetOverallRating())
+                .Take(8)
+                .ToList();
+
+            float avgRating = topPlayers.Average(p => p.GetOverallRating());
+
+            // Convert rating to win pct (60 rating = 0.2, 80 rating = 0.7)
+            return Mathf.Clamp01((avgRating - 50f) / 40f);
+        }
+
+        #endregion
+
+        #region Captain System
+
+        /// <summary>
+        /// Gets morale modifier based on team captain's happiness.
+        /// </summary>
+        private float GetCaptainMoraleModifier(Team team)
+        {
+            var captain = team.Roster?.Find(p => p.IsCaptain);
+            if (captain == null) return 0f;
+
+            var personality = _personalityManager.GetPersonality(captain.PlayerId);
+            if (personality == null) return 0f;
+
+            // Check if captain has good leadership
+            bool hasLeadership = captain.Leadership >= _captainLeadershipThreshold;
+            float leadershipMultiplier = hasLeadership ? 1.5f : 1f;
+
+            // Happy captain boosts team morale, unhappy captain spreads negativity
+            if (personality.Morale >= 65)
+            {
+                return _captainMoraleAmplifier * leadershipMultiplier;
+            }
+            else if (personality.Morale <= 35)
+            {
+                return -_captainNegativeAmplifier * leadershipMultiplier;
+            }
+
+            return 0f;
+        }
+
+        /// <summary>
+        /// Assigns a player as team captain.
+        /// </summary>
+        public CaptainAssignmentResult AssignCaptain(Team team, string playerId)
+        {
+            var result = new CaptainAssignmentResult { Success = false };
+
+            var player = team.Roster?.Find(p => p.PlayerId == playerId);
+            if (player == null)
+            {
+                result.Message = "Player not found on roster.";
+                return result;
+            }
+
+            // Check leadership requirement
+            if (player.Leadership < _captainLeadershipThreshold)
+            {
+                result.Message = $"{player.DisplayName}'s leadership ({player.Leadership}) is below the recommended threshold ({_captainLeadershipThreshold}). This may backfire.";
+                result.IsRisky = true;
+            }
+
+            // Remove captain from previous captain
+            foreach (var p in team.Roster)
+            {
+                if (p.IsCaptain && p.PlayerId != playerId)
+                {
+                    p.IsCaptain = false;
+                    // Previous captain may be upset
+                    var prevPersonality = _personalityManager.GetPersonality(p.PlayerId);
+                    if (prevPersonality != null && prevPersonality.HasTrait(PersonalityTrait.Leader))
+                    {
+                        prevPersonality.AdjustMorale(MoraleEvent.GotBenched, -5);
+                        result.PreviousCaptainUpset = true;
+                    }
+                }
+            }
+
+            player.IsCaptain = true;
+            result.Success = true;
+            result.Message = $"{player.DisplayName} has been named team captain.";
+
+            // New captain gets morale boost
+            var personality = _personalityManager.GetPersonality(playerId);
+            if (personality != null)
+            {
+                personality.AdjustMorale(MoraleEvent.BecameStarter, 10);
+            }
+
+            // Team reacts based on choice quality
+            if (player.Leadership >= 70)
+            {
+                // Good choice - small team chemistry boost
+                foreach (var p in team.Roster)
+                {
+                    if (p.PlayerId != playerId)
+                    {
+                        var pPersonality = _personalityManager.GetPersonality(p.PlayerId);
+                        pPersonality?.AdjustMorale(MoraleEvent.Win, 2);
+                    }
+                }
+                result.TeamReaction = "The team approves of the choice.";
+            }
+            else if (player.Leadership < 50)
+            {
+                // Poor choice - some players may be upset
+                result.TeamReaction = "Some players question the decision.";
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Gets the current team captain.
+        /// </summary>
+        public Player GetTeamCaptain(Team team)
+        {
+            return team.Roster?.Find(p => p.IsCaptain);
+        }
+
+        #endregion
+
+        #region Contract Satisfaction
+
+        /// <summary>
+        /// Updates contract satisfaction for a player who signed a new contract.
+        /// </summary>
+        public void OnContractSigned(string playerId, int salary, int marketValue)
+        {
+            var personality = _personalityManager.GetPersonality(playerId);
+            if (personality == null) return;
+
+            // Calculate satisfaction based on salary vs market value
+            float ratio = (float)salary / Math.Max(1, marketValue);
+
+            if (ratio >= 1.1f)
+            {
+                // Overpaid - very happy
+                personality.ContractSatisfaction = 40;
+            }
+            else if (ratio >= 0.9f)
+            {
+                // Fair market value
+                personality.ContractSatisfaction = 30;
+            }
+            else if (ratio >= 0.7f)
+            {
+                // Slightly underpaid
+                personality.ContractSatisfaction = 10;
+            }
+            else
+            {
+                // Significantly underpaid
+                personality.ContractSatisfaction = -10;
+            }
+
+            personality.DaysSinceContractBoost = 0;
+
+            // Apply morale event
+            _personalityManager.ApplyPlayerMoraleEvent(playerId, MoraleEvent.ContractSigned);
+        }
+
+        /// <summary>
+        /// Updates contract satisfaction daily (decay and year-end effects).
+        /// </summary>
+        private void ProcessContractSatisfaction(Player player)
+        {
+            var personality = _personalityManager.GetPersonality(player.PlayerId);
+            if (personality == null) return;
+
+            personality.DaysSinceContractBoost++;
+
+            // Contract satisfaction boost decays over time
+            if (personality.ContractSatisfaction > 0 && personality.DaysSinceContractBoost > 30)
+            {
+                personality.ContractSatisfaction = Math.Max(0, personality.ContractSatisfaction - 1);
+            }
+
+            // Contract satisfaction affects morale
+            int moraleEffect = personality.ContractSatisfaction / 10; // -5 to +5
+            if (moraleEffect != 0)
+            {
+                personality.Morale = Mathf.Clamp(personality.Morale + moraleEffect / 30f, 0, 100);
+            }
+        }
+
+        #endregion
+
+        #region Escalation System
+
+        /// <summary>
+        /// Process daily escalation/de-escalation for all players.
+        /// </summary>
+        private void ProcessEscalation(Player player, Team team)
+        {
+            var personality = _personalityManager.GetPersonality(player.PlayerId);
+            if (personality == null) return;
+
+            // Track days unhappy/content
+            if (personality.Morale < _unhappyThreshold)
+            {
+                personality.DaysUnhappy++;
+                personality.DaysContent = 0;
+            }
+            else if (personality.Morale > _contentThreshold)
+            {
+                personality.DaysContent++;
+                personality.DaysUnhappy = 0;
+            }
+            else
+            {
+                // Reset both when in neutral zone
+                personality.DaysUnhappy = Math.Max(0, personality.DaysUnhappy - 1);
+                personality.DaysContent = Math.Max(0, personality.DaysContent - 1);
+            }
+
+            // Escalate if unhappy too long
+            if (personality.DaysUnhappy >= _daysToEscalate && personality.DiscontentLevel < 5)
+            {
+                personality.DiscontentLevel++;
+                personality.DaysUnhappy = 0;
+                HandleEscalation(player, personality, team);
+            }
+
+            // De-escalate if content long enough
+            if (personality.DaysContent >= _daysToDeescalate && personality.DiscontentLevel > 0)
+            {
+                personality.DiscontentLevel--;
+                personality.DaysContent = 0;
+            }
+        }
+
+        /// <summary>
+        /// Handle escalation effects based on level.
+        /// </summary>
+        private void HandleEscalation(Player player, Personality personality, Team team)
+        {
+            var evt = new LockerRoomEvent
+            {
+                InstigatorId = player.PlayerId,
+                InstigatorName = player.DisplayName,
+                Date = GameManager.Instance?.CurrentDate ?? DateTime.Now
+            };
+
+            switch (personality.DiscontentLevel)
+            {
+                case 1:
+                    // Private complaint
+                    evt.EventType = LockerRoomEventType.DemandsMoreTouches;
+                    evt.Description = $"{player.DisplayName} has privately expressed concerns about their role.";
+                    evt.Severity = EventSeverity.Minor;
+                    break;
+
+                case 2:
+                    // Reduced effort - mental stats penalty handled in GetMentalStatModifier
+                    evt.EventType = LockerRoomEventType.DemandsMoreTouches;
+                    evt.Description = $"{player.DisplayName}'s effort and focus have noticeably declined.";
+                    evt.Severity = EventSeverity.Moderate;
+                    break;
+
+                case 3:
+                    // Media comments
+                    evt.EventType = LockerRoomEventType.OutburstAtCoach;
+                    evt.Description = $"{player.DisplayName} made critical comments to the media about their situation.";
+                    evt.Severity = EventSeverity.Moderate;
+                    break;
+
+                case 4:
+                    // Trade request
+                    evt.EventType = LockerRoomEventType.DemandsTrade;
+                    evt.Description = $"{player.DisplayName} has formally requested a trade.";
+                    evt.Severity = EventSeverity.Severe;
+                    break;
+
+                case 5:
+                    // Holdout
+                    evt.EventType = LockerRoomEventType.DemandsTrade;
+                    evt.Description = $"{player.DisplayName} is refusing to play until their situation is resolved.";
+                    evt.Severity = EventSeverity.Severe;
+                    break;
+            }
+
+            // Role-specific effects
+            if (personality.DiscontentLevel >= 2)
+            {
+                if (player.Age >= 30 && personality.HasTrait(PersonalityTrait.Mentor))
+                {
+                    // Veterans stop mentoring
+                    evt.Description += " They have stopped mentoring younger players.";
+                }
+
+                if (player.IsCaptain)
+                {
+                    // Unhappy captain hurts team
+                    evt.Description += " As captain, their negativity is affecting the locker room.";
+                }
+            }
+
+            OnLockerRoomEvent?.Invoke(evt);
+        }
+
+        /// <summary>
+        /// Gets mental stat modifier based on discontent level.
+        /// </summary>
+        public float GetDiscontentStatModifier(string playerId)
+        {
+            var personality = _personalityManager.GetPersonality(playerId);
+            if (personality == null) return 1f;
+
+            // Level 2+: -5% per level
+            return personality.DiscontentLevel switch
+            {
+                0 => 1f,
+                1 => 1f,      // No stat penalty yet
+                2 => 0.95f,   // -5%
+                3 => 0.90f,   // -10%
+                4 => 0.85f,   // -15%
+                5 => 0.75f,   // -25% (holdout but still playing somehow)
+                _ => 1f
+            };
+        }
+
+        /// <summary>
+        /// Gets discontent level for a player (0-5).
+        /// </summary>
+        public int GetDiscontentLevel(string playerId)
+        {
+            var personality = _personalityManager.GetPersonality(playerId);
+            return personality?.DiscontentLevel ?? 0;
+        }
+
+        #endregion
+
+        #region Player Interventions
+
+        /// <summary>
+        /// Call a team meeting to address morale issues.
+        /// </summary>
+        public TeamMeetingResult CallTeamMeeting(Team team, int coachLeadership)
+        {
+            var result = new TeamMeetingResult();
+            var currentDate = GameManager.Instance?.CurrentDate ?? DateTime.Now;
+
+            // Check cooldown
+            if (_lastTeamMeetingDate.HasValue)
+            {
+                int daysSinceLast = (currentDate - _lastTeamMeetingDate.Value).Days;
+                if (daysSinceLast < _meetingCooldownDays)
+                {
+                    result.Success = false;
+                    result.Message = $"Team meeting on cooldown. Wait {_meetingCooldownDays - daysSinceLast} more days.";
+                    return result;
+                }
+            }
+
+            _lastTeamMeetingDate = currentDate;
+
+            // Success chance based on coach leadership
+            float successChance = 0.5f + (coachLeadership / 200f); // 50% base + up to 50% from leadership
+            bool isSuccess = UnityEngine.Random.value < successChance;
+
+            result.Success = true;
+
+            if (isSuccess)
+            {
+                // Success: All players get morale boost
+                foreach (var player in team.Roster)
+                {
+                    var personality = _personalityManager.GetPersonality(player.PlayerId);
+                    if (personality != null)
+                    {
+                        personality.Morale = Math.Min(_maxMorale, personality.Morale + 5);
+                        player.Morale = personality.Morale;
+                    }
+                }
+                result.MoraleChange = 5;
+                result.Message = "The team meeting was a success. Players seem more motivated.";
+            }
+            else
+            {
+                // Backfire: Volatile players get upset, others get small boost
+                foreach (var player in team.Roster)
+                {
+                    var personality = _personalityManager.GetPersonality(player.PlayerId);
+                    if (personality != null)
+                    {
+                        if (personality.HasTrait(PersonalityTrait.Volatile))
+                        {
+                            personality.Morale = Math.Max(_minMorale, personality.Morale - 5);
+                        }
+                        else
+                        {
+                            personality.Morale = Math.Min(_maxMorale, personality.Morale + 2);
+                        }
+                        player.Morale = personality.Morale;
+                    }
+                }
+                result.MoraleChange = 2;
+                result.Message = "The meeting didn't go as planned. Some players seemed annoyed.";
+                result.BackfiredForVolatile = true;
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Have an individual conversation with a player.
+        /// </summary>
+        public ConversationResult TalkToPlayer(string playerId, ConversationType conversationType)
+        {
+            var result = new ConversationResult { PlayerId = playerId };
+            var personality = _personalityManager.GetPersonality(playerId);
+            var player = GameManager.Instance?.PlayerDatabase?.GetPlayer(playerId);
+
+            if (personality == null || player == null)
+            {
+                result.Success = false;
+                result.Message = "Player not found.";
+                return result;
+            }
+
+            result.Success = true;
+            result.PlayerName = player.DisplayName;
+
+            switch (conversationType)
+            {
+                case ConversationType.PromisePlayingTime:
+                    personality.AdjustMorale(MoraleEvent.CoachPraise, 10);
+                    personality.ExpectedRole = PlayerRole.Rotation; // Sets expectation
+                    result.MoraleChange = 10;
+                    result.Message = $"You promised {player.DisplayName} more playing time. They seem satisfied for now.";
+                    break;
+
+                case ConversationType.ExplainRole:
+                    int change = personality.HasTrait(PersonalityTrait.TeamPlayer) ? 8 : 5;
+                    personality.AdjustMorale(MoraleEvent.CoachPraise, change);
+                    result.MoraleChange = change;
+                    result.Message = $"You explained {player.DisplayName}'s role on the team. They understand better now.";
+                    break;
+
+                case ConversationType.Praise:
+                    int praiseChange = personality.HasTrait(PersonalityTrait.Sensitive) ? 12 : 8;
+                    personality.AdjustMorale(MoraleEvent.CoachPraise, praiseChange);
+                    result.MoraleChange = praiseChange;
+                    result.Message = $"You praised {player.DisplayName}'s contributions. They're feeling appreciated.";
+                    break;
+
+                case ConversationType.Constructive:
+                    // No morale change but may improve development
+                    if (personality.HasTrait(PersonalityTrait.Sensitive))
+                    {
+                        personality.AdjustMorale(MoraleEvent.CoachCriticism, -3);
+                        result.MoraleChange = -3;
+                        result.Message = $"{player.DisplayName} took the constructive feedback personally.";
+                    }
+                    else
+                    {
+                        result.MoraleChange = 0;
+                        result.Message = $"{player.DisplayName} appreciated the honest feedback.";
+                        result.DevelopmentBonus = true;
+                    }
+                    break;
+
+                case ConversationType.OfferTrade:
+                    if (personality.DiscontentLevel >= 3)
+                    {
+                        personality.AdjustMorale(MoraleEvent.Win, 5);
+                        result.MoraleChange = 5;
+                        result.Message = $"{player.DisplayName} is relieved you're working on finding them a new home.";
+                    }
+                    else
+                    {
+                        personality.AdjustMorale(MoraleEvent.TradeRumors, -8);
+                        result.MoraleChange = -8;
+                        result.Message = $"{player.DisplayName} is shocked and upset that you want to trade them.";
+                    }
+                    break;
+            }
+
+            // Sync morale
+            player.Morale = personality.Morale;
+
+            return result;
+        }
+
+        #endregion
+
+        #region Enhanced Pair Chemistry
+
+        /// <summary>
+        /// Gets detailed pair chemistry bonuses for gameplay.
+        /// </summary>
+        public PairChemistryBonus GetDetailedPairChemistry(string player1Id, string player2Id)
+        {
+            float chemistry = _personalityManager.CalculatePairChemistry(player1Id, player2Id);
+
+            var bonus = new PairChemistryBonus
+            {
+                RawChemistry = chemistry
+            };
+
+            if (chemistry >= 0.5f)
+            {
+                // High chemistry pair
+                bonus.AssistBonus = 0.15f;      // +15% assist success
+                bonus.ScreenBonus = 0.10f;      // +10% screen effectiveness
+                bonus.DefenseBonus = 0.05f;     // +5% defensive rotation
+                bonus.PassFrequency = 1.2f;     // 20% more likely to pass to each other
+            }
+            else if (chemistry >= 0.2f)
+            {
+                // Good chemistry
+                bonus.AssistBonus = 0.08f;
+                bonus.ScreenBonus = 0.05f;
+                bonus.DefenseBonus = 0.02f;
+                bonus.PassFrequency = 1.1f;
+            }
+            else if (chemistry <= -0.3f)
+            {
+                // Poor chemistry
+                bonus.AssistBonus = -0.10f;     // -10% assist success
+                bonus.ScreenBonus = -0.05f;
+                bonus.DefenseBonus = -0.05f;
+                bonus.PassFrequency = 0.8f;     // 20% less likely to pass
+            }
+            else
+            {
+                // Neutral chemistry
+                bonus.AssistBonus = 0f;
+                bonus.ScreenBonus = 0f;
+                bonus.DefenseBonus = 0f;
+                bonus.PassFrequency = 1f;
+            }
+
+            return bonus;
+        }
+
+        #endregion
+
+        #endregion
     }
 
     #region Supporting Types
@@ -695,6 +1311,70 @@ namespace NBAHeadCoach.Core.Manager
         Moderate,
         Severe,
         Positive
+    }
+
+    /// <summary>
+    /// Result of assigning a team captain.
+    /// </summary>
+    [Serializable]
+    public class CaptainAssignmentResult
+    {
+        public bool Success;
+        public string Message;
+        public bool IsRisky;
+        public bool PreviousCaptainUpset;
+        public string TeamReaction;
+    }
+
+    /// <summary>
+    /// Result of calling a team meeting.
+    /// </summary>
+    [Serializable]
+    public class TeamMeetingResult
+    {
+        public bool Success;
+        public string Message;
+        public int MoraleChange;
+        public bool BackfiredForVolatile;
+    }
+
+    /// <summary>
+    /// Types of individual conversations with players.
+    /// </summary>
+    public enum ConversationType
+    {
+        PromisePlayingTime,  // +10 morale, creates expectation
+        ExplainRole,         // +5 morale, reduces expected role
+        Praise,              // +8 morale (Sensitive: +12)
+        Constructive,        // ±0 morale (improves development)
+        OfferTrade           // Variable based on discontent
+    }
+
+    /// <summary>
+    /// Result of an individual conversation with a player.
+    /// </summary>
+    [Serializable]
+    public class ConversationResult
+    {
+        public bool Success;
+        public string PlayerId;
+        public string PlayerName;
+        public string Message;
+        public int MoraleChange;
+        public bool DevelopmentBonus;
+    }
+
+    /// <summary>
+    /// Detailed chemistry bonuses for a player pair.
+    /// </summary>
+    [Serializable]
+    public class PairChemistryBonus
+    {
+        public float RawChemistry;      // -1 to +1
+        public float AssistBonus;       // -0.15 to +0.15
+        public float ScreenBonus;       // -0.10 to +0.10
+        public float DefenseBonus;      // -0.05 to +0.05
+        public float PassFrequency;     // 0.8 to 1.2 multiplier
     }
 
     #endregion

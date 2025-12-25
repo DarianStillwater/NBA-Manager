@@ -71,6 +71,10 @@ namespace NBAHeadCoach.UI
         [Header("Trade Modals")]
         [SerializeField] private IncomingTradeOffersPanel _incomingTradeOffersPanel;
 
+        [Header("Staff Panels")]
+        [SerializeField] private GameObject _staffHiringPanel;
+        [SerializeField] private StaffHiringPanel _staffHiringPanelComponent;
+
         private GameManager _gameManager;
 
         // Panel registry for unified navigation
@@ -122,6 +126,7 @@ namespace NBAHeadCoach.UI
             RegisterPanel("Standings", _standingsPanel, _standingsPanelComponent);
             RegisterPanel("Inbox", _inboxPanel, _inboxPanelComponent);
             RegisterPanel("Staff", _staffPanel, _staffPanelComponent);
+            RegisterPanel("StaffHiring", _staffHiringPanel, _staffHiringPanelComponent);
             RegisterPanel("PreGame", _preGamePanel, _preGamePanelComponent);
             RegisterPanel("PostGame", _postGamePanel, _postGamePanelComponent);
         }

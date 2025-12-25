@@ -144,6 +144,7 @@ namespace NBAHeadCoach.Core.Data
         [Range(0, 100)] public float Energy;             // Depletes during play
         [Range(0, 100)] public float Morale;             // Affected by game events
         [Range(0, 100)] public float Form;               // Hot/cold streak
+        public bool IsCaptain;                           // Team captain designation
 
         // ==================== INJURY STATE ====================
         [Header("Injury Status")]

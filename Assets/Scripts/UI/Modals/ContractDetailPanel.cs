@@ -284,7 +284,7 @@ namespace NBAHeadCoach.UI.Modals
                 UnifiedRole.OffensiveCoordinator => "Offensive Coordinator",
                 UnifiedRole.DefensiveCoordinator => "Defensive Coordinator",
                 UnifiedRole.Scout => "Scout",
-                UnifiedRole.GM => "General Manager",
+                UnifiedRole.GeneralManager => "General Manager",
                 UnifiedRole.AssistantGM => "Assistant GM",
                 _ => role.ToString()
             };

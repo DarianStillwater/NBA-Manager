@@ -22,11 +22,19 @@ namespace NBAHeadCoach.UI.Panels
         [SerializeField] private GameObject _candidateCard;
         [SerializeField] private Text _candidateNameText;
         [SerializeField] private Text _candidatePositionText;
-        [SerializeField] private Text _candidateRatingText;
+        [SerializeField] private Text _candidateTierText;
+        [SerializeField] private Image _candidateTierIndicator;
         [SerializeField] private Text _candidateAgeText;
         [SerializeField] private Text _candidateExperienceText;
         [SerializeField] private Text _candidateAskingPriceText;
-        [SerializeField] private Transform _candidateAttributesContainer;
+
+        [Header("Text-Based Evaluation")]
+        [SerializeField] private Text _overallAssessmentText;
+        [SerializeField] private Text _strengthsSummaryText;
+        [SerializeField] private Text _weaknessesSummaryText;
+        [SerializeField] private Text _careerTrajectoryText;
+        [SerializeField] private Transform _skillAssessmentsContainer;
+        [SerializeField] private GameObject _skillAssessmentRowPrefab;
 
         [Header("Former Player Info")]
         [SerializeField] private GameObject _formerPlayerSection;
@@ -226,10 +234,18 @@ namespace NBAHeadCoach.UI.Panels
             if (_candidatePositionText != null)
                 _candidatePositionText.text = profile.CurrentRole.ToString();
 
-            if (_candidateRatingText != null)
+            // Generate evaluation for tier display
+            var evaluation = StaffEvaluationGenerator.Instance.GenerateEvaluation(profile);
+
+            // Show tier instead of numeric rating
+            if (_candidateTierText != null)
             {
-                _candidateRatingText.text = $"Rating: {profile.OverallRating}";
-                AttributeDisplayFactory.ApplyRatingColor(_candidateRatingText, profile.OverallRating);
+                _candidateTierText.text = evaluation.Tier.GetLabel();
+            }
+
+            if (_candidateTierIndicator != null)
+            {
+                _candidateTierIndicator.color = GetTierColor(evaluation.Tier);
             }
 
             if (_candidateAgeText != null)
@@ -257,43 +273,99 @@ namespace NBAHeadCoach.UI.Panels
             // Specializations
             if (_specializationsText != null)
             {
-                var specs = profile.CurrentTrack == UnifiedCareerTrack.Coaching 
-                    ? string.Join(", ", profile.Specializations) 
+                var specs = profile.CurrentTrack == UnifiedCareerTrack.Coaching
+                    ? string.Join(", ", profile.Specializations)
                     : string.Join(", ", profile.ScoutingSpecializations);
                 _specializationsText.text = string.IsNullOrEmpty(specs) ? "None" : specs;
             }
 
-            // Display attributes
-            DisplayAttributes(profile);
+            // Display text-based evaluation instead of numeric attributes
+            DisplayEvaluation(evaluation);
 
             // Pre-fill offer with market value
             if (_offerSalaryInput != null)
                 _offerSalaryInput.text = profile.MarketValue.ToString();
         }
 
-        private void DisplayAttributes(UnifiedCareerProfile profile)
+        private void DisplayEvaluation(StaffEvaluation evaluation)
         {
-            if (_candidateAttributesContainer == null) return;
+            if (evaluation == null) return;
 
-            var attrs = new Dictionary<string, int>();
-            if (profile.CurrentTrack == UnifiedCareerTrack.Coaching)
-            {
-                attrs.Add("Offensive Scheme", profile.OffensiveScheme);
-                attrs.Add("Defensive Scheme", profile.DefensiveScheme);
-                attrs.Add("Game Management", profile.GameManagement);
-                attrs.Add("Player Dev", profile.PlayerDevelopment);
-                attrs.Add("Motivation", profile.Motivation);
-            }
-            else
-            {
-                attrs.Add("Evaluation", profile.EvaluationAccuracy);
-                attrs.Add("Prospects", profile.ProspectEvaluation);
-                attrs.Add("Pro Players", profile.ProEvaluation);
-                attrs.Add("Potential", profile.PotentialAssessment);
-                attrs.Add("Work Rate", profile.WorkRate);
-            }
+            // Overall assessment
+            if (_overallAssessmentText != null)
+                _overallAssessmentText.text = evaluation.OverallAssessment;
 
-            AttributeDisplayFactory.PopulateAttributeContainer(_candidateAttributesContainer, attrs, 100f, 40f);
+            // Strengths
+            if (_strengthsSummaryText != null)
+                _strengthsSummaryText.text = evaluation.StrengthsSummary;
+
+            // Weaknesses
+            if (_weaknessesSummaryText != null)
+                _weaknessesSummaryText.text = evaluation.WeaknessesSummary;
+
+            // Career trajectory
+            if (_careerTrajectoryText != null)
+                _careerTrajectoryText.text = evaluation.CareerTrajectory;
+
+            // Skill assessments
+            if (_skillAssessmentsContainer != null)
+            {
+                // Clear existing
+                foreach (Transform child in _skillAssessmentsContainer)
+                {
+                    Destroy(child.gameObject);
+                }
+
+                // Show top 4 skill assessments
+                int count = 0;
+                foreach (var skill in evaluation.SkillAssessments)
+                {
+                    if (count >= 4) break;
+
+                    if (_skillAssessmentRowPrefab != null)
+                    {
+                        var row = Instantiate(_skillAssessmentRowPrefab, _skillAssessmentsContainer);
+                        var texts = row.GetComponentsInChildren<Text>();
+                        if (texts.Length >= 2)
+                        {
+                            texts[0].text = skill.SkillName;
+                            texts[1].text = skill.Grade;
+                            // Apply color based on grade
+                            texts[1].color = GetGradeColor(skill.Grade);
+                        }
+                    }
+                    count++;
+                }
+            }
+        }
+
+        private Color GetTierColor(EvaluationTier tier)
+        {
+            return tier switch
+            {
+                EvaluationTier.Elite => new Color(0.2f, 0.8f, 0.2f),       // Green
+                EvaluationTier.VeryGood => new Color(0.3f, 0.7f, 0.9f),    // Blue
+                EvaluationTier.Solid => new Color(0.4f, 0.6f, 0.8f),       // Light Blue
+                EvaluationTier.Average => new Color(0.9f, 0.7f, 0.2f),     // Yellow/Orange
+                EvaluationTier.BelowAverage => new Color(0.9f, 0.5f, 0.2f),// Orange
+                EvaluationTier.Poor => new Color(0.9f, 0.3f, 0.3f),        // Red
+                _ => Color.gray
+            };
+        }
+
+        private Color GetGradeColor(string grade)
+        {
+            return grade switch
+            {
+                "Elite" => new Color(0.2f, 0.8f, 0.2f),
+                "Excellent" => new Color(0.3f, 0.75f, 0.4f),
+                "Very Good" => new Color(0.3f, 0.7f, 0.9f),
+                "Solid" => new Color(0.4f, 0.6f, 0.8f),
+                "Average" => new Color(0.9f, 0.7f, 0.2f),
+                "Below Average" => new Color(0.9f, 0.5f, 0.2f),
+                "Poor" => new Color(0.9f, 0.3f, 0.3f),
+                _ => Color.gray
+            };
         }
 
         private void ShowNoCandidates()

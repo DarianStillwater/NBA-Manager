@@ -77,15 +77,32 @@ namespace NBAHeadCoach.Core.Data
         };
 
         // ==================== PREFERENCES ====================
-        
+
         /// <summary>Expected role (Starter, SixthMan, Rotation, Bench)</summary>
         public PlayerRole ExpectedRole = PlayerRole.Rotation;
-        
+
         /// <summary>Preferred market size (0=any, 1=small, 2=medium, 3=large)</summary>
         public int PreferredMarketSize = 0;
-        
+
         /// <summary>Preferred playstyle (coach compatibility)</summary>
         public PlaystylePreference PreferredPlaystyle = PlaystylePreference.Any;
+
+        // ==================== CONTRACT & DISCONTENT ====================
+
+        /// <summary>Contract satisfaction (-50 to +50). Positive = happy with contract.</summary>
+        public int ContractSatisfaction = 0;
+
+        /// <summary>Days since last contract satisfaction update.</summary>
+        public int DaysSinceContractBoost = 0;
+
+        /// <summary>Discontent level (0-5 escalation ladder).</summary>
+        public int DiscontentLevel = 0;
+
+        /// <summary>Days player has been below morale threshold (triggers escalation).</summary>
+        public int DaysUnhappy = 0;
+
+        /// <summary>Days player has been above morale threshold (triggers de-escalation).</summary>
+        public int DaysContent = 0;
 
         // ==================== TRAIT CHECKS ====================
         
