@@ -169,7 +169,7 @@ namespace NBAHeadCoach.Core.Manager
             int numOpenings = _rng.Next(_minOpeningsPerSeason, _maxOpeningsPerSeason + 1);
 
             // Get all teams
-            var allTeams = GameManager.Instance?.GetAllTeams() ?? new List<Team>();
+            var allTeams = GameManager.Instance?.AllTeams ?? new List<Team>();
             var shuffledTeams = allTeams.OrderBy(t => _rng.Next()).ToList();
 
             // Generate mix of GM and Coach openings
@@ -483,7 +483,7 @@ namespace NBAHeadCoach.Core.Manager
 
         private void GenerateUnsolicitedOffer()
         {
-            var allTeams = GameManager.Instance?.GetAllTeams() ?? new List<Team>();
+            var allTeams = GameManager.Instance?.AllTeams ?? new List<Team>();
             var currentTeamId = GameManager.Instance?.PlayerTeamId;
 
             // Pick a random team that's not the current one

@@ -106,6 +106,14 @@ namespace NBAHeadCoach.Core.Manager
             return profile;
         }
 
+        /// <summary>
+        /// Get all personnel profiles.
+        /// </summary>
+        public List<UnifiedCareerProfile> GetAllProfiles()
+        {
+            return new List<UnifiedCareerProfile>(allProfiles);
+        }
+
         public List<UnifiedCareerProfile> GetTeamStaff(string teamId)
         {
             return _teamStaffs.TryGetValue(teamId, out var staff) ? new List<UnifiedCareerProfile>(staff) : new List<UnifiedCareerProfile>();
@@ -388,6 +396,30 @@ namespace NBAHeadCoach.Core.Manager
                 session.Status = StaffNegotiationStatus.WalkedAway;
                 _activeNegotiations.Remove(session);
                 Debug.Log($"[PersonnelManager] Negotiation with {session.CandidateName} cancelled");
+            }
+        }
+
+        /// <summary>
+        /// Finalize a negotiation by session ID.
+        /// </summary>
+        /// <param name="sessionId">The negotiation session ID</param>
+        /// <param name="accepted">True to complete hire, false to cancel</param>
+        public void FinalizeNegotiation(string sessionId, bool accepted)
+        {
+            var session = _activeNegotiations.FirstOrDefault(n => n.SessionId == sessionId);
+            if (session == null)
+            {
+                Debug.LogWarning($"[PersonnelManager] Negotiation session not found: {sessionId}");
+                return;
+            }
+
+            if (accepted)
+            {
+                FinalizeNegotiation(session);
+            }
+            else
+            {
+                CancelNegotiation(sessionId);
             }
         }
 

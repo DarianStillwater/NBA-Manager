@@ -100,13 +100,13 @@ namespace NBAHeadCoach.UI.Modals
         {
             _upcomingOpponentIds.Clear();
 
-            var schedule = GameManager.Instance?.ScheduleManager;
+            var seasonController = GameManager.Instance?.SeasonController;
             var playerTeamId = GameManager.Instance?.PlayerTeamId;
 
-            if (schedule != null && !string.IsNullOrEmpty(playerTeamId))
+            if (seasonController != null && !string.IsNullOrEmpty(playerTeamId))
             {
-                // Get next 5 games
-                var upcomingGames = schedule.GetUpcomingGames(playerTeamId, 5);
+                // Get next 5 games from season controller
+                var upcomingGames = seasonController.GetUpcomingGames(5);
                 foreach (var game in upcomingGames)
                 {
                     var opponentId = game.HomeTeamId == playerTeamId ? game.AwayTeamId : game.HomeTeamId;
@@ -122,7 +122,7 @@ namespace NBAHeadCoach.UI.Modals
             var playerTeamId = GameManager.Instance?.PlayerTeamId;
 
             // Get all teams except player's team
-            var allTeams = GameManager.Instance?.GetAllTeams();
+            var allTeams = GameManager.Instance?.AllTeams;
             if (allTeams != null)
             {
                 foreach (var team in allTeams)

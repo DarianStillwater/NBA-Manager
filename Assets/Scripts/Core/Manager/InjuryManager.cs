@@ -492,7 +492,7 @@ namespace NBAHeadCoach.Core.Manager
             if (player == null || string.IsNullOrEmpty(player.TeamId))
                 return null;
 
-            return GameManager.Instance?.TeamDatabase?.GetTeam(player.TeamId);
+            return GameManager.Instance?.GetTeam(player.TeamId);
         }
 
         /// <summary>

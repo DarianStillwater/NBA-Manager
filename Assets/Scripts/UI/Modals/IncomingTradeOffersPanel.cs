@@ -261,7 +261,7 @@ namespace NBAHeadCoach.UI.Modals
             switch (asset.Type)
             {
                 case TradeAssetType.Player:
-                    var player = GameManager.Instance?.GetPlayer(asset.PlayerId);
+                    var player = GameManager.Instance?.PlayerDatabase?.GetPlayer(asset.PlayerId);
                     string name = player?.FullName ?? asset.PlayerId;
                     string salary = asset.Salary >= 1_000_000
                         ? $"${asset.Salary / 1_000_000f:F1}M"
@@ -467,7 +467,7 @@ namespace NBAHeadCoach.UI.Modals
                     .ToList();
                 if (playersWanted.Count > 0)
                 {
-                    var player = GameManager.Instance?.GetPlayer(playersWanted[0].PlayerId);
+                    var player = GameManager.Instance?.PlayerDatabase?.GetPlayer(playersWanted[0].PlayerId);
                     _summaryText.text = $"Wants: {player?.FullName ?? playersWanted[0].PlayerId}";
                 }
                 else

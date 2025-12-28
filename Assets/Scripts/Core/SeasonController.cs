@@ -479,7 +479,7 @@ namespace NBAHeadCoach.Core
         {
             if (string.IsNullOrEmpty(teamId)) return 1f;
 
-            var team = _gameManager.TeamDatabase?.GetTeam(teamId);
+            var team = _gameManager.GetTeam(teamId);
             if (team?.TrainingFacility == null) return 1f;
 
             return team.TrainingFacility.InjuryRecoveryMultiplier;
@@ -549,6 +549,18 @@ namespace NBAHeadCoach.Core
                 .Where(e => e.Type == CalendarEventType.Game && e.Date >= _currentDate && !e.IsCompleted)
                 .OrderBy(e => e.Date)
                 .FirstOrDefault();
+        }
+
+        /// <summary>
+        /// Get the next N upcoming games for the player's team
+        /// </summary>
+        public List<CalendarEvent> GetUpcomingGames(int count = 5)
+        {
+            return _schedule
+                .Where(e => e.Type == CalendarEventType.Game && e.Date >= _currentDate && !e.IsCompleted)
+                .OrderBy(e => e.Date)
+                .Take(count)
+                .ToList();
         }
 
         /// <summary>

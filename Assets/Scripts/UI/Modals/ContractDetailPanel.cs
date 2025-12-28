@@ -281,11 +281,15 @@ namespace NBAHeadCoach.UI.Modals
             {
                 UnifiedRole.HeadCoach => "Head Coach",
                 UnifiedRole.AssistantCoach => "Assistant Coach",
+                UnifiedRole.PositionCoach => "Position Coach",
+                UnifiedRole.Coordinator => "Coordinator",
                 UnifiedRole.OffensiveCoordinator => "Offensive Coordinator",
                 UnifiedRole.DefensiveCoordinator => "Defensive Coordinator",
                 UnifiedRole.Scout => "Scout",
                 UnifiedRole.GeneralManager => "General Manager",
                 UnifiedRole.AssistantGM => "Assistant GM",
+                UnifiedRole.Unemployed => "Unemployed",
+                UnifiedRole.Retired => "Retired",
                 _ => role.ToString()
             };
         }

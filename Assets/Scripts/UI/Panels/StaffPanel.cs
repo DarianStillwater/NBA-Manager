@@ -197,7 +197,7 @@ namespace NBAHeadCoach.UI.Panels
                 _teamNameText.text = team.Name;
 
             // Get budget info from FinanceManager
-            var finance = GameManager.Instance?.FinanceManager?.GetTeamFinance(team.TeamId);
+            var finance = GameManager.Instance?.FinanceManager?.GetTeamFinances(team.TeamId);
             long totalBudget = finance?.StaffBudget ?? 15_000_000;
             long usedBudget = _allStaff.Sum(s => (long)s.AnnualSalary);
 
@@ -509,11 +509,15 @@ namespace NBAHeadCoach.UI.Panels
             {
                 UnifiedRole.HeadCoach => "Head Coach",
                 UnifiedRole.AssistantCoach => "Assistant Coach",
+                UnifiedRole.PositionCoach => "Position Coach",
+                UnifiedRole.Coordinator => "Coordinator",
                 UnifiedRole.OffensiveCoordinator => "Offensive Coordinator",
                 UnifiedRole.DefensiveCoordinator => "Defensive Coordinator",
                 UnifiedRole.Scout => "Scout",
                 UnifiedRole.GeneralManager => "General Manager",
                 UnifiedRole.AssistantGM => "Assistant GM",
+                UnifiedRole.Unemployed => "Unemployed",
+                UnifiedRole.Retired => "Retired",
                 _ => role.ToString()
             };
         }
