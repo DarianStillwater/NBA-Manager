@@ -202,6 +202,9 @@ namespace NBAHeadCoach.Core
             _tradeOfferGenerator = new AITradeOfferGenerator(
                 PlayerDatabase, _salaryCapManager, _tradeEvaluator?.ValueCalculator, _draftPickRegistry);
 
+            // Load initial front office profiles (real NBA GMs as of Dec 2025)
+            _tradeOfferGenerator?.LoadInitialFrontOfficeData();
+
             // Wire up trade execution -> announcements and captain detection
             if (_tradeSystem != null)
             {

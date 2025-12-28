@@ -2,7 +2,7 @@
 
 > **Purpose**: This document is the single source of truth for understanding the entire game design. An AI or developer can reference this without scanning all project files.
 >
-> **Last Updated**: December 2024 (Captain System & Trade AI Update)
+> **Last Updated**: December 2025 (NBA Rules System & Initial Data)
 
 ---
 
@@ -623,6 +623,211 @@ Generates news when trades execute.
 
 ---
 
+## NBA RULES SYSTEM (NEW)
+
+### Overview
+
+Full NBA rules implementation with fouls, free throws, violations, timeouts, and substitution opportunities at dead balls.
+
+### Core Files
+
+| File | Description |
+|------|-------------|
+| `FoulSystem.cs` | **NEW** - Foul determination, team foul tracking, bonus/double bonus logic |
+| `FreeThrowHandler.cs` | **NEW** - Quick-result free throw calculation with clutch modifiers |
+| `ViolationChecker.cs` | **NEW** - Attribute-based violation detection (traveling, backcourt, 3-second) |
+| `TimeoutIntelligence.cs` | **NEW** - AI timeout decision logic with priority system |
+| `RulesEnums.cs` | **NEW** - FoulType, ViolationType, FreeThrowScenario enums |
+
+### Foul System
+
+**Foul Types**:
+- Personal fouls (shooting vs non-shooting)
+- Loose ball fouls
+- Offensive fouls
+- Technical fouls (volatile players, low composure)
+- Flagrant 1 & 2 (clutch time only, 2% review rate)
+
+**Team Foul Tracking**:
+- 5+ team fouls: BONUS (2 free throws on non-shooting fouls)
+- 10+ team fouls: DOUBLE BONUS
+- Team fouls reset each quarter
+
+**Foul Probability Formula**:
+```
+Base: 18% (~22 fouls/team/game)
+Modifiers:
+  - DefensiveIQ: ±10%
+  - Composure: ±10%
+  - CloseoutControl: ±12.5%
+  - DefensiveGambling: +20%
+  - Aggression: ±12.5%
+  - Rim attacks: +10%
+```
+
+### Free Throw System
+
+**Quick Result Mode**:
+- Uses shooter's FreeThrow attribute (0-100)
+- Clutch modifier from Clutch attribute
+- "Icing" penalty if timeout just called
+- Returns made/attempts + play-by-play text
+
+**Free Throw Scenarios**:
+- Two shots (non-shooting bonus foul)
+- Two shots (shooting foul on 2-point attempt)
+- Three shots (shooting foul on 3-point attempt)
+- One shot (and-one after made basket)
+- Technical (1 shot, retain possession)
+- Flagrant (2 shots, retain possession)
+
+### Violation System
+
+**Attribute-Based Probabilities**:
+| Violation | Base Chance | Key Attribute |
+|-----------|-------------|---------------|
+| Traveling | ~0.125% | BallHandling |
+| Backcourt | ~0.0625% | BasketballIQ |
+| 3-Second | ~0.1% | BasketballIQ (centers/PFs) |
+
+Violations count as turnovers in statistics.
+
+### AI Timeout Intelligence
+
+**Priority System**:
+| Priority | Trigger | Reason |
+|----------|---------|--------|
+| 100 | 8+ unanswered points | StopRun |
+| 90 | Clutch FTs, close game | IcingShooter |
+| 80 | Last 2 min, trailing | AdvanceBall |
+| 70 | Clutch, opponent just scored | DrawUpPlay |
+| 60 | 2+ starters below 55% energy | RestPlayers |
+| 50 | End of half, use-or-lose | Mandatory |
+
+### Dead Ball Detection
+
+Dead balls trigger at:
+- Fouls (any type)
+- Timeouts
+- Out of bounds turnovers
+- Made baskets (before inbound)
+
+At dead balls:
+- AI timeout check runs
+- Substitution opportunity offered to player
+- Foul trouble/fatigue alerts displayed
+
+### Foul Trouble Indicators (No Visible Attributes)
+
+| Situation | Display Text |
+|-----------|--------------|
+| 5 fouls | "FOUL TROUBLE: One more and he's out!" |
+| 3+ fouls in 1st half | "FOUL TROUBLE: Heavy foul load early" |
+| 4 fouls in Q3 | "FOUL TROUBLE: Walking a tightrope" |
+| 4 fouls in Q4 | "FOUL TROUBLE: In danger of fouling out" |
+
+---
+
+## INITIAL DATA SYSTEM (NEW)
+
+### Overview
+
+Real-world NBA data as of December 2025 for GM profiles and draft pick ownership, loaded at game initialization.
+
+### GM Profiles
+
+**File**: `Assets/Resources/Data/initial_front_offices.json`
+
+Contains all 30 NBA GM profiles with:
+- Name, title, years in position
+- Competence rating (Elite, Good, Average, Poor, Terrible)
+- Trade evaluation/negotiation/scouting skills (0-100)
+- Trade aggression and team situation
+- Behavioral traits (patience, risk tolerance, leak tendency)
+
+**Competence Distribution**:
+| Rating | Count | Example GMs |
+|--------|-------|-------------|
+| Elite | 5 | Sam Presti (OKC), Brad Stevens (BOS), Trajan Langdon (DET) |
+| Good | 10 | Mike Dunleavy Jr. (GSW), Jon Horst (MIL), Zach Kleiman (MEM) |
+| Average | 10 | Various new/unproven GMs |
+| Poor | 4 | Teams with recent struggles |
+| Terrible | 1 | Reserved for historically bad decisions |
+
+**Team Situations** (December 2025):
+| Situation | Teams |
+|-----------|-------|
+| Championship | OKC, BOS, CLE, DEN |
+| Contending | MIL, NYK, GSW, LAL, MEM, IND, ORL, MIN |
+| PlayoffBubble | MIA, PHI, PHX, DAL, SAC, ATL, CHI |
+| Rebuilding | DET, HOU, SAS, UTA, POR, WAS, CHA |
+| StuckInMiddle | TOR, BKN, NOP, LAC |
+
+### Draft Pick Registry
+
+**File**: `Assets/Resources/Data/initial_draft_picks.json`
+
+Contains all traded first-round picks with protections and swap rights.
+
+**Statistics** (December 2025):
+- **38 traded first-round picks** (2025-2031)
+- **14 swap rights** (2026-2030)
+
+**Pick-Rich Teams**:
+| Team | Incoming Picks | Notable Assets |
+|------|----------------|----------------|
+| OKC | ~12 first-rounders | PHI 2026, LAC 2026/2028/2030, HOU 2027, DEN 2027/2029 |
+| UTA | ~8 first-rounders | CLE 2027/2029, LAL 2027, MIN 2027/2029 |
+| BKN | ~8 first-rounders | NYK 2027/2029/2031, PHX 2027/2029, DAL 2029 |
+| MEM | ~5 first-rounders | ORL 2028/2030, PHX 2026 swap |
+
+**Pick-Poor Teams**:
+- Cleveland (multiple to Utah from Mitchell trade)
+- Denver (picks to OKC)
+- LA Clippers (to OKC)
+- New York (to Brooklyn from Bridges trade)
+
+### Protection Types
+
+| Type | Description | Example |
+|------|-------------|---------|
+| TopN | Protected if pick is in top N | Top-4 protected |
+| Lottery | Protected if in lottery (1-14) | Lottery protected |
+| Range | Protected if in specific range | 15-30 protected |
+
+### Final Conveyance Types
+
+| Type | Description |
+|------|-------------|
+| ConveyUnprotected | Becomes unprotected in final year |
+| BecomeSecondRound | Converts to second-round pick if never conveys |
+| Void | Pick disappears if never conveys |
+
+### Data Classes
+
+| File | Description |
+|------|-------------|
+| `InitialFrontOfficeData.cs` | Serialization classes for GM profiles |
+| `InitialDraftPickData.cs` | Serialization classes for draft picks |
+
+### Integration
+
+**GM Data Loading**:
+```csharp
+// In AITradeOfferGenerator.LoadInitialFrontOfficeData()
+var data = JsonUtility.FromJson<InitialFrontOfficeData>(jsonAsset.text);
+foreach (var entry in data.frontOffices)
+    RegisterFrontOffice(entry.ToFrontOfficeProfile());
+```
+
+**Draft Pick Loading**:
+```csharp
+// In DraftPickRegistry.InitializeForSeason() → LoadInitialDraftData()
+// Applies traded picks, protections, and swap rights from JSON
+```
+
+---
+
 ## MORALE & CHEMISTRY SYSTEM (ENHANCED)
 
 ### Overview
@@ -817,6 +1022,17 @@ Procedural name generation using Markov chains with realistic NBA demographics.
 | Individual Conversations | One-on-one talks with various approaches |
 | Enhanced Pair Chemistry | On-court bonuses for high/low chemistry pairs |
 | **Former Player Careers** | **NEW** - Coaching/scouting/GM career paths |
+| **NBA Rules System** | **NEW** - Full foul, free throw, violation, timeout implementation |
+| FoulSystem | Personal, shooting, loose ball, offensive, technical, flagrant fouls |
+| FreeThrowHandler | Quick-result FT calculation with clutch modifiers |
+| ViolationChecker | Traveling, backcourt, 3-second violations |
+| TimeoutIntelligence | AI timeout decision with priority system |
+| Team Foul Tracking | Bonus/double bonus with quarter reset |
+| Dead Ball Detection | Substitution opportunities at fouls/timeouts/scores |
+| **Initial Data System** | **NEW** - Real-world December 2025 NBA data |
+| GM Profiles | 30 NBA GM profiles with competence, skills, trade tendencies |
+| Draft Pick Registry | 38 traded picks, 14 swap rights (2025-2031) |
+| Automatic Loading | Data loaded during game initialization |
 
 ### Outstanding Issues / TODOs
 
@@ -1035,6 +1251,33 @@ GetInsights(aiProfileId) → List<string>
 ---
 
 ## CHANGE LOG
+
+### December 2025 - NBA Rules System & Initial Data
+
+- **NBA Rules System** - Full NBA rules implementation for match simulation
+  - `FoulSystem.cs` - Team foul tracking, bonus/double bonus, all foul types
+  - `FreeThrowHandler.cs` - Quick-result FT with clutch/icing modifiers
+  - `ViolationChecker.cs` - Attribute-based traveling, backcourt, 3-second
+  - `TimeoutIntelligence.cs` - AI timeout decisions (stop run, icing, advance ball)
+  - `RulesEnums.cs` - FoulType, ViolationType, FreeThrowScenario enums
+  - Dead ball detection with substitution opportunities
+  - Enhanced `MatchSimulationController.cs` with foul system integration
+  - Enhanced `PossessionSimulator.cs` with foul/violation checks
+  - Enhanced `GameSimulator.cs` with team foul reset per quarter
+- **Initial Data System** - Real-world NBA data as of December 2025
+  - `initial_front_offices.json` - All 30 NBA GM profiles
+    - Sam Presti (OKC), Brad Stevens (BOS), Rob Pelinka (LAL) as Elite
+    - Competence ratings, trade tendencies, skills (0-100)
+    - Team situations (Championship, Contending, Rebuilding, etc.)
+  - `initial_draft_picks.json` - Complete traded pick registry
+    - 38 traded first-round picks (2025-2031)
+    - 14 swap rights (2026-2030)
+    - Protection types: TopN, Lottery, Range
+    - Conveyance types: ConveyUnprotected, BecomeSecondRound, Void
+  - `InitialFrontOfficeData.cs` - GM profile serialization classes
+  - `InitialDraftPickData.cs` - Draft pick serialization classes
+  - Enhanced `DraftPickRegistry.cs` with `LoadInitialDraftData()`
+  - Enhanced `AITradeOfferGenerator.cs` with `LoadInitialFrontOfficeData()`
 
 ### December 2024 - Captain System & Trade AI
 - **Captain System** - Designate team captain with morale influence

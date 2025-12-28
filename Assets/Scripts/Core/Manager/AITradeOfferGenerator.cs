@@ -46,6 +46,58 @@ namespace NBAHeadCoach.Core.Manager
         }
 
         /// <summary>
+        /// Load initial front office profiles from JSON resource.
+        /// Should be called during game initialization.
+        /// </summary>
+        public void LoadInitialFrontOfficeData()
+        {
+            var jsonAsset = Resources.Load<TextAsset>("Data/initial_front_offices");
+            if (jsonAsset == null)
+            {
+                Debug.LogWarning("[AITradeOfferGenerator] Could not load initial_front_offices.json - using default profiles");
+                return;
+            }
+
+            try
+            {
+                var data = JsonUtility.FromJson<InitialFrontOfficeData>(jsonAsset.text);
+                if (data?.frontOffices == null)
+                {
+                    Debug.LogWarning("[AITradeOfferGenerator] initial_front_offices.json is empty or invalid");
+                    return;
+                }
+
+                foreach (var entry in data.frontOffices)
+                {
+                    var profile = entry.ToFrontOfficeProfile();
+                    RegisterFrontOffice(profile);
+                }
+
+                Debug.Log($"[AITradeOfferGenerator] Loaded {data.frontOffices.Count} front office profiles (as of {data.dataAsOf})");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[AITradeOfferGenerator] Error parsing initial_front_offices.json: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Get front office profile for a team.
+        /// </summary>
+        public FrontOfficeProfile GetFrontOffice(string teamId)
+        {
+            return _frontOffices.TryGetValue(teamId, out var profile) ? profile : null;
+        }
+
+        /// <summary>
+        /// Get all registered front office profiles.
+        /// </summary>
+        public IReadOnlyDictionary<string, FrontOfficeProfile> GetAllFrontOffices()
+        {
+            return _frontOffices;
+        }
+
+        /// <summary>
         /// Set the player's team ID.
         /// </summary>
         public void SetPlayerTeamId(string teamId)
