@@ -30,3 +30,9 @@ ExportedObj/
 
 # sysinfo
 sysinfo.txt
+
+# IDE configs
+.augment/
+.claude/
+.vscode/
+.windsurf/
