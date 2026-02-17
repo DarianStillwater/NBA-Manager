@@ -74,6 +74,9 @@ namespace NBAHeadCoach.Core.Data
         public int TimesSuccessful = 0;                         // Resulted in good shot/score
         public float SuccessRate => TimesRun > 0 ? (float)TimesSuccessful / TimesRun : 0f;
 
+        /// <summary>How well the team knows this play (0-100). Increases with practice.</summary>
+        public float Familiarity = 50f;
+
         // ==================== COMPUTED PROPERTIES ====================
 
         public bool IsAfterTimeout => Situation == PlaySituation.AfterTimeout;

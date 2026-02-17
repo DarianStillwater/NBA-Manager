@@ -148,7 +148,9 @@ namespace NBAHeadCoach.Core.Manager
         [SerializeField] private List<FrontOfficeProgressionData> foProgressions = new List<FrontOfficeProgressionData>();
 
         [Header("Settings")]
-        [Header("Settings")]
+        [SerializeField] private int yearsBeforeFiringEligible = 3;
+        [SerializeField] private int warningsBeforeFired = 2;
+        [SerializeField] private float performanceThresholdForFiring = 35f;
         [SerializeField, Range(0f, 1f)] private float midSeasonFiringChance = 0.30f;
 
         // Events
@@ -619,7 +621,7 @@ namespace NBAHeadCoach.Core.Manager
                         var unifiedProfile = PersonnelManager.Instance?.GetProfile(fpGM.FOProgression.UnifiedProfileId);
                         if (unifiedProfile != null)
                         {
-                            PersonnelManager.Instance?.FirePersonnel(unifiedProfile.ProfileId);
+                            PersonnelManager.Instance?.FirePersonnel(unifiedProfile.ProfileId, "Fired from GM position");
                         }
                     }
 

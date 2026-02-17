@@ -91,12 +91,12 @@ namespace NBAHeadCoach.Core.Manager
                 {
                     PlayerId = player.PlayerId,
                     PlayerName = player.FullName,
-                    ContractType = player.Contract?.Type ?? ContractType.Standard,
-                    IsGuaranteed = player.Contract?.IsGuaranteed ?? false,
+                    ContractType = player.CurrentContract?.Type ?? ContractType.Standard,
+                    IsGuaranteed = player.CurrentContract?.IsFullyGuaranteed ?? false,
                     CampGrade = CalculateInitialCampGrade(player),
                     PracticePerformance = 50f,
                     InjuryRisk = CalculateInjuryRisk(player),
-                    IsCompetingForSpot = !player.Contract?.IsGuaranteed ?? true
+                    IsCompetingForSpot = !(player.CurrentContract?.IsFullyGuaranteed ?? false)
                 };
             }
 
@@ -366,7 +366,7 @@ namespace NBAHeadCoach.Core.Manager
             if (player.Age > 32) baseRisk += 5f;
             if (player.Age > 35) baseRisk += 10f;
 
-            if (player.InjuryHistory != null && player.InjuryHistory.Count > 2)
+            if (player.InjuryHistoryList != null && player.InjuryHistoryList.Count > 2)
                 baseRisk += 10f;
 
             return Mathf.Clamp(baseRisk, 0, 50);
@@ -404,20 +404,20 @@ namespace NBAHeadCoach.Core.Manager
             switch (focus)
             {
                 case TrainingFocus.Offense:
-                    player.InsideScoring = Math.Min(99, player.InsideScoring + gain);
-                    player.MidRange = Math.Min(99, player.MidRange + gain);
+                    player.Finishing_Rim = (int)Math.Min(99, player.Finishing_Rim + gain);
+                    player.Shot_MidRange = (int)Math.Min(99, player.Shot_MidRange + gain);
                     break;
                 case TrainingFocus.Defense:
-                    player.PerimeterDefense = Math.Min(99, player.PerimeterDefense + gain);
-                    player.InteriorDefense = Math.Min(99, player.InteriorDefense + gain);
+                    player.Defense_Perimeter = (int)Math.Min(99, player.Defense_Perimeter + gain);
+                    player.Defense_Interior = (int)Math.Min(99, player.Defense_Interior + gain);
                     break;
                 case TrainingFocus.Conditioning:
-                    player.Stamina = Math.Min(99, player.Stamina + gain);
-                    player.Speed = Math.Min(99, player.Speed + gain * 0.5f);
+                    player.Stamina = (int)Math.Min(99, player.Stamina + gain);
+                    player.Speed = (int)Math.Min(99, player.Speed + gain * 0.5f);
                     break;
                 case TrainingFocus.Shooting:
-                    player.ThreePoint = Math.Min(99, player.ThreePoint + gain);
-                    player.FreeThrow = Math.Min(99, player.FreeThrow + gain);
+                    player.Shot_Three = (int)Math.Min(99, player.Shot_Three + gain);
+                    player.FreeThrow = (int)Math.Min(99, player.FreeThrow + gain);
                     break;
             }
         }
@@ -485,7 +485,7 @@ namespace NBAHeadCoach.Core.Manager
                 return "Poor camp performance";
             if (player.Age > 34)
                 return "Veteran with declining skills";
-            if (status.ContractType == ContractType.TrainingCamp)
+            if (status.ContractType == ContractType.Exhibit10)
                 return "Non-guaranteed camp contract";
 
             return "Roster depth consideration";

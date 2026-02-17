@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using NBAHeadCoach.Core.Data;
+using NBAHeadCoach.Core.Simulation;
+using GameResult = NBAHeadCoach.Core.Simulation.GameResult;
 
 namespace NBAHeadCoach.Core.Manager
 {
@@ -104,7 +106,7 @@ namespace NBAHeadCoach.Core.Manager
                     ScoreDifference = scoreDiff,
                     OpponentName = opponent?.Name ?? "Opponent",
                     IsPlayoff = GameManager.Instance?.CurrentState == GameState.Match &&
-                                GameManager.Instance?.PlayoffManager?.IsPlayoffActive == true
+                                GameManager.Instance?.PlayoffManager?.IsPlayoffsActive == true
                 }
             };
 

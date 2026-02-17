@@ -136,6 +136,7 @@ namespace NBAHeadCoach.Core.Data
         /// Re-injury risk modifier (+25% per previous injury to same body part).
         /// </summary>
         public float ReInjuryRiskModifier => TimesInjured * 0.25f;
+        public int TotalDaysMissed;
     }
 
     /// <summary>

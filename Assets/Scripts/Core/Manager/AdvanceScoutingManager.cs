@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using NBAHeadCoach.Core.Data;
+using NBAHeadCoach.Core.Simulation;
+using GameResult = NBAHeadCoach.Core.Simulation.GameResult;
 
 namespace NBAHeadCoach.Core.Manager
 {
@@ -171,16 +173,17 @@ namespace NBAHeadCoach.Core.Manager
             if (boxScore != null)
             {
                 // Track shooting tendencies
-                int totalFGA = boxScore.AllPlayerStats.Sum(s => s.FieldGoalsAttempted);
-                int threePtAttempts = boxScore.AllPlayerStats.Sum(s => s.ThreePointersAttempted);
+                var allStats = boxScore.PlayerStats.Values;
+                int totalFGA = allStats.Sum(s => s.FieldGoalsAttempted);
+                int threePtAttempts = allStats.Sum(s => s.ThreePointersAttempted);
                 observation.ThreePointRate = totalFGA > 0 ? (float)threePtAttempts / totalFGA : 0;
 
                 // Track pace
-                observation.EstimatedPossessions = boxScore.AllPlayerStats.Sum(s => s.FieldGoalsAttempted +
+                observation.EstimatedPossessions = allStats.Sum(s => s.FieldGoalsAttempted +
                     (int)(s.FreeThrowsAttempted * 0.44f) + s.Turnovers);
 
                 // Track top scorers
-                var topScorer = boxScore.AllPlayerStats
+                var topScorer = allStats
                     .OrderByDescending(s => s.Points)
                     .FirstOrDefault();
                 if (topScorer != null)
@@ -226,8 +229,8 @@ namespace NBAHeadCoach.Core.Manager
             // Aggregate from game observations
             if (assignment.GameNotes.Count > 0)
             {
-                tendencies.ThreePointRate = assignment.GameNotes.Average(g => g.ThreePointRate);
-                tendencies.AveragePossessions = assignment.GameNotes.Average(g => g.EstimatedPossessions);
+                tendencies.ThreePointRate = (float)assignment.GameNotes.Average(g => g.ThreePointRate);
+                tendencies.AveragePossessions = (float)assignment.GameNotes.Average(g => g.EstimatedPossessions);
 
                 // Classify pace
                 if (tendencies.AveragePossessions > 105)
@@ -258,7 +261,7 @@ namespace NBAHeadCoach.Core.Manager
 
             if (assignment.GameNotes.Count > 0)
             {
-                float avgPointsAllowed = assignment.GameNotes.Average(g => g.TheirScore);
+                float avgPointsAllowed = (float)assignment.GameNotes.Average(g => g.TheirScore);
 
                 if (avgPointsAllowed < 105)
                     tendencies.DefensiveRating = "Elite defense. Be patient on offense.";
@@ -268,7 +271,7 @@ namespace NBAHeadCoach.Core.Manager
                     tendencies.DefensiveRating = "Below average defense. Attack aggressively.";
 
                 // Estimate scheme based on results
-                float avgThreeRate = assignment.GameNotes.Average(g => g.ThreePointRate);
+                float avgThreeRate = (float)assignment.GameNotes.Average(g => g.ThreePointRate);
                 if (avgThreeRate > 0.38f)
                     tendencies.SchemeNotes = "They allow a lot of threes. Likely switching or drop coverage.";
                 else
@@ -287,7 +290,7 @@ namespace NBAHeadCoach.Core.Manager
 
             // Find their best players
             var topPlayers = opponent.Roster
-                .OrderByDescending(p => p.GetOverallRating())
+                .OrderByDescending(p => p.OverallRating)
                 .Take(3)
                 .ToList();
 
@@ -298,8 +301,8 @@ namespace NBAHeadCoach.Core.Manager
                     PlayerId = player.PlayerId,
                     PlayerName = player.DisplayName,
                     Position = player.Position.ToString(),
-                    ThreatLevel = player.GetOverallRating() >= 85 ? "Primary" :
-                                 player.GetOverallRating() >= 75 ? "Secondary" : "Tertiary"
+                    ThreatLevel = player.OverallRating >= 85 ? "Primary" :
+                                 player.OverallRating >= 75 ? "Secondary" : "Tertiary"
                 };
 
                 // Generate scouting notes based on attributes
@@ -341,7 +344,7 @@ namespace NBAHeadCoach.Core.Manager
                 strategies.Add("Help defense on drives, contest at the rim");
             if (player.BallHandling >= 80)
                 strategies.Add("Force him to his weak hand");
-            if (player.Playmaking_Passing >= 80)
+            if (player.Passing >= 80)
                 strategies.Add("Stay in passing lanes when he has the ball");
 
             if (strategies.Count == 0)

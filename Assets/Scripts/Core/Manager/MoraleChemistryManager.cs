@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using NBAHeadCoach.Core.Data;
+using NBAHeadCoach.Core.Simulation;
+using GameResult = NBAHeadCoach.Core.Simulation.GameResult;
 
 namespace NBAHeadCoach.Core.Manager
 {
@@ -117,7 +119,7 @@ namespace NBAHeadCoach.Core.Manager
 
         private PlayerRole DetermineExpectedRole(Player player)
         {
-            int overall = player.GetOverallRating();
+            int overall = player.OverallRating;
             if (overall >= 85) return PlayerRole.Starter;
             if (overall >= 75) return PlayerRole.SixthMan;
             if (overall >= 65) return PlayerRole.Rotation;
@@ -294,7 +296,7 @@ namespace NBAHeadCoach.Core.Manager
                 }
 
                 // DNP-CD penalty (Did Not Play - Coach's Decision)
-                if (stats.MinutesPlayed == 0 && !player.IsInjured)
+                if (stats.Minutes == 0 && !player.IsInjured)
                 {
                     var personality = _personalityManager.GetPersonality(player.PlayerId);
                     if (personality?.ExpectedRole <= PlayerRole.Rotation)
@@ -336,7 +338,7 @@ namespace NBAHeadCoach.Core.Manager
                 bool hasBallHog = personality.HasTrait(PersonalityTrait.BallHog);
 
                 // Ball hogs need at least 20% usage to be happy
-                if (hasBallHog && usageRate < 0.15f && stats.MinutesPlayed >= 20)
+                if (hasBallHog && usageRate < 0.15f && stats.Minutes >= 20)
                 {
                     int change = _personalityManager.ApplyPlayerMoraleEvent(
                         player.PlayerId, MoraleEvent.LowUsage);
@@ -718,11 +720,11 @@ namespace NBAHeadCoach.Core.Manager
 
             // Simple projection based on top 8 player ratings
             var topPlayers = team.Roster
-                .OrderByDescending(p => p.GetOverallRating())
+                .OrderByDescending(p => p.OverallRating)
                 .Take(8)
                 .ToList();
 
-            float avgRating = topPlayers.Average(p => p.GetOverallRating());
+            float avgRating = (float)topPlayers.Average(p => p.OverallRating);
 
             // Convert rating to win pct (60 rating = 0.2, 80 rating = 0.7)
             return Mathf.Clamp01((avgRating - 50f) / 40f);
@@ -901,7 +903,7 @@ namespace NBAHeadCoach.Core.Manager
             int moraleEffect = personality.ContractSatisfaction / 10; // -5 to +5
             if (moraleEffect != 0)
             {
-                personality.Morale = Mathf.Clamp(personality.Morale + moraleEffect / 30f, 0, 100);
+                personality.Morale = (int)Mathf.Clamp(personality.Morale + moraleEffect / 30f, 0, 100);
             }
         }
 
@@ -1255,8 +1257,6 @@ namespace NBAHeadCoach.Core.Manager
 
             return bonus;
         }
-
-        #endregion
 
         #endregion
     }

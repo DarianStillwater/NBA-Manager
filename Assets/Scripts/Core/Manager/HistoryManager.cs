@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using NBAHeadCoach.Core.Data;
+using NBAHeadCoach.Core.Simulation;
 
 namespace NBAHeadCoach.Core.Manager
 {
@@ -178,7 +179,7 @@ namespace NBAHeadCoach.Core.Manager
 
             var franchise = _franchiseRecords[teamId];
 
-            foreach (var playerStats in boxScore.PlayerStats)
+            foreach (var playerStats in boxScore.PlayerStats.Values)
             {
                 var playerId = playerStats.PlayerId;
 
@@ -188,7 +189,7 @@ namespace NBAHeadCoach.Core.Manager
                 CheckSingleGameRecord(ref franchise.SingleGameAssists, "Assists", year, playerId, teamId, playerStats.Assists);
                 CheckSingleGameRecord(ref franchise.SingleGameSteals, "Steals", year, playerId, teamId, playerStats.Steals);
                 CheckSingleGameRecord(ref franchise.SingleGameBlocks, "Blocks", year, playerId, teamId, playerStats.Blocks);
-                CheckSingleGameRecord(ref franchise.SingleGameThrees, "3PM", year, playerId, teamId, playerStats.ThreePM);
+                CheckSingleGameRecord(ref franchise.SingleGameThrees, "3PM", year, playerId, teamId, playerStats.ThreePointMade);
 
                 // Check league records too
                 CheckSingleGameRecord(ref _leagueRecords.SingleGamePoints, "Points (League)", year, playerId, teamId, playerStats.Points);
@@ -209,7 +210,7 @@ namespace NBAHeadCoach.Core.Manager
             }
 
             // Team single-game records
-            int teamPoints = boxScore.IsHome ? boxScore.HomeScore : boxScore.AwayScore;
+            int teamPoints = teamId == boxScore.HomeTeamId ? boxScore.HomeScore : boxScore.AwayScore;
             CheckSingleGameRecord(ref franchise.TeamHighestScore, "Team Points", year, null, teamId, teamPoints);
         }
 

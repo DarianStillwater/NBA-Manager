@@ -4,6 +4,13 @@ using UnityEngine;
 
 namespace NBAHeadCoach.Core.Data
 {
+    public enum MarketSize
+    {
+        Small,
+        Medium,
+        Large
+    }
+
     /// <summary>
     /// Team data including roster, strategy, and performance tracking.
     /// </summary>
@@ -19,11 +26,19 @@ namespace NBAHeadCoach.Core.Data
         public string SecondaryColor;
         public string ArenaName;
         public int ArenaCapacity;
+        public int PremiumSeats;
+        public MarketSize MarketSize = MarketSize.Medium;
+
+        // ==================== STAFF ====================
+        public string HeadCoachId;
 
         // ==================== ROSTER ====================
         public List<string> RosterPlayerIds = new List<string>(); // Up to 15 players
         public string[] StartingLineupIds = new string[5];        // 5 starters by position index
         
+        // ==================== FACILITIES ====================
+        public TrainingFacility TrainingFacility;
+
         // ==================== STRATEGY ====================
         public TeamStrategy OffensiveStrategy = new TeamStrategy();
         public TeamStrategy DefensiveStrategy = new TeamStrategy();
@@ -49,7 +64,8 @@ namespace NBAHeadCoach.Core.Data
             get => Nickname;
             set => Nickname = value;
         }
-        public float WinPercentage => (Wins + Losses) > 0 ? (float)Wins / (Wins + Losses) : 0f;
+        public int TotalGames => Wins + Losses;
+        public float WinPercentage => TotalGames > 0 ? (float)Wins / TotalGames : 0f;
         public string Arena => ArenaName;  // Alias for UI compatibility
 
         // ==================== UI HELPER PROPERTIES ====================

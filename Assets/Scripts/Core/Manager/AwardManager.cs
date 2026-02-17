@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using NBAHeadCoach.Core.Data;
+using NBAHeadCoach.Core.Simulation;
 
 namespace NBAHeadCoach.Core.Manager
 {
@@ -28,38 +29,10 @@ namespace NBAHeadCoach.Core.Manager
             {
                 if (p.CurrentSeasonStats != null && p.CurrentSeasonStats.GamesPlayed >= 20)
                 {
-                    _previousSeasonStats[p.PlayerId] = CloneStats(p.CurrentSeasonStats);
+                    _previousSeasonStats[p.PlayerId] = PlayerSeasonStats.FromSeasonStats(p.PlayerId, p.CurrentSeasonStats);
                 }
             }
             Debug.Log($"[AwardManager] Stored previous season stats for {_previousSeasonStats.Count} players");
-        }
-
-        private static PlayerSeasonStats CloneStats(PlayerSeasonStats original)
-        {
-            return new PlayerSeasonStats
-            {
-                PlayerId = original.PlayerId,
-                Season = original.Season,
-                GamesPlayed = original.GamesPlayed,
-                GamesStarted = original.GamesStarted,
-                Minutes = original.Minutes,
-                Points = original.Points,
-                Rebounds = original.Rebounds,
-                Assists = original.Assists,
-                Steals = original.Steals,
-                Blocks = original.Blocks,
-                Turnovers = original.Turnovers,
-                FGM = original.FGM,
-                FGA = original.FGA,
-                ThreePM = original.ThreePM,
-                ThreePA = original.ThreePA,
-                FTM = original.FTM,
-                FTA = original.FTA,
-                OffensiveRebounds = original.OffensiveRebounds,
-                DefensiveRebounds = original.DefensiveRebounds,
-                PersonalFouls = original.PersonalFouls,
-                PlusMinus = original.PlusMinus
-            };
         }
 
         /// <summary>
@@ -426,9 +399,9 @@ namespace NBAHeadCoach.Core.Manager
                 {
                     if (!finalsStats.ContainsKey(p.PlayerId)) return 0f;
                     var stats = finalsStats[p.PlayerId];
-                    return (stats.Points / Math.Max(1, stats.GamesPlayed)) * 1.5f +
-                           (stats.Rebounds / Math.Max(1, stats.GamesPlayed)) * 1.0f +
-                           (stats.Assists / Math.Max(1, stats.GamesPlayed)) * 1.2f;
+                    return stats.Points * 1.5f +
+                           stats.Rebounds * 1.0f +
+                           stats.Assists * 1.2f;
                 }).FirstOrDefault();
             }
             else
@@ -628,5 +601,88 @@ namespace NBAHeadCoach.Core.Manager
         public List<Player> AllNBAThird = new List<Player>();
         public List<Player> AllDefenseFirst = new List<Player>();
         public List<Player> AllDefenseSecond = new List<Player>();
+    }
+
+    /// <summary>
+    /// Cached player season stats snapshot used for MIP comparison across seasons.
+    /// </summary>
+    [Serializable]
+    public class PlayerSeasonStats
+    {
+        public string PlayerId;
+        public int Season;
+        public int GamesPlayed;
+        public int GamesStarted;
+        public int Minutes;
+        public int Points;
+        public int Rebounds;
+        public int Assists;
+        public int Steals;
+        public int Blocks;
+        public int Turnovers;
+        public int FGM;
+        public int FGA;
+        public int ThreePM;
+        public int ThreePA;
+        public int FTM;
+        public int FTA;
+        public int OffensiveRebounds;
+        public int DefensiveRebounds;
+        public int PersonalFouls;
+        public int PlusMinus;
+
+        // Advanced
+        public float PER;
+        public float WinShares;
+        public float DefensiveBPM;
+        public float DefensiveWinShares;
+
+        // Computed per-game
+        public float PPG => GamesPlayed > 0 ? (float)Points / GamesPlayed : 0;
+        public float RPG => GamesPlayed > 0 ? (float)Rebounds / GamesPlayed : 0;
+        public float APG => GamesPlayed > 0 ? (float)Assists / GamesPlayed : 0;
+        public float SPG => GamesPlayed > 0 ? (float)Steals / GamesPlayed : 0;
+        public float BPG => GamesPlayed > 0 ? (float)Blocks / GamesPlayed : 0;
+
+        // Aliases for AllStarManager compatibility
+        public float PointsPerGame => PPG;
+        public float ReboundsPerGame => RPG;
+        public float AssistsPerGame => APG;
+        public float StealsPerGame => SPG;
+        public float BlocksPerGame => BPG;
+        public float ThreePointPercentage => ThreePA > 0 ? (float)ThreePM / ThreePA : 0;
+
+        public static PlayerSeasonStats FromSeasonStats(string playerId, SeasonStats stats)
+        {
+            if (stats == null) return null;
+            return new PlayerSeasonStats
+            {
+                PlayerId = playerId,
+                Season = stats.Year,
+                GamesPlayed = stats.GamesPlayed,
+                GamesStarted = stats.GamesStarted,
+                Minutes = stats.MinutesPlayed,
+                Points = stats.Points,
+                Rebounds = stats.TotalRebounds,
+                Assists = stats.Assists,
+                Steals = stats.Steals,
+                Blocks = stats.Blocks,
+                Turnovers = stats.Turnovers,
+                FGM = stats.FG_Made,
+                FGA = stats.FG_Attempts,
+                ThreePM = stats.ThreeP_Made,
+                ThreePA = stats.ThreeP_Attempts,
+                FTM = stats.FT_Made,
+                FTA = stats.FT_Attempts,
+                OffensiveRebounds = stats.OffensiveRebounds,
+                DefensiveRebounds = stats.DefensiveRebounds,
+                PersonalFouls = stats.PersonalFouls,
+                PlusMinus = stats.TotalPlusMinus,
+                PER = stats.PER,
+                WinShares = stats.WinShares,
+                DefensiveBPM = stats.DefensiveBPM,
+                DefensiveWinShares = stats.DefensiveWinShares
+            };
+        }
     }
 }

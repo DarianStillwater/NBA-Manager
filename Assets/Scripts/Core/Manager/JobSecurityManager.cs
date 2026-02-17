@@ -229,22 +229,22 @@ namespace NBAHeadCoach.Core.Manager
             switch (newStatus)
             {
                 case JobSecurityStatus.Uncertain:
-                    SendOwnerMessage(career.ProfileId, owner, newStatus,
+                    SendOwnerMessage(profile.ProfileId, owner, newStatus,
                         "Concerns About Our Direction",
                         GenerateUncertainMessage(owner, wins, losses),
                         true);
                     break;
 
                 case JobSecurityStatus.HotSeat:
-                    SendOwnerMessage(career.ProfileId, owner, newStatus,
+                    SendOwnerMessage(profile.ProfileId, owner, newStatus,
                         "We Need to Talk",
                         GenerateHotSeatMessage(owner, wins, losses),
                         true);
-                    OnHotSeatWarning?.Invoke(career, GenerateHotSeatMessage(owner, wins, losses));
+                    OnHotSeatWarning?.Invoke(profile, GenerateHotSeatMessage(owner, wins, losses));
                     break;
 
                 case JobSecurityStatus.FinalWarning:
-                    SendOwnerMessage(career.ProfileId, owner, newStatus,
+                    SendOwnerMessage(profile.ProfileId, owner, newStatus,
                         "Final Warning",
                         GenerateFinalWarningMessage(owner, wins, losses),
                         true);

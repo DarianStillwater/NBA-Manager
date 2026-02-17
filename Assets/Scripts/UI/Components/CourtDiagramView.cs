@@ -243,7 +243,7 @@ namespace NBAHeadCoach.UI.Components
 
             // Get player info
             var player = GameManager.Instance?.PlayerDatabase?.GetPlayer(playerId);
-            int jerseyNumber = player?.JerseyNumber ?? 0;
+            int jerseyNumber = int.TryParse(player?.JerseyNumber, out var jn) ? jn : 0;
             string displayName = player?.LastName ?? playerId;
 
             dotUI.Initialize(playerId, jerseyNumber, displayName, isHome ? _homeTeamColor : _awayTeamColor);

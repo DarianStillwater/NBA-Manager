@@ -460,14 +460,14 @@ namespace NBAHeadCoach.Core
         /// </summary>
         private bool IsBackToBackGame(DateTime currentDate)
         {
-            var calendar = _gameManager.SeasonController?.Calendar;
-            if (calendar == null) return false;
+            var schedule = _gameManager.SeasonController?.Schedule;
+            if (schedule == null) return false;
 
             // Check if there was a game yesterday
             var yesterday = currentDate.AddDays(-1);
-            return calendar.AllEvents?.Any(e =>
+            return schedule.Any(e =>
                 e.Type == CalendarEventType.Game &&
-                e.Date.Date == yesterday.Date) ?? false;
+                e.Date.Date == yesterday.Date);
         }
 
         private float CalculateTeamOffensiveRating(Team team)

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using NBAHeadCoach.Core;
 using NBAHeadCoach.Core.Data;
 using NBAHeadCoach.Core.Manager;
 
@@ -170,7 +171,7 @@ namespace NBAHeadCoach.UI.Modals
             var draftManager = GameManager.Instance?.DraftSystem;
             if (draftManager != null)
             {
-                var draftProspects = draftManager.GetCurrentDraftClass();
+                var draftProspects = draftManager.GetProspects();
                 if (draftProspects != null)
                 {
                     foreach (var dp in draftProspects)

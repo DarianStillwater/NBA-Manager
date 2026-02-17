@@ -57,8 +57,7 @@ namespace NBAHeadCoach.Core.Manager
 
                 foreach (var player in team.Roster)
                 {
-                    // Age players at start of new season
-                    player.Age++;
+                    // Age is computed from BirthDate automatically
                 }
             }
 
@@ -543,8 +542,7 @@ namespace NBAHeadCoach.Core.Manager
                 DevelopmentType = "Aging"
             };
 
-            // Age the player
-            player.Age++;
+            // Age is computed from BirthDate automatically
 
             // No decline for young players
             if (player.CurrentDevelopmentPhase < DevelopmentPhase.EarlyDecline)

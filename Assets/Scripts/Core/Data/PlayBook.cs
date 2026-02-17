@@ -196,6 +196,33 @@ namespace NBAHeadCoach.Core.Data
         }
 
         /// <summary>
+        /// Increases familiarity for a specific play by a float amount.
+        /// </summary>
+        public void IncreaseFamiliarity(string playId, float gain)
+        {
+            if (!PlayFamiliarity.ContainsKey(playId))
+                return;
+
+            int currentFam = PlayFamiliarity[playId];
+            float effectiveGain = gain * (1f - currentFam / 150f);
+            int newFam = Mathf.Min(100, currentFam + Mathf.RoundToInt(effectiveGain));
+            PlayFamiliarity[playId] = newFam;
+            PracticeReps[playId] += Mathf.CeilToInt(gain);
+            CheckInstallationGraduation(playId, newFam);
+        }
+
+        /// <summary>
+        /// Increases familiarity for all plays in the playbook by a float amount.
+        /// </summary>
+        public void IncreaseAllFamiliarity(float gain)
+        {
+            foreach (var playId in PlayFamiliarity.Keys.ToList())
+            {
+                IncreaseFamiliarity(playId, gain);
+            }
+        }
+
+        /// <summary>
         /// Applies familiarity gains from a practice session.
         /// Called by PracticeManager after executing practice drills.
         /// </summary>

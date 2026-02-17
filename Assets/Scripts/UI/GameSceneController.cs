@@ -9,6 +9,7 @@ using NBAHeadCoach.UI.Panels;
 using NBAHeadCoach.UI.Modals;
 using CalendarEvent = NBAHeadCoach.Core.Data.CalendarEvent;
 using GameState = NBAHeadCoach.Core.GameState;
+using TeamSelectionPanel = NBAHeadCoach.UI.Modals.TeamSelectionPanel;
 
 namespace NBAHeadCoach.UI
 {
@@ -124,27 +125,36 @@ namespace NBAHeadCoach.UI
 
         private void RegisterPanels()
         {
-            RegisterPanel("Dashboard", _dashboardPanel, _dashboardPanelComponent);
-            RegisterPanel("Roster", _rosterPanel, _rosterPanelComponent);
-            RegisterPanel("Schedule", _schedulePanel, _calendarPanelComponent);
-            RegisterPanel("Standings", _standingsPanel, _standingsPanelComponent);
-            RegisterPanel("Inbox", _inboxPanel, _inboxPanelComponent);
-            RegisterPanel("Staff", _staffPanel, _staffPanelComponent);
-            RegisterPanel("StaffHiring", _staffHiringPanel, _staffHiringPanelComponent);
-            RegisterPanel("PreGame", _preGamePanel, _preGamePanelComponent);
-            RegisterPanel("PostGame", _postGamePanel, _postGamePanelComponent);
+            _dashboardPanelComponent = RegisterPanel<DashboardPanel>("Dashboard", _dashboardPanel, _dashboardPanelComponent);
+            _rosterPanelComponent = RegisterPanel<RosterPanel>("Roster", _rosterPanel, _rosterPanelComponent);
+            _calendarPanelComponent = RegisterPanel<CalendarPanel>("Schedule", _schedulePanel, _calendarPanelComponent);
+            _standingsPanelComponent = RegisterPanel<StandingsPanel>("Standings", _standingsPanel, _standingsPanelComponent);
+            _inboxPanelComponent = RegisterPanel<InboxPanel>("Inbox", _inboxPanel, _inboxPanelComponent);
+            _staffPanelComponent = RegisterPanel<StaffPanel>("Staff", _staffPanel, _staffPanelComponent);
+            _staffHiringPanelComponent = RegisterPanel<StaffHiringPanel>("StaffHiring", _staffHiringPanel, _staffHiringPanelComponent);
+            _preGamePanelComponent = RegisterPanel<PreGamePanel>("PreGame", _preGamePanel, _preGamePanelComponent);
+            _postGamePanelComponent = RegisterPanel<PostGamePanel>("PostGame", _postGamePanel, _postGamePanelComponent);
         }
 
-        private void RegisterPanel(string id, GameObject panelObject, BasePanel component)
+        private T RegisterPanel<T>(string id, GameObject panelObject, T component) where T : BasePanel
         {
             if (panelObject != null)
             {
                 _panelRegistry[id] = panelObject;
+
+                // Auto-detect component if not explicitly wired in inspector
+                if (component == null)
+                {
+                    component = panelObject.GetComponent<T>();
+                    if (component != null)
+                        Debug.Log($"[GameSceneController] Auto-detected {typeof(T).Name} on '{id}' panel");
+                }
             }
             if (component != null)
             {
                 _panelComponents[id] = component;
             }
+            return component;
         }
 
         private void SetupPanelEvents()

@@ -8,6 +8,10 @@ using NBAHeadCoach.Core.Gameplay;
 using NBAHeadCoach.Core.Simulation;
 using NBAHeadCoach.Core.Manager;
 using NBAHeadCoach.Core.AI;
+using TimeoutReason = NBAHeadCoach.Core.Gameplay.TimeoutReason;
+using ShotType = NBAHeadCoach.Core.Data.ShotType;
+using EventType = NBAHeadCoach.Core.Simulation.EventType;
+using GameContext = NBAHeadCoach.Core.Simulation.GameContext;
 
 namespace NBAHeadCoach.Core
 {
@@ -600,28 +604,33 @@ namespace NBAHeadCoach.Core
             };
 
             // Get AI timeout decision
-            var decision = _timeoutIntelligence.ShouldCallTimeout(
-                players,
-                gameContext,
-                coach.TimeoutsRemaining,
-                isPlayerTeam: false);
+            var timeoutCtx = new TimeoutIntelligence.TimeoutContext
+            {
+                Quarter = gameContext.Quarter,
+                GameClock = gameContext.GameClock,
+                ScoreDifferential = gameContext.ScoreDifferential,
+                TimeoutsRemaining = coach.TimeoutsRemaining,
+                OpponentRunPoints = gameContext.OpponentRunPoints,
+                OpponentJustScored = gameContext.OpponentJustScored
+            };
+            var decision = _timeoutIntelligence.ShouldCallTimeout(timeoutCtx);
 
             if (decision.ShouldCall)
             {
                 // AI calls timeout
-                coach.UseTimeout();
+                coach.CallTimeout(TimeoutReason.Coach);
 
                 AddPlayByPlayEntry(new PlayByPlayEntry
                 {
                     Clock = FormattedClock,
                     Quarter = _currentQuarter,
                     Team = aiTeam.Abbreviation,
-                    Description = GetTimeoutDescription(decision.Reason),
+                    Description = GetTimeoutDescription((TimeoutReason)(int)decision.Reason),
                     IsHighlight = true,
                     Type = PlayByPlayType.Timeout
                 });
 
-                OnTimeout?.Invoke(aiTeam.TeamId, decision.Reason);
+                OnTimeout?.Invoke(aiTeam.TeamId, (TimeoutReason)(int)decision.Reason);
 
                 // Reset unanswered points after timeout
                 if (checkHome)
@@ -889,7 +898,7 @@ namespace NBAHeadCoach.Core
         private PlayByPlayEntry CreatePlayByPlayEntry(PossessionEvent evt, bool offenseIsHome)
         {
             // Create game context for enhanced play-by-play generation
-            var context = new GameContext
+            var context = new PlayByPlayContext
             {
                 HomeTeam = _homeTeam,
                 AwayTeam = _awayTeam,
@@ -977,9 +986,9 @@ namespace NBAHeadCoach.Core
             Debug.Log($"[MatchSimController] Game complete: {_awayTeam.Abbreviation} {_awayScore} @ {_homeTeam.Abbreviation} {_homeScore}");
         }
 
-        private GameContext CreateGameContext()
+        private PlayByPlayContext CreateGameContext()
         {
-            return new GameContext
+            return new PlayByPlayContext
             {
                 HomeTeam = _homeTeam,
                 AwayTeam = _awayTeam,
@@ -1098,9 +1107,15 @@ namespace NBAHeadCoach.Core
             {
                 Simulation.ShotType.Layup => Data.ShotType.Layup,
                 Simulation.ShotType.Dunk => Data.ShotType.Dunk,
-                Simulation.ShotType.MidRange => Data.ShotType.Jumper,
-                Simulation.ShotType.ThreePointer => Data.ShotType.ThreePointer,
-                Simulation.ShotType.FreeThrow => Data.ShotType.FreeThrow,
+                Simulation.ShotType.Floater => Data.ShotType.Layup,
+                Simulation.ShotType.Hookshot => Data.ShotType.Layup,
+                Simulation.ShotType.Jumper => Data.ShotType.Jumper,
+                Simulation.ShotType.StepBack => Data.ShotType.Jumper,
+                Simulation.ShotType.Fadeaway => Data.ShotType.Jumper,
+                Simulation.ShotType.CatchAndShoot => Data.ShotType.ThreePointer,
+                Simulation.ShotType.PullUp => Data.ShotType.Jumper,
+                Simulation.ShotType.Heave => Data.ShotType.ThreePointer,
+                Simulation.ShotType.TipIn => Data.ShotType.Layup,
                 _ => Data.ShotType.Jumper
             };
         }
@@ -1135,12 +1150,12 @@ namespace NBAHeadCoach.Core
             // Add player stats from events
             foreach (var playerId in _playerMinutes.Keys)
             {
-                boxScore.AddPlayerStats(playerId, new PlayerGameStats
+                boxScore.PlayerStats[playerId] = new PlayerGameStats
                 {
                     PlayerId = playerId,
-                    Minutes = _playerMinutes[playerId],
+                    Minutes = (int)_playerMinutes[playerId],
                     PersonalFouls = _playerFouls.GetValueOrDefault(playerId, 0)
-                });
+                };
             }
 
             return boxScore;

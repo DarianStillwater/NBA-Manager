@@ -159,7 +159,7 @@ namespace NBAHeadCoach.Core.Manager
             List<Player> roster,
             MentorSearchCriteria criteria = null)
         {
-            var available = new List<(Player, MentorProfile)>();
+            var available = new List<(Player player, MentorProfile profile)>();
 
             foreach (var player in roster)
             {
@@ -659,7 +659,7 @@ namespace NBAHeadCoach.Core.Manager
             {
                 // Check if mentee has room to improve in this area
                 var attrs = GetAttributesForFocus(strongArea, profile);
-                int avgMentee = attrs.Count > 0 ? attrs.Average(a => mentee.GetAttribute(a)).RoundToInt() : 50;
+                int avgMentee = attrs.Count > 0 ? Mathf.RoundToInt((float)attrs.Average(a => mentee.GetAttribute(a))) : 50;
 
                 if (avgMentee < 75)
                     return strongArea;

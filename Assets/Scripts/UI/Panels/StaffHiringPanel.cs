@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using NBAHeadCoach.Core;
 using NBAHeadCoach.Core.Data;
 using NBAHeadCoach.Core.Manager;
 using NBAHeadCoach.UI.Components;
@@ -399,13 +400,13 @@ namespace NBAHeadCoach.UI.Panels
 
             if (_currentNegotiation == null)
             {
-                _currentNegotiation = PersonnelManager.Instance.StartNegotiation("USER", _currentCandidate.ProfileId, teamId);
+                _currentNegotiation = PersonnelManager.Instance.StartNegotiation(teamId, _currentCandidate.ProfileId);
             }
 
             if (_currentNegotiation == null) return;
 
             // Make offer
-            var response = PersonnelManager.Instance.MakeOffer(_currentNegotiation.SessionId, salary, years);
+            var response = PersonnelManager.Instance.MakeOffer(_currentNegotiation.NegotiationId, salary, years);
 
             // Show response
             ShowNegotiationResponse(response);
@@ -419,23 +420,23 @@ namespace NBAHeadCoach.UI.Panels
             if (_candidateResponseText != null)
                 _candidateResponseText.text = response.Message;
 
-            if (response.Result == NegotiationResult.Accepted)
+            if (response.NewStatus == StaffNegotiationStatus.Accepted)
             {
                 // Finalize hire
-                PersonnelManager.Instance?.FinalizeNegotiation(_currentNegotiation.SessionId, true);
+                PersonnelManager.Instance?.FinalizeNegotiation(_currentNegotiation.NegotiationId, true);
                 ShowResult("Hired!", true);
                 OnStaffHired?.Invoke(_currentCandidate);
             }
-            else if (response.Result == NegotiationResult.Rejected)
+            else if (response.NewStatus == StaffNegotiationStatus.Rejected || response.NewStatus == StaffNegotiationStatus.WalkedAway)
             {
                 ShowResult("Negotiations failed. The candidate walked away.", false);
                 _currentNegotiation = null;
             }
-            else if (response.Result == NegotiationResult.Countered)
+            else if (response.NewStatus == StaffNegotiationStatus.CounterReceived)
             {
                 // Show counter offer
                 if (_counterOfferText != null)
-                    _counterOfferText.text = $"Counter: ${response.CounterOffer.Salary:N0}/yr for {response.CounterOffer.Years} years";
+                    _counterOfferText.text = $"Counter: ${response.CounterSalary ?? 0:N0}/yr for {response.CounterYears ?? 1} years";
 
                 if (_acceptCounterButton != null)
                     _acceptCounterButton.gameObject.SetActive(true);
@@ -445,14 +446,14 @@ namespace NBAHeadCoach.UI.Panels
             }
 
             if (_negotiationStatusText != null)
-                _negotiationStatusText.text = $"Round {_currentNegotiation?.Steps?.Count ?? 0} / 3";
+                _negotiationStatusText.text = $"Round {_currentNegotiation?.History?.Count ?? 0} / 3";
         }
 
         private void OnAcceptCounterClicked()
         {
             if (_currentNegotiation == null || PersonnelManager.Instance == null) return;
 
-            PersonnelManager.Instance.FinalizeNegotiation(_currentNegotiation.SessionId, true);
+            PersonnelManager.Instance.FinalizeNegotiation(_currentNegotiation.NegotiationId, true);
             ShowResult("Hired!", true);
             OnStaffHired?.Invoke(_currentCandidate);
         }
@@ -507,7 +508,7 @@ namespace NBAHeadCoach.UI.Panels
             // Cancel any active negotiation
             if (_currentNegotiation != null && PersonnelManager.Instance != null)
             {
-                PersonnelManager.Instance.FinalizeNegotiation(_currentNegotiation.SessionId, false);
+                PersonnelManager.Instance.FinalizeNegotiation(_currentNegotiation.NegotiationId, false);
             }
 
             OnBackClicked?.Invoke();

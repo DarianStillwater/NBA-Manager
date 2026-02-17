@@ -4,6 +4,7 @@ using System.Linq;
 using UnityEngine;
 using NBAHeadCoach.Core.Data;
 using NBAHeadCoach.Core.Gameplay;
+using DefensiveScheme = NBAHeadCoach.Core.Gameplay.DefensiveScheme;
 
 namespace NBAHeadCoach.Core.AI
 {
@@ -55,6 +56,9 @@ namespace NBAHeadCoach.Core.AI
         [Range(0, 100)] public int HalftimeAdjustmentQuality = 50;
         [Range(0, 100)] public int PlayoffAdjustments = 60;       // Better in playoffs
         [Range(0, 100)] public int Stubbornness = 50;             // Stick to system
+
+        public float AdaptationSpeed => InGameAdjustmentSpeed / 100f;
+        public float RiskTolerance => (100 - Stubbornness) / 100f;
 
         // ==================== PREDICTABILITY & PATTERNS ====================
         [Header("Predictability")]
@@ -801,7 +805,7 @@ namespace NBAHeadCoach.Core.AI
     [Serializable]
     public class AIAdjustment
     {
-        public AdjustmentType Type;
+        public CoachAdjustmentType Type;
         public string Trigger;                       // When to make adjustment
         public string Description;
         public bool IsUsed;
@@ -813,7 +817,7 @@ namespace NBAHeadCoach.Core.AI
         public string SubIn;
     }
 
-    public enum AdjustmentType
+    public enum CoachAdjustmentType
     {
         OffensiveScheme,
         DefensiveScheme,

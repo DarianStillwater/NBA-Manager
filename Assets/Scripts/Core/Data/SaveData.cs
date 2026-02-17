@@ -291,7 +291,7 @@ namespace NBAHeadCoach.Core
             if (player == null) return;
 
             player.TeamId = TeamId;
-            player.Age = Age;
+            // Age is computed from BirthDate, not settable
             player.Energy = Energy;
             player.Morale = Morale;
             player.IsInjured = IsInjured;
@@ -299,7 +299,7 @@ namespace NBAHeadCoach.Core
             player.CurrentInjuryType = CurrentInjuryType;
             player.CurrentInjurySeverity = CurrentInjurySeverity;
             player.OriginalInjuryDays = OriginalInjuryDays;
-            player.InjuryDate = InjuryDate;
+            player.InjuryDate = InjuryDate ?? DateTime.MinValue;
 
             // Restore injury history
             if (InjuryHistory != null && InjuryHistory.Count > 0)
@@ -390,11 +390,11 @@ namespace NBAHeadCoach.Core
                 PlayerId = player.PlayerId,
                 FirstName = player.FirstName,
                 LastName = player.LastName,
-                JerseyNumber = player.JerseyNumber,
+                JerseyNumber = int.TryParse(player.JerseyNumber, out var jn) ? jn : 0,
                 Position = player.Position,
                 BirthDate = player.BirthDate,
-                HeightInches = player.HeightInches,
-                WeightLbs = player.WeightLbs,
+                HeightInches = (int)player.HeightInches,
+                WeightLbs = (int)player.WeightLbs,
                 Nationality = player.Nationality,
                 College = player.College,
                 DraftYear = player.DraftYear,
@@ -449,11 +449,11 @@ namespace NBAHeadCoach.Core
                 PlayerId = PlayerId,
                 FirstName = FirstName,
                 LastName = LastName,
-                JerseyNumber = JerseyNumber,
+                JerseyNumber = JerseyNumber.ToString(),
                 Position = Position,
                 BirthDate = BirthDate,
-                HeightInches = HeightInches,
-                WeightLbs = WeightLbs,
+                HeightInches = (float)HeightInches,
+                WeightLbs = (float)WeightLbs,
                 Nationality = Nationality,
                 College = College,
                 DraftYear = DraftYear,
@@ -734,8 +734,8 @@ namespace NBAHeadCoach.Core
             {
                 BodyPart = BodyPart,
                 TimesInjured = TimesInjured,
-                ReInjuryRiskModifier = ReInjuryRiskModifier,
-                LastInjuryDate = LastInjuryDate,
+                // ReInjuryRiskModifier is computed from TimesInjured
+                LastInjuryDate = LastInjuryDate ?? DateTime.MinValue,
                 TotalDaysMissed = TotalDaysMissed
             };
         }
@@ -768,7 +768,7 @@ namespace NBAHeadCoach.Core
             return new MinutesRecord
             {
                 Date = Date,
-                Minutes = Minutes,
+                Minutes = (int)Minutes,
                 WasBackToBack = WasBackToBack
             };
         }

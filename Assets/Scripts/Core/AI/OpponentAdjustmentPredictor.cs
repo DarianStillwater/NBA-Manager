@@ -36,7 +36,7 @@ namespace NBAHeadCoach.Core.AI
         /// </summary>
         public List<PredictedAdjustment> PredictAdjustments(
             OpponentTendencyProfile profile,
-            GameState gameState,
+            PredictionGameState gameState,
             AICoachPersonality coachPersonality = null)
         {
             var predictions = new List<PredictedAdjustment>();
@@ -77,7 +77,7 @@ namespace NBAHeadCoach.Core.AI
         /// </summary>
         public List<PredictedAdjustment> PredictTimeoutAdjustments(
             OpponentTendencyProfile profile,
-            GameState gameState)
+            PredictionGameState gameState)
         {
             var predictions = new List<PredictedAdjustment>();
 
@@ -131,7 +131,7 @@ namespace NBAHeadCoach.Core.AI
         /// </summary>
         public ClutchPrediction PredictClutchStrategy(
             OpponentTendencyProfile profile,
-            GameState gameState)
+            PredictionGameState gameState)
         {
             var prediction = new ClutchPrediction
             {
@@ -178,7 +178,7 @@ namespace NBAHeadCoach.Core.AI
         /// </summary>
         public List<PredictedAdjustment> PredictHalftimeAdjustments(
             OpponentTendencyProfile profile,
-            GameState firstHalfState)
+            PredictionGameState firstHalfState)
         {
             var predictions = new List<PredictedAdjustment>();
 
@@ -248,8 +248,8 @@ namespace NBAHeadCoach.Core.AI
         /// Detects if opponent has made an adjustment.
         /// </summary>
         public DetectedAdjustment DetectAdjustment(
-            GameState previousState,
-            GameState currentState,
+            PredictionGameState previousState,
+            PredictionGameState currentState,
             OpponentTendencyProfile profile)
         {
             // Compare states to detect changes
@@ -379,7 +379,7 @@ namespace NBAHeadCoach.Core.AI
 
         // ==================== HELPER METHODS ====================
 
-        private GameSituation ClassifyGameSituation(GameState state)
+        private GameSituation ClassifyGameSituation(PredictionGameState state)
         {
             int scoreDiff = state.TeamScore - state.OpponentScore;
 
@@ -437,7 +437,7 @@ namespace NBAHeadCoach.Core.AI
 
         private List<PredictedAdjustment> GetPersonalityBasedPredictions(
             AICoachPersonality personality,
-            GameState state)
+            PredictionGameState state)
         {
             var predictions = new List<PredictedAdjustment>();
 
@@ -458,7 +458,7 @@ namespace NBAHeadCoach.Core.AI
 
         private List<PredictedAdjustment> GetReactivePredictions(
             OpponentTendencyProfile profile,
-            GameState state)
+            PredictionGameState state)
         {
             var predictions = new List<PredictedAdjustment>();
 
@@ -599,7 +599,7 @@ namespace NBAHeadCoach.Core.AI
     /// <summary>
     /// Game state for prediction.
     /// </summary>
-    public class GameState
+    public class PredictionGameState
     {
         public int Quarter;
         public float GameClock;

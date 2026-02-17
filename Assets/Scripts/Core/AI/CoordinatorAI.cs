@@ -4,6 +4,8 @@ using System.Linq;
 using UnityEngine;
 using NBAHeadCoach.Core.Data;
 using NBAHeadCoach.Core.Gameplay;
+using NBAHeadCoach.Core.Manager;
+using DefensiveScheme = NBAHeadCoach.Core.Gameplay.DefensiveScheme;
 
 namespace NBAHeadCoach.Core.AI
 {
@@ -115,7 +117,7 @@ namespace NBAHeadCoach.Core.AI
         /// <summary>
         /// Analyze current game state and generate coordinator suggestions.
         /// </summary>
-        public List<CoordinatorGameSuggestion> AnalyzeAndSuggest(GameState gameState)
+        public List<CoordinatorGameSuggestion> AnalyzeAndSuggest(CoordinatorGameState gameState)
         {
             var suggestions = new List<CoordinatorGameSuggestion>();
 
@@ -143,7 +145,7 @@ namespace NBAHeadCoach.Core.AI
             return suggestions;
         }
 
-        private List<CoordinatorGameSuggestion> GenerateOffensiveSuggestions(GameState state)
+        private List<CoordinatorGameSuggestion> GenerateOffensiveSuggestions(CoordinatorGameState state)
         {
             var suggestions = new List<CoordinatorGameSuggestion>();
             var oc = _offensiveCoordinator;
@@ -289,7 +291,7 @@ namespace NBAHeadCoach.Core.AI
             return FilterSuggestions(suggestions, 2);
         }
 
-        private List<CoordinatorGameSuggestion> GenerateDefensiveSuggestions(GameState state)
+        private List<CoordinatorGameSuggestion> GenerateDefensiveSuggestions(CoordinatorGameState state)
         {
             var suggestions = new List<CoordinatorGameSuggestion>();
             var dc = _defensiveCoordinator;
@@ -416,7 +418,7 @@ namespace NBAHeadCoach.Core.AI
             string title,
             string reasoning,
             int confidence,
-            GameState state)
+            CoordinatorGameState state)
         {
             var coordinator = isOffensive ? _offensiveCoordinator : _defensiveCoordinator;
 
@@ -527,7 +529,7 @@ namespace NBAHeadCoach.Core.AI
         /// <summary>
         /// Make an offensive play call when delegated.
         /// </summary>
-        public DelegatedPlayCall MakeDelegatedPlayCall(GameState state, List<string> currentLineup)
+        public DelegatedPlayCall MakeDelegatedPlayCall(CoordinatorGameState state, List<string> currentLineup)
         {
             if (!OffenseDelegated || _offensiveCoordinator == null)
                 return null;
@@ -553,7 +555,7 @@ namespace NBAHeadCoach.Core.AI
             return playCall;
         }
 
-        private PlayType SelectPlayByPhilosophy(CoachingPhilosophy philosophy, GameState state, float quality)
+        private PlayType SelectPlayByPhilosophy(CoachingPhilosophy philosophy, CoordinatorGameState state, float quality)
         {
             // Weight plays based on philosophy
             var playWeights = new Dictionary<PlayType, float>
@@ -615,7 +617,7 @@ namespace NBAHeadCoach.Core.AI
             return PlayType.MotionOffense;
         }
 
-        private string GeneratePlayCallReasoning(PlayType play, GameState state)
+        private string GeneratePlayCallReasoning(PlayType play, CoordinatorGameState state)
         {
             return play switch
             {
@@ -633,7 +635,7 @@ namespace NBAHeadCoach.Core.AI
         /// <summary>
         /// Make a defensive adjustment when delegated.
         /// </summary>
-        public DelegatedDefensiveCall MakeDelegatedDefensiveCall(GameState state)
+        public DelegatedDefensiveCall MakeDelegatedDefensiveCall(CoordinatorGameState state)
         {
             if (!DefenseDelegated || _defensiveCoordinator == null)
                 return null;
@@ -658,7 +660,7 @@ namespace NBAHeadCoach.Core.AI
             return call;
         }
 
-        private DefensiveScheme SelectDefenseByPhilosophy(CoachingPhilosophy philosophy, GameState state, float quality)
+        private DefensiveScheme SelectDefenseByPhilosophy(CoachingPhilosophy philosophy, CoordinatorGameState state, float quality)
         {
             // Situational overrides
             if (state.ScoreDifferential > 15 && state.Quarter >= 4)
@@ -683,7 +685,7 @@ namespace NBAHeadCoach.Core.AI
             };
         }
 
-        private string GenerateDefenseReasoning(DefensiveScheme scheme, GameState state)
+        private string GenerateDefenseReasoning(DefensiveScheme scheme, CoordinatorGameState state)
         {
             return scheme switch
             {
@@ -702,7 +704,7 @@ namespace NBAHeadCoach.Core.AI
         /// <summary>
         /// Evaluate whether to call a timeout when delegated.
         /// </summary>
-        public DelegatedTimeoutDecision EvaluateTimeout(GameState state)
+        public DelegatedTimeoutDecision EvaluateTimeout(CoordinatorGameState state)
         {
             if (!TimeoutsDelegated) return null;
 
@@ -886,7 +888,7 @@ namespace NBAHeadCoach.Core.AI
     /// Game state snapshot for coordinator analysis.
     /// </summary>
     [Serializable]
-    public class GameState
+    public class CoordinatorGameState
     {
         public int Quarter;
         public float GameClockSeconds;

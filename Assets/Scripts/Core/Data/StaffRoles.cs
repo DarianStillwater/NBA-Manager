@@ -106,8 +106,9 @@ namespace NBAHeadCoach.Core.Data
 
         /// <summary>
         /// Check if a position is a coaching position (vs front office or scouting).
+        /// Extension method for use as instance method.
         /// </summary>
-        public static bool IsCoachingPosition(StaffPositionType position)
+        public static bool IsCoachingPosition(this StaffPositionType position)
         {
             return position switch
             {

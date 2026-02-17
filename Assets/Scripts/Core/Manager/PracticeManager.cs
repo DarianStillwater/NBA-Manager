@@ -405,7 +405,7 @@ namespace NBAHeadCoach.Core.Manager
 
             // High engagement drills boost morale
             float avgEngagement = session.Drills.Count > 0
-                ? session.Drills.Average(d => d.Drill.Engagement)
+                ? (float)session.Drills.Average(d => d.Drill.Engagement)
                 : 50f;
             moraleChange += (avgEngagement - 50f) / 25f; // +/- 2 from engagement
 
@@ -574,8 +574,8 @@ namespace NBAHeadCoach.Core.Manager
                            InjurySeverity.Major;
 
             // Common practice injuries
-            var injuryTypes = new[] { InjuryType.AnkleSprain, InjuryType.KneeSprain, InjuryType.HamstringStrain,
-                                      InjuryType.CalfStrain, InjuryType.BackSpasms };
+            var injuryTypes = new[] { InjuryType.Ankle, InjuryType.Knee_Minor, InjuryType.Hamstring,
+                                      InjuryType.Calf, InjuryType.Back };
             var injuryType = injuryTypes[_random.Next(injuryTypes.Length)];
 
             int daysOut = severity switch

@@ -6,6 +6,7 @@ using NBAHeadCoach.Core;
 using NBAHeadCoach.Core.Data;
 using NBAHeadCoach.Core.Simulation;
 using NBAHeadCoach.UI.Components;
+using TimeoutReason = NBAHeadCoach.Core.Gameplay.TimeoutReason;
 
 namespace NBAHeadCoach.UI.Panels
 {
@@ -244,11 +245,11 @@ namespace NBAHeadCoach.UI.Panels
 
             // Get the starting 5 by position priority (PG, SG, SF, PF, C)
             var starters = new List<Player>();
-            var positions = new[] { Position.PG, Position.SG, Position.SF, Position.PF, Position.C };
+            var positions = new[] { Position.PointGuard, Position.ShootingGuard, Position.SmallForward, Position.PowerForward, Position.Center };
 
             foreach (var pos in positions)
             {
-                var player = team.Roster.Find(p => p.PrimaryPosition == pos && !starters.Contains(p));
+                var player = team.Roster.Find(p => p.Position == pos && !starters.Contains(p));
                 if (player != null)
                 {
                     starters.Add(player);

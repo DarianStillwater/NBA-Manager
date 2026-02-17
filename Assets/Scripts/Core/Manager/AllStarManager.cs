@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using NBAHeadCoach.Core.Manager;
 
 namespace NBAHeadCoach.Core
 {
@@ -963,21 +964,6 @@ namespace NBAHeadCoach.Core
             return historicalWeekends.Any(w =>
                 w.AllStarGameResult != null && w.AllStarGameResult.MvpId == playerId);
         }
-    }
-
-    /// <summary>
-    /// Placeholder for player season stats
-    /// </summary>
-    [Serializable]
-    public class PlayerSeasonStats
-    {
-        public string PlayerId;
-        public float PointsPerGame;
-        public float ReboundsPerGame;
-        public float AssistsPerGame;
-        public float StealsPerGame;
-        public float BlocksPerGame;
-        public float ThreePointPercentage;
     }
 
     /// <summary>

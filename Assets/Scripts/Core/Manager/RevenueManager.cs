@@ -197,7 +197,7 @@ namespace NBAHeadCoach.Core.Manager
 
         private bool HasSuperstar(Team team)
         {
-            return team.Roster?.Any(p => p.GetOverallRating() >= 90) ?? false;
+            return team.Roster?.Any(p => p.OverallRating >= 90) ?? false;
         }
 
         #endregion
@@ -540,13 +540,6 @@ namespace NBAHeadCoach.Core.Manager
         ConferenceFinals,
         Finals,
         Champion
-    }
-
-    public enum MarketSize
-    {
-        Small,
-        Medium,
-        Large
     }
 
     #endregion

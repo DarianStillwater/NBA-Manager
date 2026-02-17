@@ -1,6 +1,7 @@
 using UnityEngine;
 using NBAHeadCoach.Core.Data;
 using NBAHeadCoach.Core.Simulation;
+using GameResult = NBAHeadCoach.Core.Simulation.GameResult;
 
 namespace NBAHeadCoach.Tests
 {

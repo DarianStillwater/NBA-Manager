@@ -4,6 +4,7 @@ using System.Linq;
 using UnityEngine;
 using NBAHeadCoach.Core.Data;
 using NBAHeadCoach.Core.Simulation;
+using EventType = NBAHeadCoach.Core.Simulation.EventType;
 
 namespace NBAHeadCoach.Core.Manager
 {
@@ -814,6 +815,11 @@ namespace NBAHeadCoach.Core.Manager
         public float TeamEFG;
         public float OpponentEFG;
         public int CurrentLineupPlusMinus;
+        public float TeamThreePointPercentage;
+        public int TeamThreePointAttempts;
+        public int OpponentPaintPoints;
+        public float OpponentThreePointPercentage;
+        public int OpponentThreePointAttempts;
 
         public int ScoreDifferential => TeamScore - OpponentScore;
     }

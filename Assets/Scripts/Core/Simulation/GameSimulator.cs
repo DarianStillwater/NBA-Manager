@@ -159,7 +159,7 @@ namespace NBAHeadCoach.Core.Simulation
 
             // Get active lineup for this team to determine starters
             var team = isHome ? _homeTeam : _awayTeam;
-            var starterIds = team?.StartingLineupIds ?? new List<string>();
+            var starterIds = team?.StartingLineupIds ?? Array.Empty<string>();
 
             foreach (var playerId in allPlayerIds)
             {
@@ -522,6 +522,14 @@ namespace NBAHeadCoach.Core.Simulation
         // Team references for UI compatibility
         public Team HomeTeam;
         public Team AwayTeam;
+
+        /// <summary>
+        /// Gets a player's game stats by their player ID. Returns null if not found.
+        /// </summary>
+        public PlayerGameStats GetPlayerStats(string playerId)
+        {
+            return PlayerStats.TryGetValue(playerId, out var stats) ? stats : null;
+        }
 
         // Player stats lists for UI compatibility
         public List<PlayerGameStats> HomePlayerStats = new List<PlayerGameStats>();

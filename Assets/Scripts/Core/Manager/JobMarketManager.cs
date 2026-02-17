@@ -208,7 +208,7 @@ namespace NBAHeadCoach.Core.Manager
             opening.ContractYears = 3 + _rng.Next(3);  // 3-5 years
 
             // Team situation
-            float winPct = team.TotalGames > 0 ? (float)team.Wins / team.TotalGames : 0.5f;
+            float winPct = (team.Wins + team.Losses) > 0 ? (float)team.Wins / (team.Wins + team.Losses) : 0.5f;
             opening.TeamSituation = winPct switch
             {
                 >= 0.6f => "Contending",
@@ -382,7 +382,7 @@ namespace NBAHeadCoach.Core.Manager
                 chance += 0.15f;
 
             // Playoff experience
-            if (opening.Requirements.RequiresPlayoffExperience && career.PlayoffAppearances > 0)
+            if (opening.Requirements.RequiresPlayoffExperience && career.TotalPlayoffAppearances > 0)
                 chance += 0.1f;
 
             // Championship

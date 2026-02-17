@@ -360,6 +360,8 @@ namespace NBAHeadCoach.Core.Data
         /// <summary>
         /// Get budget available for staff (coaches, scouts)
         /// </summary>
+        public long StaffBudget => GetStaffBudget();
+
         public long GetStaffBudget()
         {
             // Base staff budget scaled by owner spending type

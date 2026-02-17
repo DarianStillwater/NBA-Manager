@@ -165,7 +165,7 @@ namespace NBAHeadCoach.Tests
                 LastName = data.LastName,
                 JerseyNumber = data.JerseyNumber,
                 Position = (Position)data.Position,
-                Age = data.Age,
+                BirthDate = DateTime.Now.AddYears(-data.Age),
                 HeightInches = data.HeightInches,
                 WeightLbs = data.WeightLbs,
                 TeamId = data.TeamId,

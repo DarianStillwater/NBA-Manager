@@ -301,7 +301,7 @@ namespace NBAHeadCoach.Tools
             contentRect.anchorMin = new Vector2(0.15f, 0);
             contentRect.anchorMax = new Vector2(1, 0.92f);
             contentRect.sizeDelta = Vector2.zero;
-            uiManager.ContentParent = contentParent.transform;
+            // uiManager.ContentParent = contentParent.transform; // TODO: Wire up UIManager
 
             // ===== DASHBOARD PANEL =====
             var dashboardPanel = CreateUIElement("DashboardPanel", contentParent.transform);

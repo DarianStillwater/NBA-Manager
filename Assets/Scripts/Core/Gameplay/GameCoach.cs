@@ -65,7 +65,7 @@ namespace NBAHeadCoach.Core.Gameplay
 
         // ==================== COORDINATOR AI ====================
         private CoordinatorAI _coordinatorAI;
-        private GameState _currentGameState;
+        private CoordinatorGameState _currentGameState;
         private Data.StaffMeeting _preGameMeeting;
         private float _gamePlanBonus = 0f;
 
@@ -823,7 +823,7 @@ namespace NBAHeadCoach.Core.Gameplay
             _coordinatorAI?.ResetForNewGame();
             _preGameMeeting = null;
             _gamePlanBonus = 0f;
-            _currentGameState = new GameState();
+            _currentGameState = new CoordinatorGameState();
 
             if (_teamStrategy != null)
                 ApplyTeamStrategy(_teamStrategy);
@@ -953,7 +953,7 @@ namespace NBAHeadCoach.Core.Gameplay
         {
             _coordinatorAI = new CoordinatorAI(teamId);
             _coordinatorAI.Initialize(offensiveCoordinator, defensiveCoordinator, this);
-            _currentGameState = new GameState();
+            _currentGameState = new CoordinatorGameState();
             Debug.Log($"[GameCoach] CoordinatorAI initialized with OC: {offensiveCoordinator?.PersonName ?? "None"}, DC: {defensiveCoordinator?.PersonName ?? "None"}");
         }
 
@@ -1035,7 +1035,7 @@ namespace NBAHeadCoach.Core.Gameplay
         /// </summary>
         public void UpdateGameStateForCoordinators(string opponentTeamId = null, int opponentStarScoring = 0)
         {
-            _currentGameState = new GameState
+            _currentGameState = new CoordinatorGameState
             {
                 Quarter = _currentQuarter,
                 GameClockSeconds = _gameClockSeconds,
@@ -1317,6 +1317,7 @@ namespace NBAHeadCoach.Core.Gameplay
 
     public enum TimeoutReason
     {
+        Coach,
         StopRun,
         RestPlayers,
         DrawUpPlay,

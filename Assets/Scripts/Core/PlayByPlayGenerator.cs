@@ -4,6 +4,8 @@ using System.Linq;
 using UnityEngine;
 using NBAHeadCoach.Core.Data;
 using NBAHeadCoach.Core.Simulation;
+using ShotType = NBAHeadCoach.Core.Simulation.ShotType;
+using EventType = NBAHeadCoach.Core.Simulation.EventType;
 
 namespace NBAHeadCoach.Core
 {
@@ -22,7 +24,7 @@ namespace NBAHeadCoach.Core
         /// </summary>
         public static PlayByPlayEntry Generate(
             PossessionEvent evt,
-            GameContext context,
+            PlayByPlayContext context,
             Func<string, Player> getPlayer)
         {
             var actor = getPlayer(evt.ActorPlayerId);
@@ -54,7 +56,7 @@ namespace NBAHeadCoach.Core
         /// </summary>
         public static PlayByPlayEntry GenerateGameEvent(
             GameEventType eventType,
-            GameContext context,
+            PlayByPlayContext context,
             string additionalInfo = null)
         {
             string description = eventType switch
@@ -89,7 +91,7 @@ namespace NBAHeadCoach.Core
             Player actor,
             Player target,
             Player defender,
-            GameContext context,
+            PlayByPlayContext context,
             bool isHighlight)
         {
             string actorName = GetDisplayName(actor, evt.ActorPlayerId);
@@ -116,7 +118,7 @@ namespace NBAHeadCoach.Core
             string actor,
             string target,
             string defender,
-            GameContext context)
+            PlayByPlayContext context)
         {
             return evt.Type switch
             {
@@ -165,7 +167,7 @@ namespace NBAHeadCoach.Core
             string actor,
             string target,
             string defender,
-            GameContext context)
+            PlayByPlayContext context)
         {
             return evt.Type switch
             {
@@ -196,7 +198,7 @@ namespace NBAHeadCoach.Core
             string actor,
             string target,
             string defender,
-            GameContext context)
+            PlayByPlayContext context)
         {
             int scoreDiff = context.HomeOnOffense
                 ? context.HomeScore - context.AwayScore
@@ -236,7 +238,7 @@ namespace NBAHeadCoach.Core
 
         #region Shot Descriptions
 
-        private static string GenerateMadeShotDescription(PossessionEvent evt, string actor, GameContext context)
+        private static string GenerateMadeShotDescription(PossessionEvent evt, string actor, PlayByPlayContext context)
         {
             string shotDesc = GetShotTypeDescription(evt.ShotType);
             string locationDesc = GetLocationDescription(evt.ActorPosition);
@@ -283,7 +285,7 @@ namespace NBAHeadCoach.Core
 
         private static string GetLocationDescription(CourtPosition pos)
         {
-            if (pos == null) return "";
+            if (pos.X == 0 && pos.Y == 0) return "";
 
             var zone = pos.GetZone(true);
             var side = pos.GetSide();
@@ -312,7 +314,7 @@ namespace NBAHeadCoach.Core
 
         #region Highlight Descriptions
 
-        private static string GetDunkHighlight(string actor, string defender, GameContext context)
+        private static string GetDunkHighlight(string actor, string defender, PlayByPlayContext context)
         {
             var dunkPhrases = new[]
             {
@@ -327,7 +329,7 @@ namespace NBAHeadCoach.Core
             return dunkPhrases[_rng.Next(dunkPhrases.Length)];
         }
 
-        private static string GetThreePointerHighlight(string actor, GameContext context)
+        private static string GetThreePointerHighlight(string actor, PlayByPlayContext context)
         {
             var threePhrases = new[]
             {
@@ -356,7 +358,7 @@ namespace NBAHeadCoach.Core
             return blockPhrases[_rng.Next(blockPhrases.Length)];
         }
 
-        private static string GetClutchThreeDescription(string actor, int scoreDiff, GameContext context)
+        private static string GetClutchThreeDescription(string actor, int scoreDiff, PlayByPlayContext context)
         {
             if (scoreDiff == -3 || scoreDiff == 0)
             {
@@ -369,7 +371,7 @@ namespace NBAHeadCoach.Core
             return $"{actor} puts the DAGGER in from three! This one's over!";
         }
 
-        private static string GetClutchScoreDescription(string actor, int points, int scoreDiff, GameContext context)
+        private static string GetClutchScoreDescription(string actor, int points, int scoreDiff, PlayByPlayContext context)
         {
             if (scoreDiff == 0)
             {
@@ -411,7 +413,7 @@ namespace NBAHeadCoach.Core
 
         private static string GetDribbleDescription(string actor, CourtPosition pos)
         {
-            var side = pos?.GetSide() ?? CourtSide.Center;
+            var side = pos.GetSide();
             string direction = side == CourtSide.Left ? "left" : side == CourtSide.Right ? "right" : "to the basket";
             return $"{actor} drives {direction}.";
         }
@@ -441,7 +443,7 @@ namespace NBAHeadCoach.Core
             };
         }
 
-        private static string GetQuarterEndText(GameContext context)
+        private static string GetQuarterEndText(PlayByPlayContext context)
         {
             int quarter = context.Quarter;
             string score = $"{context.AwayTeam?.Abbreviation} {context.AwayScore} - {context.HomeTeam?.Abbreviation} {context.HomeScore}";
@@ -457,7 +459,7 @@ namespace NBAHeadCoach.Core
             };
         }
 
-        private static string GetHalftimeText(GameContext context)
+        private static string GetHalftimeText(PlayByPlayContext context)
         {
             int diff = Math.Abs(context.HomeScore - context.AwayScore);
             string leader = context.HomeScore > context.AwayScore
@@ -470,7 +472,7 @@ namespace NBAHeadCoach.Core
             return $"Close game at the half. {leader} leads by {diff}.";
         }
 
-        private static string GetGameEndText(GameContext context)
+        private static string GetGameEndText(PlayByPlayContext context)
         {
             string winner = context.HomeScore > context.AwayScore
                 ? context.HomeTeam?.Name
@@ -488,7 +490,7 @@ namespace NBAHeadCoach.Core
 
         #region Helpers
 
-        private static bool DetermineIfHighlight(PossessionEvent evt, GameContext context)
+        private static bool DetermineIfHighlight(PossessionEvent evt, PlayByPlayContext context)
         {
             // Dunks are always highlights
             if (evt.ShotType == ShotType.Dunk && evt.Outcome == EventOutcome.Success)
@@ -553,7 +555,7 @@ namespace NBAHeadCoach.Core
     /// <summary>
     /// Game context for play-by-play generation
     /// </summary>
-    public class GameContext
+    public class PlayByPlayContext
     {
         public Team HomeTeam { get; set; }
         public Team AwayTeam { get; set; }

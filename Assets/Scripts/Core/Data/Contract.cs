@@ -112,7 +112,14 @@ namespace NBAHeadCoach.Core.Data
         public bool IsSupermax => Type == ContractType.Supermax;
 
         // ==================== COMPUTED PROPERTIES ====================
-        
+
+        public long AverageSalary => CurrentYearSalary;
+        public long TotalValue => GetTotalRemainingValue();
+        public DateTime EndDate => SignedDate.AddYears(YearsRemaining);
+        public bool PlayerOption => HasPlayerOption;
+        public bool TeamOption => HasTeamOption;
+        public bool EarlyTerminationOption => OptionYear > 0 && !HasPlayerOption && !HasTeamOption;
+
         /// <summary>Is this the final year of the contract?</summary>
         public bool IsExpiring => YearsRemaining == 1;
         

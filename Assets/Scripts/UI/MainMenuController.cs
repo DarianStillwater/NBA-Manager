@@ -299,7 +299,7 @@ namespace NBAHeadCoach.UI
             if (GameManager.Instance != null)
             {
                 var diffSettings = DifficultySettings.CreateFromPreset(difficulty);
-                GameManager.Instance.StartNewGame(firstName, lastName, 45, teamId, diffSettings);
+                GameManager.Instance.StartNewGame(firstName, lastName, 45, teamId, diffSettings, 50, 50, 50);
             }
             else
             {

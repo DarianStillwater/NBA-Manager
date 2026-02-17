@@ -506,11 +506,11 @@ namespace NBAHeadCoach.Core.Manager
                 WorkEthic = Clamp(60 + rng.Next(-20, 21)),
                 Coachability = Clamp(65 + rng.Next(-15, 16)),
 
-                // Personality from prospect
-                Ego = this.Personality?.Ego ?? (30 + rng.Next(40)),
-                Leadership = this.Personality?.Leadership ?? (30 + rng.Next(30)),
-                Composure = this.Personality?.Composure ?? (40 + rng.Next(30)),
-                Aggression = this.Personality?.Aggression ?? (40 + rng.Next(40)),
+                // Personality-influenced attributes
+                Ego = 30 + rng.Next(40),
+                Leadership = 30 + rng.Next(30),
+                Composure = 40 + rng.Next(30),
+                Aggression = 40 + rng.Next(40),
 
                 // Initial state
                 Energy = 100,
@@ -522,7 +522,7 @@ namespace NBAHeadCoach.Core.Manager
 
                 // Empty career (fresh start)
                 CareerStats = new List<SeasonStats>(),
-                CurrentSeasonStats = null // Will be initialized when season starts
+                // CurrentSeasonStats is computed from CareerStats automatically
             };
 
             return player;

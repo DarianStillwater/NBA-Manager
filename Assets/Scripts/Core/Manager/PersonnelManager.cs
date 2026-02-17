@@ -180,6 +180,15 @@ namespace NBAHeadCoach.Core.Manager
             return new List<UnifiedCareerProfile>(_unemployedPool);
         }
 
+        public List<UnifiedCareerProfile> GetFreeAgentsForPosition(UnifiedRole role)
+        {
+            return _unemployedPool.Where(p =>
+                role.IsCoachingRole()
+                    ? p.CurrentTrack == UnifiedCareerTrack.Coaching || p.CurrentTrack == UnifiedCareerTrack.Unemployed
+                    : p.CurrentTrack == UnifiedCareerTrack.FrontOffice || p.CurrentTrack == UnifiedCareerTrack.Unemployed
+            ).ToList();
+        }
+
         // ==================== OPERATIONS ====================
 
         public (bool success, string message) HirePersonnel(string profileId, string teamId, string teamName, UnifiedRole role, int salary = -1, int years = -1)
@@ -406,7 +415,7 @@ namespace NBAHeadCoach.Core.Manager
         /// <param name="accepted">True to complete hire, false to cancel</param>
         public void FinalizeNegotiation(string sessionId, bool accepted)
         {
-            var session = _activeNegotiations.FirstOrDefault(n => n.SessionId == sessionId);
+            var session = _activeNegotiations.FirstOrDefault(n => n.NegotiationId == sessionId);
             if (session == null)
             {
                 Debug.LogWarning($"[PersonnelManager] Negotiation session not found: {sessionId}");
@@ -798,9 +807,9 @@ namespace NBAHeadCoach.Core.Manager
             if (data == null) return;
 
             allProfiles.Clear();
-            _teamsStaff.Clear();
+            _teamStaffs.Clear();
             _unemployedPool.Clear();
-            _profileCache.Clear();
+            _profilesById.Clear();
 
             foreach (var profile in data.AllProfiles)
             {

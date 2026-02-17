@@ -462,9 +462,9 @@ namespace NBAHeadCoach.Core
         private UnifiedCareerProfile GenerateAICoach(string teamId, string teamName)
         {
             // Generate a random AI coach with hidden personality traits
-            var nameGen = NameGenerator.Instance;
-            string firstName = nameGen?.GetRandomFirstName() ?? "John";
-            string lastName = nameGen?.GetRandomLastName() ?? "Smith";
+            var generatedName = Util.NameGenerator.GenerateStaffName();
+            string firstName = generatedName?.FirstName ?? "John";
+            string lastName = generatedName?.LastName ?? "Smith";
             int age = UnityEngine.Random.Range(40, 60);
 
             var aiCoach = UnifiedCareerProfile.CreateForCoaching($"{firstName} {lastName}", _currentSeason, age, false, $"AI_Coach_{teamId}", null);
@@ -482,9 +482,9 @@ namespace NBAHeadCoach.Core
         private UnifiedCareerProfile GenerateAIGM(string teamId, string teamName)
         {
             // Generate a random AI GM with hidden personality traits
-            var nameGen = NameGenerator.Instance;
-            string firstName = nameGen?.GetRandomFirstName() ?? "Mike";
-            string lastName = nameGen?.GetRandomLastName() ?? "Johnson";
+            var generatedName = Util.NameGenerator.GenerateStaffName();
+            string firstName = generatedName?.FirstName ?? "Mike";
+            string lastName = generatedName?.LastName ?? "Johnson";
             int age = UnityEngine.Random.Range(38, 58);
 
             var aiGM = UnifiedCareerProfile.CreateForFrontOffice($"{firstName} {lastName}", _currentSeason, age, false, $"AI_GM_{teamId}", null);
@@ -551,7 +551,8 @@ namespace NBAHeadCoach.Core
         private void InitializeManagersForNewGame()
         {
             // Initialize managers that need setup for new game
-            _jobSecurityManager?.InitializeForNewSeason(); // Logic inside should use PersonnelManager
+            if (_career != null)
+                _jobSecurityManager?.InitializeForNewSeason(_career, _playerTeamId);
             _developmentManager?.InitializeForNewSeason(_allTeams);
 
             // Generate initial draft class for upcoming draft
@@ -761,7 +762,8 @@ namespace NBAHeadCoach.Core
             if (_career != null)
             {
                 _career.CurrentAge++;
-                _career.CurrentContractYear++;
+                if (_career.CurrentContract != null)
+                    _career.CurrentContract.CurrentYear++;
             }
 
             SeasonController.InitializeSeason(_currentSeason);

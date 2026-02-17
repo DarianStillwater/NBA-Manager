@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 namespace NBAHeadCoach.Core.Data
@@ -12,6 +13,7 @@ namespace NBAHeadCoach.Core.Data
     {
         Coaching,
         FrontOffice,
+        Scouting,
         Unemployed,
         Retired
     }
@@ -81,6 +83,13 @@ namespace NBAHeadCoach.Core.Data
                    role == UnifiedRole.OffensiveCoordinator ||
                    role == UnifiedRole.DefensiveCoordinator ||
                    role == UnifiedRole.HeadCoach;
+        }
+
+        public static bool IsCoordinator(this UnifiedRole role)
+        {
+            return role == UnifiedRole.Coordinator ||
+                   role == UnifiedRole.OffensiveCoordinator ||
+                   role == UnifiedRole.DefensiveCoordinator;
         }
 
         public static bool IsFrontOfficeRole(this UnifiedRole role)
@@ -170,6 +179,8 @@ namespace NBAHeadCoach.Core.Data
         // ==================== IDENTITY ====================
         public string ProfileId;
         public string PersonName;
+        public string FullName => PersonName;
+        public string LastName => PersonName?.Split(' ').LastOrDefault() ?? "";
         public int CurrentAge;
         public int BirthYear;
 
@@ -187,6 +198,7 @@ namespace NBAHeadCoach.Core.Data
         public UnifiedCareerTrack CurrentTrack;
         public UnifiedRole CurrentRole;
         public string CurrentTeamId;
+        public string TeamId { get => CurrentTeamId; set => CurrentTeamId = value; }
         public string CurrentTeamName;
         public int YearsInCurrentRole;
         public int YearsUnemployed;  // For forced retirement tracking
@@ -250,6 +262,13 @@ namespace NBAHeadCoach.Core.Data
         public DateTime ContractStartDate;
         public int BuyoutAmount;
 
+        // Aliases for external access patterns
+        public int CurrentSalary { get => AnnualSalary; set => AnnualSalary = value; }
+        public int ContractYears { get => ContractYearsRemaining; set => ContractYearsRemaining = value; }
+        public int CurrentContractYear => ContractYearsRemaining > 0
+            ? (CurrentContract?.CurrentYear ?? 1)
+            : 0;
+
         [Header("Job Security")]
         public JobSecurityStatus JobSecurity = JobSecurityStatus.Stable;
         public SeasonExpectations CurrentExpectations;
@@ -266,10 +285,13 @@ namespace NBAHeadCoach.Core.Data
         [Header("Career Statistics")]
         public int TotalCoachingYears;
         public int TotalFrontOfficeYears;
+        public int TotalSeasons => TotalCoachingYears + TotalFrontOfficeYears;
         public int TotalWins;
         public int TotalLosses;
         public int TotalPlayoffAppearances;
         public int TotalChampionships;
+        public int PlayoffAppearances => TotalPlayoffAppearances;
+        public int Championships => TotalChampionships;
 
         // Track-specific achievements
         public int ChampionshipsAsCoach;
@@ -286,6 +308,13 @@ namespace NBAHeadCoach.Core.Data
         [Range(0, 100)]
         public int FrontOfficeReputation;
 
+        /// <summary>Alias for OverallReputation</summary>
+        public int Reputation { get => OverallReputation; set => OverallReputation = value; }
+
+        // ==================== CONTROL FLAGS ====================
+        /// <summary>Whether this profile is controlled by the player (vs AI)</summary>
+        public bool IsUserControlled;
+
         // ==================== PERFORMANCE TRACKING ====================
         [Header("Performance")]
         public int TimesFired;
@@ -296,6 +325,17 @@ namespace NBAHeadCoach.Core.Data
         public List<AwardHistory> Awards = new List<AwardHistory>();
 
         // ==================== COMPUTED PROPERTIES ====================
+
+        /// <summary>
+        /// Tactical rating derived from scheme and adjustment attributes.
+        /// Settable for AI-generated coaches.
+        /// </summary>
+        private int? _tacticalRatingOverride;
+        public int TacticalRating
+        {
+            get => _tacticalRatingOverride ?? (OffensiveScheme + DefensiveScheme + InGameAdjustments + PlayDesign) / 4;
+            set => _tacticalRatingOverride = value;
+        }
 
         /// <summary>
         /// Overall rating based on current role and attributes.
@@ -1110,6 +1150,7 @@ namespace NBAHeadCoach.Core.Data
         public IncentiveType Type;
         public int TargetValue;
         public long Amount;
+        public long BonusAmount => Amount;
         public bool IsAchieved;
 
         public bool WasAchieved(int wins, bool madePlayoffs, string playoffResult, bool wonChampionship)

@@ -207,6 +207,8 @@ namespace NBAHeadCoach.Core.Data
         /// <summary>
         /// Whether this player can serve as a mentor (4+ years experience).
         /// </summary>
+        public int YearsInLeague => YearsPro;
+
         public bool CanBeMentor => YearsInLeague >= 4;
 
         /// <summary>
@@ -216,11 +218,22 @@ namespace NBAHeadCoach.Core.Data
 
         // ==================== COMPUTED PROPERTIES ====================
         public string FullName => $"{FirstName} {LastName}";
+        public string DisplayName => FullName;
 
         /// <summary>
         /// Alias for PlayerId for consistent access patterns.
         /// </summary>
         public string Id => PlayerId;
+
+        /// <summary>
+        /// Estimates market value based on overall rating and age.
+        /// </summary>
+        public int GetMarketValue()
+        {
+            int overall = OverallRating;
+            float ageFactor = Age < 27 ? 1.1f : (Age > 32 ? 0.7f : 1.0f);
+            return (int)(overall * 100000 * ageFactor);
+        }
 
         /// <summary>
         /// Height formatted as feet and inches (e.g., "6'2"" for 74 inches).
@@ -429,6 +442,11 @@ namespace NBAHeadCoach.Core.Data
         }
 
         // ==================== ATTRIBUTE ACCESS (For Simulation Only) ====================
+
+        /// <summary>
+        /// Gets an attribute value by enum. General access method.
+        /// </summary>
+        public int GetAttribute(PlayerAttribute attribute) => GetAttributeForSimulation(attribute);
 
         /// <summary>
         /// Gets an attribute value for simulation. Should only be called by simulation code.
@@ -767,6 +785,15 @@ namespace NBAHeadCoach.Core.Data
         /// </summary>
         public int SeasonsPlayed => CareerStats?.Count ?? 0;
 
+        // Career totals (computed from CareerStats)
+        public int CareerPoints => CareerStats?.Sum(s => s.Points) ?? 0;
+        public int CareerRebounds => CareerStats?.Sum(s => s.TotalRebounds) ?? 0;
+        public int CareerAssists => CareerStats?.Sum(s => s.Assists) ?? 0;
+        public int CareerSteals => CareerStats?.Sum(s => s.Steals) ?? 0;
+        public int CareerBlocks => CareerStats?.Sum(s => s.Blocks) ?? 0;
+        public int CareerGamesPlayed => CareerStats?.Sum(s => s.GamesPlayed) ?? 0;
+        public int RetirementYear { get; set; }
+
         /// <summary>
         /// Initialize a new season stats entry for this player.
         /// </summary>
@@ -980,7 +1007,16 @@ namespace NBAHeadCoach.Core.Data
         Ego,
         Leadership,
         Composure,
-        Aggression
+        Aggression,
+
+        // Aliases for alternate naming conventions
+        ThreePointShot = Shot_Three,
+        MidRangeShot = Shot_MidRange,
+        InsideScoring = Finishing_Rim,
+        PerimeterDefense = Defense_Perimeter,
+        InteriorDefense = Defense_Interior,
+        PostMoves = Finishing_PostMoves,
+        Rebounding = DefensiveRebound
     }
 
     /// <summary>

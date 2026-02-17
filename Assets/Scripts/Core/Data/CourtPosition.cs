@@ -154,7 +154,8 @@ namespace NBAHeadCoach.Core.Data
         Paint,           // In the key
         ShortMidRange,   // Close 2-pointers
         LongMidRange,    // Far 2-pointers
-        ThreePoint       // Beyond the arc
+        ThreePoint,      // Beyond the arc
+        Corner           // Corner three
     }
 
     public enum CourtSide

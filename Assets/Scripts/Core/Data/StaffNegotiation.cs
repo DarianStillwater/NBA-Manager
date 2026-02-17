@@ -77,7 +77,7 @@ namespace NBAHeadCoach.Core.Manager
         public int FinalSalary;
         public int FinalYears;
 
-        public List<NegotiationRound> History = new List<NegotiationRound>();
+        public List<StaffNegotiationRound> History = new List<StaffNegotiationRound>();
 
         /// <summary>
         /// Process an offer from the team.
@@ -93,7 +93,7 @@ namespace NBAHeadCoach.Core.Manager
             float offerPercent = (float)offer.AnnualSalary / AskingPrice;
 
             // Record this round
-            var round = new NegotiationRound
+            var round = new StaffNegotiationRound
             {
                 RoundNumber = RoundNumber,
                 OfferSalary = offer.AnnualSalary,
@@ -165,7 +165,7 @@ namespace NBAHeadCoach.Core.Manager
     /// Record of a single negotiation round.
     /// </summary>
     [Serializable]
-    public class NegotiationRound
+    public class StaffNegotiationRound
     {
         public int RoundNumber;
         public int OfferSalary;

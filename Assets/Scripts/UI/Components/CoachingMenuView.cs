@@ -7,6 +7,9 @@ using NBAHeadCoach.Core;
 using NBAHeadCoach.Core.Data;
 using NBAHeadCoach.Core.Gameplay;
 using NBAHeadCoach.UI.Panels;
+using DefensiveScheme = NBAHeadCoach.Core.Gameplay.DefensiveScheme;
+using TimeoutReason = NBAHeadCoach.Core.Gameplay.TimeoutReason;
+using QuickActionType = NBAHeadCoach.Core.Data.QuickActionType;
 
 namespace NBAHeadCoach.UI.Components
 {
@@ -941,7 +944,7 @@ namespace NBAHeadCoach.UI.Components
                 _nameText.text = $"#{player.JerseyNumber} {player.LastName}";
 
             if (_positionText != null)
-                _positionText.text = player.Position;
+                _positionText.text = player.Position.ToString();
 
             if (_energyText != null)
                 _energyText.text = $"{player.Energy:F0}%";
@@ -1011,16 +1014,4 @@ namespace NBAHeadCoach.UI.Components
         }
     }
 
-    /// <summary>
-    /// Quick action types for simplified play calls
-    /// </summary>
-    public enum QuickActionType
-    {
-        Isolation,
-        PickAndRoll,
-        PostUp,
-        ShooterAction,
-        Transition,
-        SlowDown
-    }
 }

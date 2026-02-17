@@ -91,7 +91,7 @@ namespace NBAHeadCoach.Core.AI
         private void UpdateAggregatedStats(TeamPossessionData data, PossessionRecord record)
         {
             // Track shot locations
-            if (record.ShotType != ShotType.None)
+            if (record.ShotType != AdaptationShotType.None)
             {
                 data.ShotsByZone[record.ShotZone]++;
                 if (record.ShotMade)
@@ -354,32 +354,32 @@ namespace NBAHeadCoach.Core.AI
 
         private GameAdaptation CreateZoneDefenseAdaptation(PatternDetected pattern)
         {
-            var zone = (ShotZone)pattern.Metadata["zone"];
+            var zone = (AdaptationShotZone)pattern.Metadata["zone"];
             string tip, adjustment;
 
             switch (zone)
             {
-                case ShotZone.Paint:
+                case AdaptationShotZone.Paint:
                     tip = "Opponent attacking the paint heavily. Consider packing the paint or switching to zone.";
                     adjustment = "Help defense at rim, wall off driving lanes";
                     break;
 
-                case ShotZone.ThreePointCorner:
+                case AdaptationShotZone.ThreePointCorner:
                     tip = "Corner three is their weapon. Close out harder on corner shooters.";
                     adjustment = "Deny corner three, force baseline drive";
                     break;
 
-                case ShotZone.ThreePointWing:
+                case AdaptationShotZone.ThreePointWing:
                     tip = "Wing threes are their go-to. Contest with hands up.";
                     adjustment = "Run shooters off the line, force mid-range";
                     break;
 
-                case ShotZone.ThreePointTop:
+                case AdaptationShotZone.ThreePointTop:
                     tip = "Top of key threes being hunted. High hedge on picks.";
                     adjustment = "Aggressive pick and roll coverage, trap ball handler";
                     break;
 
-                case ShotZone.MidRange:
+                case AdaptationShotZone.MidRange:
                     tip = "Mid-range heavy offense. Let them take those shots.";
                     adjustment = "Sag off, protect three and rim";
                     break;
@@ -402,42 +402,42 @@ namespace NBAHeadCoach.Core.AI
 
         private GameAdaptation CreatePlayTypeCounterAdaptation(PatternDetected pattern)
         {
-            var playType = (PlayType)pattern.Metadata["playType"];
+            var playType = (AdaptationPlayType)pattern.Metadata["playType"];
             string tip, adjustment;
 
             switch (playType)
             {
-                case PlayType.PickAndRoll:
+                case AdaptationPlayType.PickAndRoll:
                     tip = "Pick and roll is their bread and butter. Consider switching or trapping.";
                     adjustment = "Switch all screens, deny roll man";
                     break;
 
-                case PlayType.Isolation:
+                case AdaptationPlayType.Isolation:
                     tip = "Heavy isolation offense. Send help and make them pass.";
                     adjustment = "Early double teams on ISO, rotate quickly";
                     break;
 
-                case PlayType.PostUp:
+                case AdaptationPlayType.PostUp:
                     tip = "Post-heavy offense. Front the post or dig on catch.";
                     adjustment = "Deny post entry, double on catch";
                     break;
 
-                case PlayType.Transition:
+                case AdaptationPlayType.Transition:
                     tip = "They're running! Get back in transition, no easy buckets.";
                     adjustment = "Sprint back, protect the paint first";
                     break;
 
-                case PlayType.SpotUp:
+                case AdaptationPlayType.SpotUp:
                     tip = "Spot-up shooters feasting. Close out under control.";
                     adjustment = "No fly-bys, contest with hands up";
                     break;
 
-                case PlayType.Handoff:
+                case AdaptationPlayType.Handoff:
                     tip = "DHO action working well. Consider switching or going under.";
                     adjustment = "Switch handoffs, stay attached to shooter";
                     break;
 
-                case PlayType.Cut:
+                case AdaptationPlayType.Cut:
                     tip = "Cutting and off-ball movement hurting us. Stay in passing lanes.";
                     adjustment = "Active hands, jump to the ball";
                     break;
@@ -475,12 +475,12 @@ namespace NBAHeadCoach.Core.AI
         private GameAdaptation CreateClutchDefenseAdaptation(PatternDetected pattern)
         {
             string playerId = null;
-            PlayType? playType = null;
+            AdaptationPlayType? playType = null;
 
             if (pattern.Metadata.ContainsKey("clutchPlayerId"))
                 playerId = pattern.Metadata["clutchPlayerId"].ToString();
             if (pattern.Metadata.ContainsKey("playType"))
-                playType = (PlayType)pattern.Metadata["playType"];
+                playType = (AdaptationPlayType)pattern.Metadata["playType"];
 
             var tip = "Clutch situations: they're predictable. ";
             if (!string.IsNullOrEmpty(playerId))
@@ -536,13 +536,13 @@ namespace NBAHeadCoach.Core.AI
         {
             switch (adaptation.ImpactZone)
             {
-                case ShotZone.Paint:
+                case AdaptationShotZone.Paint:
                     strategy.DefensiveAggression = Math.Min(100, strategy.DefensiveAggression + 10);
                     break;
 
-                case ShotZone.ThreePointCorner:
-                case ShotZone.ThreePointWing:
-                case ShotZone.ThreePointTop:
+                case AdaptationShotZone.ThreePointCorner:
+                case AdaptationShotZone.ThreePointWing:
+                case AdaptationShotZone.ThreePointTop:
                     strategy.DefensiveAggression = Math.Min(100, strategy.DefensiveAggression + 5);
                     break;
             }
@@ -552,11 +552,11 @@ namespace NBAHeadCoach.Core.AI
         {
             switch (adaptation.CounteredPlayType)
             {
-                case PlayType.PickAndRoll:
+                case AdaptationPlayType.PickAndRoll:
                     strategy.DefensiveAggression = Math.Min(100, strategy.DefensiveAggression + 8);
                     break;
 
-                case PlayType.Transition:
+                case AdaptationPlayType.Transition:
                     strategy.Pace = Math.Max(0, strategy.Pace - 10); // Slow down to prevent fast breaks
                     break;
             }
@@ -595,9 +595,9 @@ namespace NBAHeadCoach.Core.AI
         /// <summary>
         /// Gets shooting tendencies by zone.
         /// </summary>
-        public Dictionary<ShotZone, (int attempts, int makes)> GetShotTendencies(string teamId)
+        public Dictionary<AdaptationShotZone, (int attempts, int makes)> GetShotTendencies(string teamId)
         {
-            var result = new Dictionary<ShotZone, (int, int)>();
+            var result = new Dictionary<AdaptationShotZone, (int, int)>();
 
             if (_teamData.TryGetValue(teamId, out var data))
             {
@@ -613,9 +613,9 @@ namespace NBAHeadCoach.Core.AI
         /// <summary>
         /// Gets play type distribution.
         /// </summary>
-        public Dictionary<PlayType, float> GetPlayTypeDistribution(string teamId)
+        public Dictionary<AdaptationPlayType, float> GetPlayTypeDistribution(string teamId)
         {
-            var result = new Dictionary<PlayType, float>();
+            var result = new Dictionary<AdaptationPlayType, float>();
 
             if (_teamData.TryGetValue(teamId, out var data))
             {
@@ -643,10 +643,10 @@ namespace NBAHeadCoach.Core.AI
         public string TeamId;
         public string TeamName;
         public List<PossessionRecord> AllPossessions = new List<PossessionRecord>();
-        public Dictionary<ShotZone, int> ShotsByZone = new Dictionary<ShotZone, int>();
-        public Dictionary<ShotZone, int> MadeByZone = new Dictionary<ShotZone, int>();
-        public Dictionary<PlayType, int> PlayTypeCounts = new Dictionary<PlayType, int>();
-        public Dictionary<PlayType, int> PlayTypeSuccess = new Dictionary<PlayType, int>();
+        public Dictionary<AdaptationShotZone, int> ShotsByZone = new Dictionary<AdaptationShotZone, int>();
+        public Dictionary<AdaptationShotZone, int> MadeByZone = new Dictionary<AdaptationShotZone, int>();
+        public Dictionary<AdaptationPlayType, int> PlayTypeCounts = new Dictionary<AdaptationPlayType, int>();
+        public Dictionary<AdaptationPlayType, int> PlayTypeSuccess = new Dictionary<AdaptationPlayType, int>();
         public Dictionary<string, int> PlayerUsage = new Dictionary<string, int>();
         public Dictionary<string, int> PlayerSuccesses = new Dictionary<string, int>();
         public Dictionary<int, int> QuarterPossessions = new Dictionary<int, int>();
@@ -659,12 +659,12 @@ namespace NBAHeadCoach.Core.AI
             TeamName = teamName;
 
             // Initialize zone and play type dictionaries
-            foreach (ShotZone zone in Enum.GetValues(typeof(ShotZone)))
+            foreach (AdaptationShotZone zone in Enum.GetValues(typeof(AdaptationShotZone)))
             {
                 ShotsByZone[zone] = 0;
                 MadeByZone[zone] = 0;
             }
-            foreach (PlayType pt in Enum.GetValues(typeof(PlayType)))
+            foreach (AdaptationPlayType pt in Enum.GetValues(typeof(AdaptationPlayType)))
             {
                 PlayTypeCounts[pt] = 0;
                 PlayTypeSuccess[pt] = 0;
@@ -683,11 +683,11 @@ namespace NBAHeadCoach.Core.AI
         public int Quarter;
         public float GameClock;
         public bool IsClutch;
-        public ShotType ShotType;
-        public ShotZone ShotZone;
+        public AdaptationShotType ShotType;
+        public AdaptationShotZone ShotZone;
         public bool ShotMade;
         public int PointsScored;
-        public PlayType PlayType;
+        public AdaptationPlayType PlayType;
         public string PrimaryPlayerId;
         public string AssistPlayerId;
         public bool WasTurnover;
@@ -717,8 +717,8 @@ namespace NBAHeadCoach.Core.AI
         public bool IsClutchOnly;
 
         // Specific adaptation data
-        public ShotZone? ImpactZone;
-        public PlayType? CounteredPlayType;
+        public AdaptationShotZone? ImpactZone;
+        public AdaptationPlayType? CounteredPlayType;
         public string FocusPlayerId;
     }
 
@@ -743,7 +743,7 @@ namespace NBAHeadCoach.Core.AI
         RotationChange
     }
 
-    public enum ShotZone
+    public enum AdaptationShotZone
     {
         Paint,
         MidRange,
@@ -752,7 +752,7 @@ namespace NBAHeadCoach.Core.AI
         ThreePointTop
     }
 
-    public enum ShotType
+    public enum AdaptationShotType
     {
         None,
         Layup,
@@ -764,7 +764,7 @@ namespace NBAHeadCoach.Core.AI
         FreeThrow
     }
 
-    public enum PlayType
+    public enum AdaptationPlayType
     {
         PickAndRoll,
         Isolation,
