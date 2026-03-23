@@ -1153,7 +1153,7 @@ namespace NBAHeadCoach.Core
                 boxScore.PlayerStats[playerId] = new PlayerGameStats
                 {
                     PlayerId = playerId,
-                    Minutes = (int)_playerMinutes[playerId],
+                    SecondsPlayed = _playerMinutes[playerId] * 60f,
                     PersonalFouls = _playerFouls.GetValueOrDefault(playerId, 0)
                 };
             }

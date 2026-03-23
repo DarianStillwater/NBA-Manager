@@ -127,24 +127,25 @@ namespace NBAHeadCoach.Tests
         private void PrintTeamBoxScore(string teamName, Team team, BoxScore boxScore, PlayerDatabase db)
         {
             Debug.Log($"\n--- {teamName} ---");
-            Debug.Log($"{"PLAYER",-20} {"PTS",4} {"FG",7} {"3PT",7} {"FT",6} {"OREB",5} {"DREB",5} {"REB",4} {"AST",4} {"STL",4} {"BLK",4} {"TO",3} {"PF",3}");
-            Debug.Log(new string('-', 90));
+            Debug.Log($"{"PLAYER",-20} {"MIN",4} {"PTS",4} {"FG",7} {"3PT",7} {"FT",6} {"OREB",5} {"DREB",5} {"REB",4} {"AST",4} {"STL",4} {"BLK",4} {"TO",3} {"PF",3}");
+            Debug.Log(new string('-', 95));
 
             var starters = team.StartingLineupIds.ToList();
             var allStats = boxScore.PlayerStats
                 .Where(kvp => team.RosterPlayerIds.Contains(kvp.Key))
                 .Select(kvp => kvp.Value)
-                .OrderByDescending(s => s.Points)
+                .Where(s => s.Minutes > 0 || s.Points > 0 || s.TotalFGA > 0 || s.TotalRebounds > 0)
+                .OrderByDescending(s => s.Minutes)
+                .ThenByDescending(s => s.Points)
                 .ToList();
 
             int teamPts = 0, teamFGA = 0, teamFGM = 0, team3PA = 0, team3PM = 0;
             int teamFTA = 0, teamFTM = 0, teamOREB = 0, teamDREB = 0;
             int teamAST = 0, teamSTL = 0, teamBLK = 0, teamTO = 0, teamPF = 0;
+            int teamMIN = 0;
 
             foreach (var s in allStats)
             {
-                if (s.Points == 0 && s.TotalFGA == 0 && s.TotalRebounds == 0) continue;
-
                 var player = db.GetPlayer(s.PlayerId);
                 string name = player != null ? $"{player.FirstName[0]}. {player.LastName}" : s.PlayerId;
                 if (name.Length > 19) name = name.Substring(0, 19);
@@ -153,7 +154,8 @@ namespace NBAHeadCoach.Tests
                 string three = $"{s.ThreePointMade}/{s.ThreePointAttempts}";
                 string ft = $"{s.FreeThrowsMade}/{s.FreeThrowAttempts}";
 
-                Debug.Log($"{name,-20} {s.Points,4} {fg,7} {three,7} {ft,6} {s.OffensiveRebounds,5} {s.DefensiveRebounds,5} {s.TotalRebounds,4} {s.Assists,4} {s.Steals,4} {s.Blocks,4} {s.Turnovers,3} {s.PersonalFouls,3}");
+                Debug.Log($"{name,-20} {s.Minutes,4} {s.Points,4} {fg,7} {three,7} {ft,6} {s.OffensiveRebounds,5} {s.DefensiveRebounds,5} {s.TotalRebounds,4} {s.Assists,4} {s.Steals,4} {s.Blocks,4} {s.Turnovers,3} {s.PersonalFouls,3}");
+                teamMIN += s.Minutes;
 
                 teamPts += s.Points; teamFGA += s.TotalFGA; teamFGM += s.TotalFGM;
                 team3PA += s.ThreePointAttempts; team3PM += s.ThreePointMade;
@@ -163,11 +165,11 @@ namespace NBAHeadCoach.Tests
                 teamTO += s.Turnovers; teamPF += s.PersonalFouls;
             }
 
-            Debug.Log(new string('-', 90));
+            Debug.Log(new string('-', 95));
             float fgPct = teamFGA > 0 ? (float)teamFGM / teamFGA * 100 : 0;
             float threePct = team3PA > 0 ? (float)team3PM / team3PA * 100 : 0;
             float ftPct = teamFTA > 0 ? (float)teamFTM / teamFTA * 100 : 0;
-            Debug.Log($"{"TOTALS",-20} {teamPts,4} {teamFGM + "/" + teamFGA,7} {team3PM + "/" + team3PA,7} {teamFTM + "/" + teamFTA,6} {teamOREB,5} {teamDREB,5} {teamOREB + teamDREB,4} {teamAST,4} {teamSTL,4} {teamBLK,4} {teamTO,3} {teamPF,3}");
+            Debug.Log($"{"TOTALS",-20} {teamMIN,4} {teamPts,4} {teamFGM + "/" + teamFGA,7} {team3PM + "/" + team3PA,7} {teamFTM + "/" + teamFTA,6} {teamOREB,5} {teamDREB,5} {teamOREB + teamDREB,4} {teamAST,4} {teamSTL,4} {teamBLK,4} {teamTO,3} {teamPF,3}");
             Debug.Log($"{"SHOOTING",-20}      FG: {fgPct:F1}%  3PT: {threePct:F1}%  FT: {ftPct:F1}%");
         }
 
@@ -287,7 +289,7 @@ namespace NBAHeadCoach.Tests
                 LastName = data.LastName,
                 JerseyNumber = data.JerseyNumber,
                 Position = (Position)data.Position,
-                Age = data.Age,
+                BirthDate = System.DateTime.Now.AddYears(-data.Age),
                 HeightInches = data.HeightInches,
                 WeightLbs = data.WeightLbs,
                 TeamId = data.TeamId,

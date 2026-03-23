@@ -13,9 +13,10 @@ namespace NBAHeadCoach.Core.Simulation
     /// </summary>
     public class PossessionSimulator
     {
+        public static string VERSION = "ROOT_v2";
         private const float SHOT_CLOCK = 24f;
         private const float MIN_POSSESSION_TIME = 6f;   // Minimum seconds before shot
-        private const float AVG_POSSESSION_TIME = 12f;  // Average possession length (~100 possessions per team)
+        private const float AVG_POSSESSION_TIME = 15f;  // Average possession length (~95 possessions per team per game)
 
         private System.Random _random;
         private SpatialTracker _tracker;
@@ -38,10 +39,6 @@ namespace NBAHeadCoach.Core.Simulation
         private string _defenseTeamId;
         private GameContext _gameContext;
         private ViolationEventDetail _currentViolation;  // Stores violation from DeterminePossessionOutcome
-        private PlayType _currentPlayType;
-
-        private enum PlayType { Motion, PickAndRoll, Isolation, PostUp }
-        private bool _isFastBreak;
 
         public PossessionSimulator(int? seed = null, FoulSystem foulSystem = null)
         {
@@ -75,8 +72,7 @@ namespace NBAHeadCoach.Core.Simulation
             bool isOffenseHome,
             string offenseTeamId = null,
             string defenseTeamId = null,
-            int scoreDifferential = 0,
-            PossessionOutcome? previousOutcome = null)
+            int scoreDifferential = 0)
         {
             _offensePlayers = offensePlayers;
             _defensePlayers = defensePlayers;
@@ -110,49 +106,10 @@ namespace NBAHeadCoach.Core.Simulation
             // Initialize positions
             InitializePositions(isOffenseHome);
             
-            // Check for fast break opportunity based on transition settings
-            bool isFastBreak = false;
-            bool transitionOpportunity = previousOutcome == PossessionOutcome.Turnover ||
-                                          previousOutcome == PossessionOutcome.Miss ||
-                                          previousOutcome == PossessionOutcome.Block;
-            if (transitionOpportunity)
-            {
-                float fastBreakChance = _offenseStrategy.TransitionOffense switch
-                {
-                    TransitionPreference.NoPush => 0.02f,
-                    TransitionPreference.OpportunisticPush => 0.10f,
-                    TransitionPreference.PushWhenPossible => 0.18f,
-                    TransitionPreference.AggressivePush => 0.25f,
-                    TransitionPreference.AlwaysPush => 0.35f,
-                    _ => 0.10f
-                };
-
-                // Opponent transition defense reduces fast break chance
-                fastBreakChance *= _defenseStrategy.TransitionDefense switch
-                {
-                    TransitionDefensePreference.SprintBack => 0.6f,
-                    TransitionDefensePreference.BalancedTransition => 0.8f,
-                    TransitionDefensePreference.GambleForSteals => 1.1f,
-                    TransitionDefensePreference.MatchupTransition => 0.9f,
-                    _ => 0.8f
-                };
-
-                isFastBreak = _random.NextDouble() < fastBreakChance;
-            }
-            _isFastBreak = isFastBreak;
-
             // Determine possession duration (8-16 seconds, influenced by pace)
             float paceMultiplier = Mathf.Lerp(1.15f, 0.85f, _offenseStrategy.Pace / 100f);
-            float possessionDuration;
-            if (isFastBreak)
-            {
-                possessionDuration = 4f + (float)(_random.NextDouble() * 4.0); // 4-8 seconds
-            }
-            else
-            {
-                possessionDuration = AVG_POSSESSION_TIME * paceMultiplier;
-                possessionDuration += (float)(_random.NextDouble() * 4.0 - 2.0); // +/- 2 seconds variance
-            }
+            float possessionDuration = AVG_POSSESSION_TIME * paceMultiplier;
+            possessionDuration += (float)(_random.NextDouble() * 4.0 - 2.0); // +/- 2 seconds variance
             possessionDuration = Mathf.Clamp(possessionDuration, MIN_POSSESSION_TIME, SHOT_CLOCK - 2f);
             
             // Don't exceed remaining game clock
@@ -198,176 +155,114 @@ namespace NBAHeadCoach.Core.Simulation
                 result.Outcome = PossessionOutcome.Turnover;
                 result.PointsScored = 0;
             }
-            else if (outcomeType == PossessionOutcomeType.Steal)
-            {
-                result.Events.Add(CreateStealEvent(endGameClock, quarter));
-                result.Outcome = PossessionOutcome.Turnover;
-                result.PointsScored = 0;
-            }
             else // Shot attempt (may include foul check)
             {
-                // Determine play type based on offensive strategy
-                _currentPlayType = DeterminePlayType();
-
-                // End-of-game strategy overrides
-                if (_gameContext.IsClutchTime && _offenseStrategy.CloseGameStrategy != null)
-                {
-                    var clutch = _offenseStrategy.CloseGameStrategy;
-
-                    // Override play type in clutch
-                    if (clutch.LateGamePlay == LateGamePlayType.StarIsolation)
-                        _currentPlayType = PlayType.Isolation;
-                    else if (clutch.LateGamePlay == LateGamePlayType.PickAndRoll)
-                        _currentPlayType = PlayType.PickAndRoll;
-                    else if (clutch.LateGamePlay == LateGamePlayType.PostUp)
-                        _currentPlayType = PlayType.PostUp;
-
-                    // Run clock when ahead — burn more of the shot clock
-                    if (clutch.RunClockWhenAhead && _gameContext.ScoreDifferential >= clutch.SecondsAheadToSlowDown)
-                    {
-                        float clutchDuration = Mathf.Max(possessionDuration, SHOT_CLOCK - clutch.TargetLastShotClock);
-                        clutchDuration = Mathf.Min(clutchDuration, gameClock);
-                        endGameClock = gameClock - clutchDuration;
-                    }
-                }
-
-                // Select shooter (influenced by play type)
+                // Select shooter (could be different from ball handler after ball movement)
                 int shooterIndex = SelectShooter();
 
-                // In clutch with StarIsolation, force the go-to player if specified
-                if (_gameContext.IsClutchTime && _offenseStrategy.CloseGameStrategy != null &&
-                    _offenseStrategy.CloseGameStrategy.LateGamePlay == LateGamePlayType.StarIsolation &&
-                    !string.IsNullOrEmpty(_offenseStrategy.CloseGameStrategy.GoToPlayerId))
-                {
-                    string starId = _offenseStrategy.CloseGameStrategy.GoToPlayerId;
-                    for (int i = 0; i < 5; i++)
-                    {
-                        if (_offensePlayers[i].PlayerId == starId)
-                        {
-                            shooterIndex = i;
-                            break;
-                        }
-                    }
-                }
+                // Reposition shooter to appropriate zone based on strategy
+                RepositionShooterForZone(shooterIndex);
 
                 var shooter = _offensePlayers[shooterIndex];
                 var defender = _defensePlayers[shooterIndex];
 
-                // Generate assist pass event if shooter differs from ball handler
+                // Add pass/assist event if ball handler passed to shooter
                 if (shooterIndex != _ballHandlerIndex)
                 {
-                    float assistChance = 0.60f; // NBA average ~55-60% of made FGs are assisted
-
-                    // Play type strongly affects assist probability
-                    assistChance += _currentPlayType switch
+                    result.Events.Add(new PossessionEvent
                     {
-                        PlayType.Motion => 0.15f,       // Motion = lots of passing
-                        PlayType.PickAndRoll => 0.05f,  // PnR = moderate assists
-                        PlayType.Isolation => -0.25f,   // Iso = rarely assisted
-                        PlayType.PostUp => -0.10f,      // Post-up = sometimes assisted
-                        _ => 0f
-                    };
-
-                    // Ball movement priority increases assists (0-100, default 70)
-                    var offSystem = _offenseStrategy.OffensiveSystem;
-                    if (offSystem != null)
-                    {
-                        assistChance += (offSystem.BallMovementPriority - 50) / 200f; // ±25%
-
-                        // Extra pass philosophy bonus
-                        if (offSystem.ExtraPassPhilosophy)
-                            assistChance += 0.10f;
-                    }
-
-                    // Passer skill modifier
-                    var passer = _offensePlayers[_ballHandlerIndex];
-                    assistChance += (passer.Passing - 50) / 400f; // ±12.5%
-
-                    assistChance = Mathf.Clamp(assistChance, 0.15f, 0.90f);
-
-                    if (_random.NextDouble() < assistChance)
-                    {
-                        result.Events.Add(new PossessionEvent
-                        {
-                            Type = EventType.Pass,
-                            GameClock = endGameClock,
-                            Quarter = quarter,
-                            ActorPlayerId = passer.PlayerId,
-                            TargetPlayerId = shooter.PlayerId,
-                            Outcome = EventOutcome.Success
-                        });
-                    }
+                        Type = EventType.Pass,
+                        GameClock = endGameClock + 1f,
+                        Quarter = quarter,
+                        ActorPlayerId = _offensePlayers[_ballHandlerIndex].PlayerId,
+                        TargetPlayerId = shooter.PlayerId,
+                        Outcome = EventOutcome.Success
+                    });
                 }
 
-                // Reposition shooter based on strategy shot zone frequencies
-                RepositionShooterForZone(shooterIndex);
-
-                // Check for defensive foul before shot
-                var shotType = ShotCalculator.DetermineShotType(
-                    shooter, _offensePositions[shooterIndex],
-                    _offensePositions[shooterIndex].DistanceTo(_defensePositions[shooterIndex]), false);
-
-                float foulChance = _foulSystem.CalculateFoulProbability(defender, shooter, shotType, _gameContext, _defenseStrategy.DefensiveSystem);
-                bool defenderFouls = _random.NextDouble() < foulChance;
-
-                if (defenderFouls)
+                // Check for steal before shot (~5% chance)
+                float stealChance = 0.05f * (defender.Steal / 80f);
+                if (_random.NextDouble() < stealChance)
                 {
-                    // Foul occurred - determine outcome
-                    var shotResult = ExecuteShotWithFoul(shooter, shooterIndex, defender, shotType, endGameClock, quarter, possessionClock);
-                    result.Events.AddRange(shotResult.Events);
-                    result.Outcome = shotResult.Outcome;
-                    result.PointsScored = shotResult.Points;
+                    result.Events.Add(new PossessionEvent
+                    {
+                        Type = EventType.Steal,
+                        GameClock = endGameClock,
+                        Quarter = quarter,
+                        ActorPlayerId = defender.PlayerId,
+                        TargetPlayerId = shooter.PlayerId,
+                        Outcome = EventOutcome.Success
+                    });
+                    result.Outcome = PossessionOutcome.Turnover;
+                    result.PointsScored = 0;
                 }
                 else
                 {
-                    // Normal shot attempt
-                    var shotEvent = ExecuteShot(shooter, shooterIndex, endGameClock, quarter, possessionClock);
-                    result.Events.Add(shotEvent);
+                    // Check for defensive foul before shot
+                    var shotType = ShotCalculator.DetermineShotType(
+                        shooter, _offensePositions[shooterIndex],
+                        _offensePositions[shooterIndex].DistanceTo(_defensePositions[shooterIndex]), false);
 
-                    if (shotEvent.Type == EventType.Block)
+                    float foulChance = _foulSystem.CalculateFoulProbability(defender, shooter, shotType, _gameContext);
+                    bool defenderFouls = _random.NextDouble() < foulChance;
+
+                    if (defenderFouls)
                     {
-                        result.Outcome = PossessionOutcome.Block;
-                        result.PointsScored = 0;
-                    }
-                    else if (shotEvent.Outcome == EventOutcome.Success)
-                    {
-                        result.Outcome = PossessionOutcome.Score;
-                        result.PointsScored = shotEvent.PointsScored;
+                        var shotResult = ExecuteShotWithFoul(shooter, shooterIndex, defender, shotType, endGameClock, quarter, possessionClock);
+                        result.Events.AddRange(shotResult.Events);
+                        result.Outcome = shotResult.Outcome;
+                        result.PointsScored = shotResult.Points;
                     }
                     else
                     {
-                        result.Outcome = PossessionOutcome.Miss;
-                        result.PointsScored = 0;
-                    }
+                        var shotEvent = ExecuteShot(shooter, shooterIndex, endGameClock, quarter, possessionClock);
+                        result.Events.Add(shotEvent);
 
-                    // Generate rebound on miss or block
-                    bool isMissOrBlock = shotEvent.Type == EventType.Block ||
-                        (shotEvent.Type == EventType.Shot && shotEvent.Outcome == EventOutcome.Fail);
-                    if (isMissOrBlock)
-                    {
-                        var reboundEvent = GenerateRebound(endGameClock, quarter);
-                        result.Events.Add(reboundEvent);
-
-                        // Offensive rebound → second chance shot (max 1 per possession)
-                        if (reboundEvent.IsOffensiveRebound)
+                        if (shotEvent.Type == EventType.Block)
                         {
-                            int secondShooterIndex = SelectShooter();
-                            var secondShooter = _offensePlayers[secondShooterIndex];
-                            var secondDefender = _defensePlayers[secondShooterIndex];
-                            RepositionShooterForZone(secondShooterIndex);
-                            var secondShotEvent = ExecuteShot(secondShooter, secondShooterIndex, endGameClock, quarter, possessionClock);
-                            result.Events.Add(secondShotEvent);
+                            result.Outcome = PossessionOutcome.Block;
+                            result.PointsScored = 0;
+                        }
+                        else if (shotEvent.Outcome == EventOutcome.Success)
+                        {
+                            result.Outcome = PossessionOutcome.Score;
+                            result.PointsScored = shotEvent.PointsScored;
+                        }
+                        else
+                        {
+                            result.Outcome = PossessionOutcome.Miss;
+                            result.PointsScored = 0;
+                        }
 
-                            if (secondShotEvent.Type == EventType.Block)
+                        // Generate rebound on missed shots
+                        if (shotEvent.Outcome == EventOutcome.Fail || shotEvent.Type == EventType.Block)
+                        {
+                            bool offensiveRebound = _random.NextDouble() < 0.25f; // ~25% OREB rate
+                            int rebounderIndex;
+                            Player rebounder;
+
+                            if (offensiveRebound)
                             {
-                                result.Outcome = PossessionOutcome.Block;
+                                // Offensive rebound - weight by rebounding skill
+                                rebounderIndex = SelectRebounder(_offensePlayers, true);
+                                rebounder = _offensePlayers[rebounderIndex];
                             }
-                            else if (secondShotEvent.Outcome == EventOutcome.Success)
+                            else
                             {
-                                result.Outcome = PossessionOutcome.Score;
-                                result.PointsScored = secondShotEvent.PointsScored;
+                                // Defensive rebound
+                                rebounderIndex = SelectRebounder(_defensePlayers, false);
+                                rebounder = _defensePlayers[rebounderIndex];
                             }
-                            // else stays as Miss
+
+                            result.Events.Add(new PossessionEvent
+                            {
+                                Type = EventType.Rebound,
+                                GameClock = endGameClock,
+                                Quarter = quarter,
+                                ActorPlayerId = rebounder.PlayerId,
+                                Outcome = EventOutcome.Success,
+                                IsOffensiveRebound = offensiveRebound
+                            });
                         }
                     }
                 }
@@ -400,30 +295,8 @@ namespace NBAHeadCoach.Core.Simulation
                 return PossessionOutcomeType.Violation;
             }
 
-            // === STEAL CHECK (separate from turnovers) ===
-            // Base steal chance ~3.5% per possession (NBA avg ~7-8 steals/team over ~100 possessions)
-            float stealChance = 0.035f;
-
-            // Defensive strategy influence
-            var defSystem = _defenseStrategy.DefensiveSystem;
-            if (defSystem != null)
-            {
-                stealChance += (defSystem.OnBallPressure - 50) / 500f;      // ±10%
-                stealChance += (defSystem.GamblingFrequency - 30) / 600f;   // ±12%
-            }
-
-            // Ball handler's handling reduces steal chance
-            stealChance -= (handler.BallHandling - 50) / 500f;             // ±10%
-
-            stealChance = Mathf.Clamp(stealChance, 0.01f, 0.10f);
-
-            if (_random.NextDouble() < stealChance)
-            {
-                return PossessionOutcomeType.Steal;
-            }
-
-            // Base turnover rate ~10% (reduced from 13% since steals are now separate)
-            float turnoverChance = 0.10f;
+            // Base turnover rate is ~13% in NBA
+            float turnoverChance = 0.13f;
 
             // Adjust for ball handler skill
             turnoverChance -= (handler.BallHandling - 50) / 500f;
@@ -491,7 +364,7 @@ namespace NBAHeadCoach.Core.Simulation
             return total / players.Length;
         }
 
-        private enum PossessionOutcomeType { Shot, Turnover, Violation, Foul, Steal }
+        private enum PossessionOutcomeType { Shot, Turnover, Violation, Foul }
 
         /// <summary>
         /// Selects the ball handler based on position and playmaking skill.
@@ -533,36 +406,11 @@ namespace NBAHeadCoach.Core.Simulation
                 float avgShooting = (p.Shot_Three + p.Shot_MidRange + p.Finishing_Rim) / 3f;
                 weights[i] = avgShooting;
 
-                // Strategy influence (continuous weights instead of thresholds)
-                weights[i] += p.Shot_Three * (_offenseStrategy.ThreePointFrequency / 100f) * 0.5f;
-                if (i == 3 || i == 4) // Bigs
-                    weights[i] += p.Finishing_PostMoves * (_offenseStrategy.PostUpFrequency / 100f) * 0.5f;
-                // Rim attack favors athletic finishers
-                weights[i] += p.Finishing_Rim * (_offenseStrategy.RimAttackFrequency / 100f) * 0.3f;
-
-                // Play type influence on shooter selection
-                switch (_currentPlayType)
-                {
-                    case PlayType.Isolation:
-                        // Iso: heavily favor the best scorer
-                        weights[i] *= (avgShooting / 70f); // best shooters get amplified
-                        break;
-                    case PlayType.PostUp:
-                        // Post-up: favor bigs (PF/C)
-                        if (i >= 3)
-                            weights[i] *= 2.0f;
-                        else
-                            weights[i] *= 0.5f;
-                        break;
-                    case PlayType.PickAndRoll:
-                        // PnR: favor ball handler and the big (screener)
-                        if (i == _ballHandlerIndex)
-                            weights[i] *= 1.5f;
-                        else if (i >= 3) // big as roller/popper
-                            weights[i] *= 1.3f;
-                        break;
-                    // Motion: no additional weighting (default spread)
-                }
+                // Strategy influence
+                if (_offenseStrategy.ThreePointFrequency > 60)
+                    weights[i] += p.Shot_Three * 0.3f;
+                if (_offenseStrategy.PostUpFrequency > 50 && (i == 3 || i == 4))
+                    weights[i] += p.Finishing_PostMoves * 0.3f;
 
                 // TENDENCY INTEGRATION: Shot selection tendencies affect usage
                 if (p.Tendencies != null)
@@ -599,58 +447,16 @@ namespace NBAHeadCoach.Core.Simulation
         }
 
         /// <summary>
-        /// Determines the play type for this possession based on offensive strategy frequencies.
-        /// </summary>
-        private PlayType DeterminePlayType()
-        {
-            var offSystem = _offenseStrategy.OffensiveSystem;
-            if (offSystem == null) return PlayType.Motion;
-
-            float pnr = offSystem.PickAndRollFrequency;
-            float iso = offSystem.IsolationFrequency;
-            float post = offSystem.PostUpFrequency;
-            float motion = Mathf.Max(100f - pnr - iso - post, 10f); // remainder is motion
-
-            float total = pnr + iso + post + motion;
-            float roll = (float)_random.NextDouble() * total;
-
-            if (roll < pnr) return PlayType.PickAndRoll;
-            if (roll < pnr + iso) return PlayType.Isolation;
-            if (roll < pnr + iso + post) return PlayType.PostUp;
-            return PlayType.Motion;
-        }
-
-        /// <summary>
-        /// Repositions the shooter based on strategy shot zone frequencies.
+        /// Repositions the shooter to an appropriate zone based on offensive strategy.
         /// Uses ThreePointFrequency, MidRangeFrequency, RimAttackFrequency as weights.
         /// </summary>
         private void RepositionShooterForZone(int shooterIndex)
         {
             float xMult = _isOffenseHome ? 1f : -1f;
 
-            // Start with strategy frequencies, then modify by play type
             float threeWeight = Mathf.Max(_offenseStrategy.ThreePointFrequency, 1f);
             float midWeight = Mathf.Max(_offenseStrategy.MidRangeFrequency, 1f);
             float rimWeight = Mathf.Max(_offenseStrategy.RimAttackFrequency, 1f);
-
-            // Play type shifts zone distribution
-            switch (_currentPlayType)
-            {
-                case PlayType.PostUp:
-                    rimWeight *= 2.0f;    // Post-ups heavily favor paint
-                    midWeight *= 1.2f;    // Some face-up mid-range
-                    threeWeight *= 0.3f;  // Rarely kick out for 3
-                    break;
-                case PlayType.Isolation:
-                    midWeight *= 1.5f;    // Iso creates mid-range pullups
-                    rimWeight *= 1.3f;    // Drives to rim
-                    break;
-                case PlayType.PickAndRoll:
-                    rimWeight *= 1.4f;    // Roll to rim
-                    midWeight *= 1.3f;    // Pull-up mid-range
-                    break;
-                // Motion: uses base frequencies unmodified
-            }
             float total = threeWeight + midWeight + rimWeight;
 
             float roll = (float)_random.NextDouble() * total;
@@ -659,28 +465,33 @@ namespace NBAHeadCoach.Core.Simulation
             if (roll < threeWeight)
             {
                 // Three-point zone — pick a spot on the arc
-                float[] yOptions = { -22f, -16f, 0f, 16f, 22f }; // corners to top
+                float[] yOptions = { -22f, -16f, 0f, 16f, 22f };
                 float y = yOptions[_random.Next(yOptions.Length)];
-                float x = Mathf.Abs(y) > 20f ? 42f : (28f + (float)_random.NextDouble() * 4f); // corners vs wings
+                float x = Mathf.Abs(y) > 20f ? 42f : (28f + (float)_random.NextDouble() * 4f);
                 newPos = new CourtPosition(x * xMult, y);
             }
             else if (roll < threeWeight + midWeight)
             {
                 // Mid-range zone
                 float angle = (float)(_random.NextDouble() * Mathf.PI) - Mathf.PI / 2f;
-                float dist = 12f + (float)_random.NextDouble() * 8f; // 12-20 feet from basket
+                float dist = 12f + (float)_random.NextDouble() * 8f;
                 float basketX = 42f * xMult;
                 newPos = new CourtPosition(basketX - Mathf.Cos(angle) * dist * xMult, Mathf.Sin(angle) * dist);
             }
             else
             {
-                // Rim zone — restricted area / paint
-                float x = 38f + (float)_random.NextDouble() * 4f; // near basket
+                // Rim zone
+                float x = 38f + (float)_random.NextDouble() * 4f;
                 float y = (float)(_random.NextDouble() * 10f - 5f);
                 newPos = new CourtPosition(x * xMult, y);
             }
 
             _offensePositions[shooterIndex] = newPos;
+
+            // Defender tracks the shooter (with some lag — not perfectly on them)
+            float defTrack = 0.6f + (float)_random.NextDouble() * 0.3f; // 60-90% tracking
+            _defensePositions[shooterIndex] = _defensePositions[shooterIndex].MoveTowards(newPos,
+                _defensePositions[shooterIndex].DistanceTo(newPos) * defTrack);
         }
 
         /// <summary>
@@ -777,66 +588,13 @@ namespace NBAHeadCoach.Core.Simulation
             var defender = _defensePlayers[shooterIndex];
             float defenderDistance = position.DistanceTo(_defensePositions[shooterIndex]);
 
-            // Spacing modifier: wider spacing = defenders further away = less contested shots
-            var offSystem = _offenseStrategy.OffensiveSystem;
-            if (offSystem != null)
-            {
-                float spacingMult = offSystem.SpacingWidth switch
-                {
-                    SpacingLevel.Tight => 0.85f,
-                    SpacingLevel.Normal => 1.0f,
-                    SpacingLevel.Wide => 1.1f,
-                    SpacingLevel.ExtraWide => 1.2f,
-                    _ => 1.0f
-                };
-                defenderDistance *= spacingMult;
-            }
-
             // Determine shot type and zone
             var shotType = ShotCalculator.DetermineShotType(shooter, position, defenderDistance, false);
 
             // Calculate shot probability
             float shotProb = ShotCalculator.CalculateShotProbability(
                 shooter, position, defender, defenderDistance, shotType,
-                isFastBreak: _isFastBreak, secondsRemaining: possessionClock, isHomeTeam: _isOffenseHome);
-
-            // === DEFENSIVE SCHEME MODIFIERS ===
-            var defSystem = _defenseStrategy.DefensiveSystem;
-            if (defSystem != null)
-            {
-                var zone = position.GetZone(_isOffenseHome);
-
-                // ContestingLevel affects how well shots are contested (default 70)
-                float contestScale = defSystem.ContestingLevel / 70f;
-                // Higher contesting = defender effectively closer
-                defenderDistance /= Mathf.Max(contestScale, 0.5f);
-
-                // OnBallPressure affects defender distance
-                float pressureScale = 1f - (defSystem.OnBallPressure - 50) / 200f; // 50 = neutral
-                defenderDistance *= Mathf.Clamp(pressureScale, 0.6f, 1.4f);
-
-                // PackedPaint / ActiveHelp: harder to score inside
-                if (defSystem.HelpDefense == HelpDefenseLevel.PackedPaint ||
-                    defSystem.HelpDefense == HelpDefenseLevel.ActiveHelp)
-                {
-                    if (zone == CourtZone.RestrictedArea || zone == CourtZone.Paint)
-                        shotProb *= 0.92f; // -8% for inside shots
-                }
-
-                // Zone defense: mid-range harder, corner 3s slightly easier
-                if (defSystem.ZoneUsage > 0)
-                {
-                    float zoneInfluence = defSystem.ZoneUsage / 100f;
-                    if (zone == CourtZone.ShortMidRange || zone == CourtZone.LongMidRange)
-                        shotProb *= (1f - 0.06f * zoneInfluence); // up to -6%
-                    else if (zone == CourtZone.ThreePoint)
-                        shotProb *= (1f + 0.03f * zoneInfluence); // up to +3% (open corner 3s vs zone)
-                }
-
-                // SwitchAll: potential mismatches — slight bonus for offense
-                if (defSystem.SwitchingLevel == SwitchingLevel.SwitchAll)
-                    shotProb *= 1.02f; // +2% mismatch advantage
-            }
+                isFastBreak: false, secondsRemaining: possessionClock, isHomeTeam: _isOffenseHome);
 
             // TENDENCY INTEGRATION: Apply tendency-based modifiers
             if (shooter.Tendencies != null)
@@ -867,11 +625,11 @@ namespace NBAHeadCoach.Core.Simulation
 
             bool made = _random.NextDouble() < shotProb;
 
-            // Check for block (only on close shots with good defender)
+            // Check for block attempt (close shots with good defender)
             bool blocked = false;
-            if (!made && defenderDistance < 4f)
+            if (defenderDistance < 3f)
             {
-                float blockChance = (defender.Block / 100f) * (1f - defenderDistance / 6f) * 0.15f;
+                float blockChance = (defender.Block / 100f) * (1f - defenderDistance / 4f) * 0.015f;
 
                 // TENDENCY INTEGRATION: Defensive tendencies affect block attempts
                 if (defender.Tendencies != null)
@@ -892,6 +650,9 @@ namespace NBAHeadCoach.Core.Simulation
 
                 blocked = _random.NextDouble() < blockChance;
             }
+
+            // A blocked shot is always a miss
+            if (blocked) made = false;
 
             // IMPORTANT: Use _isOffenseHome to determine which basket to calculate zones from
             // Home attacks basket at X=42, Away attacks basket at X=-42
@@ -935,6 +696,32 @@ namespace NBAHeadCoach.Core.Simulation
         }
 
         /// <summary>
+        /// Selects a rebounder weighted by rebounding skill.
+        /// </summary>
+        private int SelectRebounder(Player[] players, bool offensive)
+        {
+            float totalWeight = 0f;
+            float[] weights = new float[5];
+            for (int i = 0; i < 5; i++)
+            {
+                // Use DefensiveRebound as base; offensive rebounds also factor strength
+                weights[i] = offensive
+                    ? Mathf.Max(players[i].DefensiveRebound * 0.7f + players[i].Strength * 0.3f, 20f)
+                    : Mathf.Max(players[i].DefensiveRebound, 20f);
+                totalWeight += weights[i];
+            }
+
+            float roll = (float)_random.NextDouble() * totalWeight;
+            float cumulative = 0f;
+            for (int i = 0; i < 5; i++)
+            {
+                cumulative += weights[i];
+                if (roll < cumulative) return i;
+            }
+            return 4;
+        }
+
+        /// <summary>
         /// Creates a turnover event.
         /// </summary>
         private PossessionEvent CreateTurnoverEvent(float gameClock, int quarter)
@@ -956,40 +743,6 @@ namespace NBAHeadCoach.Core.Simulation
         }
 
         /// <summary>
-        /// Creates a steal event. Selects the best defender by Steal attribute.
-        /// </summary>
-        private PossessionEvent CreateStealEvent(float gameClock, int quarter)
-        {
-            // Select stealing defender weighted by Steal attribute
-            float[] weights = new float[5];
-            for (int i = 0; i < 5; i++)
-            {
-                weights[i] = Mathf.Max(_defensePlayers[i].Steal, 5f);
-            }
-
-            float total = weights.Sum();
-            float roll = (float)_random.NextDouble() * total;
-            float cumulative = 0;
-            int stealerIndex = 0;
-            for (int i = 0; i < 5; i++)
-            {
-                cumulative += weights[i];
-                if (roll <= cumulative) { stealerIndex = i; break; }
-            }
-
-            return new PossessionEvent
-            {
-                Type = EventType.Steal,
-                GameClock = gameClock,
-                Quarter = quarter,
-                ActorPlayerId = _defensePlayers[stealerIndex].PlayerId,
-                TargetPlayerId = _offensePlayers[_ballHandlerIndex].PlayerId,
-                Outcome = EventOutcome.Success,
-                Description = $"Steal by defender"
-            };
-        }
-
-        /// <summary>
         /// Creates a turnover event for a violation.
         /// </summary>
         private PossessionEvent CreateViolationTurnoverEvent(float gameClock, int quarter)
@@ -1006,58 +759,6 @@ namespace NBAHeadCoach.Core.Simulation
                 Description = _currentViolation?.Description ?? "Violation",
                 ViolationDetail = _currentViolation,
                 Outcome = EventOutcome.Fail
-            };
-        }
-
-        /// <summary>
-        /// Generates a rebound event after a missed shot or block.
-        /// Determines offensive vs defensive rebound based on strategy and player skill.
-        /// </summary>
-        private PossessionEvent GenerateRebound(float gameClock, int quarter)
-        {
-            // Base offensive rebound rate ~22% (NBA average)
-            float orebChance = 0.22f;
-
-            // OffensiveReboundingFocus (1-5): +4% per level above 2
-            orebChance += (_offenseStrategy.OffensiveReboundingFocus - 2) * 0.04f;
-
-            // SendersOnOffensiveGlass: +3% per sender above 2
-            orebChance += (_offenseStrategy.SendersOnOffensiveGlass - 2) * 0.03f;
-
-            orebChance = Mathf.Clamp(orebChance, 0.08f, 0.40f);
-
-            bool isOffensive = _random.NextDouble() < orebChance;
-
-            // Select rebounder weighted by rebounding skill
-            Player[] reboundTeam = isOffensive ? _offensePlayers : _defensePlayers;
-            float[] weights = new float[5];
-            for (int i = 0; i < 5; i++)
-            {
-                // Bigs (PF/C at index 3,4) get positional bonus
-                float posBonus = (i >= 3) ? 1.5f : 1.0f;
-                // Use DefensiveRebound as general rebounding skill
-                weights[i] = reboundTeam[i].DefensiveRebound * posBonus;
-                if (weights[i] < 1f) weights[i] = 1f;
-            }
-
-            float total = weights.Sum();
-            float roll = (float)_random.NextDouble() * total;
-            float cumulative = 0;
-            int rebounderIndex = 0;
-            for (int i = 0; i < 5; i++)
-            {
-                cumulative += weights[i];
-                if (roll <= cumulative) { rebounderIndex = i; break; }
-            }
-
-            return new PossessionEvent
-            {
-                Type = EventType.Rebound,
-                GameClock = gameClock,
-                Quarter = quarter,
-                ActorPlayerId = reboundTeam[rebounderIndex].PlayerId,
-                Outcome = EventOutcome.Success,
-                IsOffensiveRebound = isOffensive
             };
         }
 
@@ -1093,7 +794,7 @@ namespace NBAHeadCoach.Core.Simulation
             float defenderDistance = position.DistanceTo(_defensePositions[shooterIndex]);
             float shotProb = ShotCalculator.CalculateShotProbability(
                 shooter, position, defender, defenderDistance, shotType,
-                isFastBreak: _isFastBreak, secondsRemaining: possessionClock, isHomeTeam: _isOffenseHome);
+                isFastBreak: false, secondsRemaining: possessionClock, isHomeTeam: _isOffenseHome);
 
             // Fouled shooters get a slightly lower percentage (disrupted)
             shotProb *= 0.85f;
@@ -1145,6 +846,9 @@ namespace NBAHeadCoach.Core.Simulation
             {
                 var ftResult = _freeThrowHandler.CalculateFreeThrows(shooter, freeThrows, _gameContext);
                 freeThrowPoints = ftResult.Made;
+
+                // Store FT result on the foul event so GameSimulator doesn't recalculate
+                foulEvent.FreeThrowResult = ftResult;
 
                 // Add free throw event
                 result.Events.Add(_freeThrowHandler.CreateFreeThrowEvent(shooter, ftResult, gameClock, quarter));

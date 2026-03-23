@@ -11,11 +11,11 @@ namespace NBAHeadCoach.Core.Simulation
     public static class ShotCalculator
     {
         // Base percentages by zone (league average)
-        private static readonly float BASE_RESTRICTED_AREA_PCT = 0.65f;
-        private static readonly float BASE_PAINT_PCT = 0.42f;
-        private static readonly float BASE_SHORT_MID_PCT = 0.40f;
-        private static readonly float BASE_LONG_MID_PCT = 0.38f;
-        private static readonly float BASE_THREE_PCT = 0.36f;
+        private static readonly float BASE_RESTRICTED_AREA_PCT = 0.60f;
+        private static readonly float BASE_PAINT_PCT = 0.38f;
+        private static readonly float BASE_SHORT_MID_PCT = 0.36f;
+        private static readonly float BASE_LONG_MID_PCT = 0.34f;
+        private static readonly float BASE_THREE_PCT = 0.33f;
 
         /// <summary>
         /// Calculates the probability of making a shot.
@@ -46,9 +46,9 @@ namespace NBAHeadCoach.Core.Simulation
             // 1. Get base percentage for zone
             float basePct = GetBasePercentage(zone);
             
-            // 2. Apply shooter's skill modifier (-15% to +15%)
+            // 2. Apply shooter's skill modifier (-10% to +10%)
             int shooterSkill = GetShooterSkillForZone(shooter, zone);
-            float skillModifier = (shooterSkill - 50f) / 50f * 0.15f;
+            float skillModifier = (shooterSkill - 50f) / 50f * 0.10f;
             
             // 3. Apply shot type modifier
             float shotTypeModifier = GetShotTypeModifier(shotType, shooter);

@@ -30,6 +30,12 @@ namespace NBAHeadCoach.Core.Simulation
         private float _gameClock;
         private bool _homeHasPossession;
 
+        // Rotation tracking
+        private const float SUB_ENERGY_THRESHOLD = 55f;  // Sub out when energy drops below this
+        private const float BENCH_ENERGY_RECOVERY = 0.8f; // Energy recovered per second on bench
+        private string[] _homeOnCourt = new string[5];
+        private string[] _awayOnCourt = new string[5];
+
         public BoxScore BoxScore => _boxScore;
         public SpatialTracker GameTracker => _gameTracker;
         public FoulSystem FoulSystem => _foulSystem;
@@ -59,6 +65,20 @@ namespace NBAHeadCoach.Core.Simulation
             // Initialize player stats
             InitializePlayerStats(homeTeam);
             InitializePlayerStats(awayTeam);
+
+            // Initialize on-court lineups (starters)
+            for (int i = 0; i < 5; i++)
+            {
+                _homeOnCourt[i] = homeTeam.StartingLineupIds[i];
+                _awayOnCourt[i] = awayTeam.StartingLineupIds[i];
+            }
+
+            // Reset all player energy to 100
+            foreach (var pid in homeTeam.RosterPlayerIds.Concat(awayTeam.RosterPlayerIds))
+            {
+                var p = _playerDatabase.GetPlayer(pid);
+                if (p != null) p.Energy = 100f;
+            }
 
             // Simulate 4 regular quarters
             int quartersPlayed = 0;
@@ -283,8 +303,23 @@ namespace NBAHeadCoach.Core.Simulation
                 previousOutcome = result.Outcome;
 
                 // Energy drain for active players
-                DrainEnergy(offensePlayers, result.Duration * 0.2f);
-                DrainEnergy(defensePlayers, result.Duration * 0.15f);
+                DrainEnergy(offensePlayers, result.Duration * 0.35f);
+                DrainEnergy(defensePlayers, result.Duration * 0.3f);
+
+                // Track seconds for on-court players (converted to minutes at end)
+                foreach (var p in offensePlayers.Concat(defensePlayers))
+                {
+                    if (_boxScore.PlayerStats.ContainsKey(p.PlayerId))
+                        _boxScore.PlayerStats[p.PlayerId].SecondsPlayed += result.Duration;
+                }
+
+                // Bench recovery
+                RecoverBenchEnergy(_homeTeam, result.Duration);
+                RecoverBenchEnergy(_awayTeam, result.Duration);
+
+                // Check substitutions after each possession
+                CheckSubstitutions(_homeTeam);
+                CheckSubstitutions(_awayTeam);
             }
         }
 
@@ -310,16 +345,73 @@ namespace NBAHeadCoach.Core.Simulation
         }
 
         /// <summary>
-        /// Gets the 5 active players for a team.
+        /// Gets the 5 active players for a team from on-court tracking.
         /// </summary>
         private Player[] GetActivePlayers(Team team)
         {
+            var onCourt = team.TeamId == _homeTeam.TeamId ? _homeOnCourt : _awayOnCourt;
             var players = new Player[5];
             for (int i = 0; i < 5; i++)
             {
-                players[i] = _playerDatabase.GetPlayer(team.StartingLineupIds[i]);
+                players[i] = _playerDatabase.GetPlayer(onCourt[i]);
             }
             return players;
+        }
+
+        /// <summary>
+        /// Checks if any on-court player is fatigued and subs in a rested bench player.
+        /// </summary>
+        private void CheckSubstitutions(Team team)
+        {
+            var onCourt = team.TeamId == _homeTeam.TeamId ? _homeOnCourt : _awayOnCourt;
+            var onCourtSet = new HashSet<string>(onCourt);
+
+            for (int i = 0; i < 5; i++)
+            {
+                var player = _playerDatabase.GetPlayer(onCourt[i]);
+                if (player == null || player.Energy > SUB_ENERGY_THRESHOLD) continue;
+
+                // Find best available bench player (highest energy among bench)
+                string bestSub = null;
+                float bestEnergy = 0f;
+
+                foreach (var pid in team.RosterPlayerIds)
+                {
+                    if (onCourtSet.Contains(pid)) continue;
+                    var bench = _playerDatabase.GetPlayer(pid);
+                    if (bench == null) continue;
+                    if (bench.Energy > bestEnergy)
+                    {
+                        bestEnergy = bench.Energy;
+                        bestSub = pid;
+                    }
+                }
+
+                // Only sub if bench player has meaningfully more energy
+                if (bestSub != null && bestEnergy > player.Energy + 15f)
+                {
+                    onCourtSet.Remove(onCourt[i]);
+                    onCourt[i] = bestSub;
+                    onCourtSet.Add(bestSub);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Recovers energy for bench players (not on court).
+        /// </summary>
+        private void RecoverBenchEnergy(Team team, float seconds)
+        {
+            var onCourt = team.TeamId == _homeTeam.TeamId ? _homeOnCourt : _awayOnCourt;
+            var onCourtSet = new HashSet<string>(onCourt);
+
+            foreach (var pid in team.RosterPlayerIds)
+            {
+                if (onCourtSet.Contains(pid)) continue;
+                var player = _playerDatabase.GetPlayer(pid);
+                if (player != null)
+                    player.RestoreEnergy(seconds * BENCH_ENERGY_RECOVERY);
+            }
         }
 
         /// <summary>
@@ -346,7 +438,7 @@ namespace NBAHeadCoach.Core.Simulation
                 switch (evt.Type)
                 {
                     case EventType.Shot:
-                        ProcessShot(evt, offenseTeamId);
+                        ProcessShot(evt, offenseTeamId, isHomePossession);
                         break;
                     case EventType.Steal:
                         ProcessSteal(evt);
@@ -394,9 +486,9 @@ namespace NBAHeadCoach.Core.Simulation
             }
         }
 
-        private void ProcessShot(PossessionEvent evt, string teamId)
+        private void ProcessShot(PossessionEvent evt, string teamId, bool isHomePossession)
         {
-            var zone = evt.ActorPosition.GetZone(true);
+            var zone = evt.ActorPosition.GetZone(isHomePossession);
             bool isThree = zone == CourtZone.ThreePoint;
             bool made = evt.Outcome == EventOutcome.Success;
 
@@ -459,44 +551,45 @@ namespace NBAHeadCoach.Core.Simulation
                 if (evt.Type == EventType.Foul && evt.FoulDetail != null &&
                     evt.FoulDetail.FreeThrowsAwarded > 0)
                 {
-                    // Get the fouled player (shooter)
                     var shooter = _playerDatabase?.GetPlayer(evt.ActorPlayerId);
                     if (shooter == null) continue;
 
-                    // Create game context for free throw calculation
-                    var context = new GameContext
+                    // Use already-calculated FT result if available (from ExecuteShotWithFoul)
+                    if (evt.FreeThrowResult != null)
                     {
-                        Quarter = _currentQuarter,
-                        GameClock = _gameClock,
-                        ScoreDifferential = isHomePossession
-                            ? _boxScore.HomeScore - _boxScore.AwayScore
-                            : _boxScore.AwayScore - _boxScore.HomeScore,
-                        IsClutchTime = _currentQuarter >= 4 && _gameClock <= 300 &&
-                            Mathf.Abs(_boxScore.HomeScore - _boxScore.AwayScore) <= 5,
-                        TimeoutJustCalled = false
-                    };
-
-                    // Calculate free throw results
-                    var ftResult = _freeThrowHandler.CalculateFreeThrows(
-                        shooter,
-                        evt.FoulDetail.FreeThrowsAwarded,
-                        context
-                    );
-
-                    // Update box score with free throw stats
-                    _boxScore.AddFreeThrows(shooter.PlayerId, ftResult.Made, ftResult.Attempts);
-
-                    // Add points to team score
-                    if (ftResult.Made > 0)
-                    {
-                        if (isHomePossession)
-                            _boxScore.HomeScore += ftResult.Made;
-                        else
-                            _boxScore.AwayScore += ftResult.Made;
+                        _boxScore.AddFreeThrows(shooter.PlayerId, evt.FreeThrowResult.Made, evt.FreeThrowResult.Attempts);
                     }
+                    else
+                    {
+                        // Calculate fresh for non-shooting fouls
+                        var context = new GameContext
+                        {
+                            Quarter = _currentQuarter,
+                            GameClock = _gameClock,
+                            ScoreDifferential = isHomePossession
+                                ? _boxScore.HomeScore - _boxScore.AwayScore
+                                : _boxScore.AwayScore - _boxScore.HomeScore,
+                            IsClutchTime = _currentQuarter >= 4 && _gameClock <= 300 &&
+                                Mathf.Abs(_boxScore.HomeScore - _boxScore.AwayScore) <= 5,
+                            TimeoutJustCalled = false
+                        };
 
-                    // Store result in event for play-by-play
-                    evt.FreeThrowResult = ftResult;
+                        var ftResult = _freeThrowHandler.CalculateFreeThrows(
+                            shooter, evt.FoulDetail.FreeThrowsAwarded, context);
+
+                        _boxScore.AddFreeThrows(shooter.PlayerId, ftResult.Made, ftResult.Attempts);
+
+                        // Add points for non-shooting fouls (shooting fouls already in result.PointsScored)
+                        if (ftResult.Made > 0)
+                        {
+                            if (isHomePossession)
+                                _boxScore.HomeScore += ftResult.Made;
+                            else
+                                _boxScore.AwayScore += ftResult.Made;
+                        }
+
+                        evt.FreeThrowResult = ftResult;
+                    }
                 }
             }
         }
@@ -681,7 +774,8 @@ namespace NBAHeadCoach.Core.Simulation
     {
         public string PlayerId;
         public string PlayerName;  // For UI display
-        public int Minutes;
+        public float SecondsPlayed;
+        public int Minutes => Mathf.RoundToInt(SecondsPlayed / 60f);
         public int Points;
         public int FieldGoalsMade;
         public int FieldGoalAttempts;

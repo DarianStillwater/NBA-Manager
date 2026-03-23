@@ -36,6 +36,7 @@ namespace NBAHeadCoach.Core.Simulation
         public ShotType? ShotType;
         public bool IsFastBreak;
         public bool IsAndOne;
+        public bool IsOffensiveRebound;
         public string Description;
 
         // Foul details (populated when Type == Foul)
