@@ -216,7 +216,7 @@ namespace NBAHeadCoach.Tests
             return (pts, fgm, fga, fgPct, tpm, tpa, tpPct, ftm, fta, oreb, dreb, ast, stl, blk, to, pf);
         }
 
-        private void PrintRealismChecks(GameResult result)
+        private void PrintRealismChecks(NBAHeadCoach.Core.Simulation.GameResult result)
         {
             Debug.Log($"\n{'=',-70}");
             Debug.Log("  REALISM CHECKS");
