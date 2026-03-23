@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "unity": {
+      "command": "/Users/rshao/NBA Head Coach/Library/PackageCache/com.unity.ai.assistant@df09423d72a0/RelayApp~/relay_mac_arm64",
+      "args": []
+    }
+  }
+}

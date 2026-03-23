@@ -48,9 +48,6 @@ namespace NBAHeadCoach.Core.Simulation
         // Free throw details (populated when free throws awarded)
         public FreeThrowResult FreeThrowResult;
 
-        // Rebound details (populated when Type == Rebound)
-        public bool IsOffensiveRebound;
-
         /// <summary>
         /// Creates a text description for play-by-play.
         /// </summary>
