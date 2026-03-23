@@ -70,9 +70,25 @@ namespace NBAHeadCoach.Core.Simulation
         /// <param name="shotType">The type of shot being attempted (null if not shooting)</param>
         /// <param name="context">Current game context</param>
         /// <returns>Probability from 0 to 1</returns>
-        public float CalculateFoulProbability(Player defender, Player ballHandler, ShotType? shotType, GameContext context)
+        public float CalculateFoulProbability(Player defender, Player ballHandler, ShotType? shotType, GameContext context, DefensiveSystem defenseSystem = null)
         {
             float probability = BASE_FOUL_RATE;
+
+            // Defensive strategy modifiers
+            if (defenseSystem != null)
+            {
+                // Defensive intensity directly affects foul rate
+                probability += defenseSystem.DefensiveIntensity switch
+                {
+                    DefensiveIntensity.Low => -0.03f,
+                    DefensiveIntensity.High => 0.02f,
+                    DefensiveIntensity.VeryHigh => 0.04f,
+                    _ => 0f // Normal
+                };
+
+                // Gambling frequency increases fouls
+                probability += defenseSystem.GamblingFrequency / 500f; // up to +20%
+            }
 
             // Defender modifiers (higher stats = fewer fouls)
             probability -= (defender.DefensiveIQ - 50) / 500f;      // ±10%

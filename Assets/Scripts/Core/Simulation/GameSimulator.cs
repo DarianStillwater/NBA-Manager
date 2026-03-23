@@ -222,6 +222,7 @@ namespace NBAHeadCoach.Core.Simulation
         {
             _gameClock = quarterLengthSeconds;
             _homeHasPossession = _currentQuarter % 2 == 1; // Home starts Q1/Q3, Away starts Q2/Q4
+            PossessionOutcome? previousOutcome = null;
 
             // Reset team fouls at the start of each quarter
             _foulSystem.ResetQuarterFouls();
@@ -241,7 +242,7 @@ namespace NBAHeadCoach.Core.Simulation
                     ? _boxScore.HomeScore - _boxScore.AwayScore
                     : _boxScore.AwayScore - _boxScore.HomeScore;
 
-                // Simulate possession
+                // Simulate possession (pass previous outcome for transition logic)
                 var result = _possessionSimulator.SimulatePossession(
                     offensePlayers,
                     defensePlayers,
@@ -252,7 +253,8 @@ namespace NBAHeadCoach.Core.Simulation
                     _homeHasPossession,
                     offenseTeamId,
                     defenseTeamId,
-                    scoreDifferential
+                    scoreDifferential,
+                    previousOutcome
                 );
 
                 // Record stats
@@ -276,6 +278,9 @@ namespace NBAHeadCoach.Core.Simulation
                 {
                     _homeHasPossession = !_homeHasPossession;
                 }
+
+                // Track outcome for transition logic
+                previousOutcome = result.Outcome;
 
                 // Energy drain for active players
                 DrainEnergy(offensePlayers, result.Duration * 0.2f);
@@ -418,9 +423,7 @@ namespace NBAHeadCoach.Core.Simulation
 
         private void ProcessRebound(PossessionEvent evt, string teamId)
         {
-            // Determine if offensive or defensive
-            // For simplicity, we'll mark based on team context
-            _boxScore.AddRebound(evt.ActorPlayerId, isOffensive: false);
+            _boxScore.AddRebound(evt.ActorPlayerId, isOffensive: evt.IsOffensiveRebound);
         }
 
         private void ProcessTurnover(PossessionEvent evt)
