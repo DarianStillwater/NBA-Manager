@@ -36,3 +36,13 @@ sysinfo.txt
 .claude/
 .vscode/
 .windsurf/
+
+# Junk/duplicate project folders
+NBA-Manager/
+My project/
+.DS_Store
+test_output*.txt
+test_failures.txt
+test_results.txt
+debug_shots.txt
+.mcp.json
