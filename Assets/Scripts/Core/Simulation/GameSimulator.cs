@@ -273,8 +273,7 @@ namespace NBAHeadCoach.Core.Simulation
                     _homeHasPossession,
                     offenseTeamId,
                     defenseTeamId,
-                    scoreDifferential,
-                    previousOutcome
+                    scoreDifferential
                 );
 
                 // Record stats
@@ -317,6 +316,10 @@ namespace NBAHeadCoach.Core.Simulation
                 RecoverBenchEnergy(_homeTeam, result.Duration);
                 RecoverBenchEnergy(_awayTeam, result.Duration);
 
+                // Check foul-outs first (mandatory subs)
+                CheckFoulOuts(_homeTeam);
+                CheckFoulOuts(_awayTeam);
+
                 // Check substitutions after each possession
                 CheckSubstitutions(_homeTeam);
                 CheckSubstitutions(_awayTeam);
@@ -356,6 +359,45 @@ namespace NBAHeadCoach.Core.Simulation
                 players[i] = _playerDatabase.GetPlayer(onCourt[i]);
             }
             return players;
+        }
+
+        /// <summary>
+        /// Checks if any on-court player has fouled out (6 personal fouls) and forces a substitution.
+        /// </summary>
+        private void CheckFoulOuts(Team team)
+        {
+            var onCourt = team.TeamId == _homeTeam.TeamId ? _homeOnCourt : _awayOnCourt;
+            var onCourtSet = new HashSet<string>(onCourt);
+
+            for (int i = 0; i < 5; i++)
+            {
+                if (!_boxScore.PlayerStats.ContainsKey(onCourt[i])) continue;
+                if (_boxScore.PlayerStats[onCourt[i]].PersonalFouls < 6) continue;
+
+                // Player fouled out — must sub
+                string bestSub = null;
+                int bestFouls = 6;
+
+                foreach (var pid in team.RosterPlayerIds)
+                {
+                    if (onCourtSet.Contains(pid)) continue;
+                    var stats = _boxScore.PlayerStats.ContainsKey(pid) ? _boxScore.PlayerStats[pid] : null;
+                    int fouls = stats?.PersonalFouls ?? 0;
+                    if (fouls < bestFouls) // only sub in someone who hasn't also fouled out
+                    {
+                        bestSub = pid;
+                        bestFouls = fouls;
+                    }
+                }
+
+                if (bestSub != null)
+                {
+                    onCourtSet.Remove(onCourt[i]);
+                    onCourt[i] = bestSub;
+                    onCourtSet.Add(bestSub);
+                }
+                // If no valid sub, player must stay (all bench fouled out — extremely rare)
+            }
         }
 
         /// <summary>
