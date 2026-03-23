@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using NBAHeadCoach.Core;
 using NBAHeadCoach.Core.Data;
+using NBAHeadCoach.Core.Util;
 
 namespace NBAHeadCoach.UI.Panels
 {
@@ -542,6 +543,18 @@ namespace NBAHeadCoach.UI.Panels
             colors.selectedColor = new Color(0.2f, 0.3f, 0.5f);
             button.colors = colors;
 
+            // Team logo
+            var logoGO = new GameObject("Logo");
+            logoGO.transform.SetParent(cardGO.transform, false);
+            var logoImg = logoGO.AddComponent<Image>();
+            logoImg.preserveAspect = true;
+            var logoSprite = ArtManager.GetTeamLogo(team.TeamId);
+            if (logoSprite != null) logoImg.sprite = logoSprite;
+            var logoRect = logoGO.GetComponent<RectTransform>();
+            logoRect.anchorMin = new Vector2(0, 0.1f);
+            logoRect.anchorMax = new Vector2(0.25f, 0.9f);
+            logoRect.sizeDelta = Vector2.zero;
+
             // Text
             var textGO = new GameObject("Text");
             textGO.transform.SetParent(cardGO.transform, false);
@@ -553,9 +566,9 @@ namespace NBAHeadCoach.UI.Panels
             text.alignment = TextAnchor.MiddleLeft;
 
             var textRect = text.GetComponent<RectTransform>();
-            textRect.anchorMin = Vector2.zero;
+            textRect.anchorMin = new Vector2(0.27f, 0);
             textRect.anchorMax = Vector2.one;
-            textRect.offsetMin = new Vector2(15, 5);
+            textRect.offsetMin = new Vector2(5, 5);
             textRect.offsetMax = new Vector2(-15, -5);
 
             return cardGO;

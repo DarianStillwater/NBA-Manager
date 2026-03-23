@@ -5,6 +5,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using NBAHeadCoach.Core;
 using NBAHeadCoach.Core.Data;
+using NBAHeadCoach.Core.Util;
 
 namespace NBAHeadCoach.UI.Panels
 {
@@ -267,6 +268,18 @@ namespace NBAHeadCoach.UI.Panels
             colors.selectedColor = new Color(0.2f, 0.4f, 0.6f);
             button.colors = colors;
 
+            // Team logo
+            var logoGO = new GameObject("Logo");
+            logoGO.transform.SetParent(cardGO.transform, false);
+            var logoImg = logoGO.AddComponent<Image>();
+            logoImg.preserveAspect = true;
+            var logoSprite = ArtManager.GetTeamLogo(team.TeamId);
+            if (logoSprite != null) logoImg.sprite = logoSprite;
+            var logoRect = logoGO.GetComponent<RectTransform>();
+            logoRect.anchorMin = new Vector2(0.25f, 0.4f);
+            logoRect.anchorMax = new Vector2(0.75f, 0.9f);
+            logoRect.sizeDelta = Vector2.zero;
+
             // Team name text
             var textGO = new GameObject("TeamName");
             textGO.transform.SetParent(cardGO.transform, false);
@@ -343,6 +356,13 @@ namespace NBAHeadCoach.UI.Panels
             if (_previewPanel != null)
             {
                 _previewPanel.SetActive(true);
+            }
+
+            // Team logo preview
+            if (_teamLogoPreview != null)
+            {
+                var previewLogo = ArtManager.GetTeamLogo(team.TeamId);
+                if (previewLogo != null) { _teamLogoPreview.sprite = previewLogo; _teamLogoPreview.preserveAspect = true; }
             }
 
             // Basic info

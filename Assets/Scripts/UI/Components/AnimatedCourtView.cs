@@ -6,6 +6,7 @@ using UnityEngine.UI;
 using NBAHeadCoach.Core;
 using NBAHeadCoach.Core.Data;
 using NBAHeadCoach.Core.Simulation;
+using NBAHeadCoach.Core.Util;
 
 namespace NBAHeadCoach.UI.Components
 {
@@ -83,6 +84,9 @@ namespace NBAHeadCoach.UI.Components
         {
             if (_courtRect == null)
                 _courtRect = GetComponent<RectTransform>();
+
+            if (_halfCourtSprite == null)
+                _halfCourtSprite = ArtManager.GetHalfCourt();
 
             if (_courtBackground != null && _halfCourtSprite != null)
                 _courtBackground.sprite = _halfCourtSprite;

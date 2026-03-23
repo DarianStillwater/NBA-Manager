@@ -5,6 +5,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using NBAHeadCoach.Core;
 using NBAHeadCoach.Core.Data;
+using NBAHeadCoach.Core.Util;
 
 namespace NBAHeadCoach.UI.Panels
 {
@@ -380,9 +381,23 @@ namespace NBAHeadCoach.UI.Panels
             }
             _columnTexts.Clear();
 
+            // Add team logo
+            if (standings.TeamId != null)
+            {
+                var logoGo = new GameObject("Logo");
+                logoGo.transform.SetParent(transform, false);
+                var logoImg = logoGo.AddComponent<Image>();
+                logoImg.preserveAspect = true;
+                var logoSprite = ArtManager.GetTeamLogo(standings.TeamId);
+                if (logoSprite != null) logoImg.sprite = logoSprite;
+                var logoLE = logoGo.AddComponent<LayoutElement>();
+                logoLE.preferredWidth = 22;
+                logoLE.preferredHeight = 22;
+            }
+
             // Add columns
             AddColumn(rank.ToString(), 30, TextAnchor.MiddleCenter);
-            AddColumn($"{team?.City ?? ""} {standings.TeamName}", 180, TextAnchor.MiddleLeft, isPlayerTeam);
+            AddColumn($"{team?.City ?? ""} {standings.TeamName}", 158, TextAnchor.MiddleLeft, isPlayerTeam);
             AddColumn(standings.Wins.ToString(), 35, TextAnchor.MiddleCenter);
             AddColumn(standings.Losses.ToString(), 35, TextAnchor.MiddleCenter);
             AddColumn(standings.WinPercentage.ToString(".000"), 50, TextAnchor.MiddleCenter);

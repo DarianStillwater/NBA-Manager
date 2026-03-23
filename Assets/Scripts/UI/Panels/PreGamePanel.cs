@@ -5,6 +5,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using NBAHeadCoach.Core;
 using NBAHeadCoach.Core.Data;
+using NBAHeadCoach.Core.Util;
 using CalendarEvent = NBAHeadCoach.Core.Data.CalendarEvent;
 
 namespace NBAHeadCoach.UI.Panels
@@ -197,6 +198,13 @@ namespace NBAHeadCoach.UI.Panels
                 .Where(p => !p.IsInjured)
                 .OrderByDescending(p => p.Overall)
                 .ToList() ?? new List<Player>();
+
+            // Load opponent logo
+            if (_opponentLogo != null && _opponentTeam != null)
+            {
+                var logo = ArtManager.GetTeamLogo(_opponentTeam.TeamId);
+                if (logo != null) { _opponentLogo.sprite = logo; _opponentLogo.preserveAspect = true; }
+            }
 
             RefreshUI();
         }

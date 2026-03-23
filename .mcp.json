@@ -1,8 +1,8 @@
 {
   "mcpServers": {
-    "unity": {
-      "command": "/Users/rshao/NBA Head Coach/Library/PackageCache/com.unity.ai.assistant@df09423d72a0/RelayApp~/relay_mac_arm64",
-      "args": []
+    "mcp-unity": {
+      "command": "node",
+      "args": ["/Users/rshao/NBA Head Coach/Library/PackageCache/com.gamelovers.mcp-unity@72c005fa0ae2/Server~/build/index.js"]
     }
   }
 }

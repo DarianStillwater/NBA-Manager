@@ -37,6 +37,22 @@ namespace NBAHeadCoach.UI
         public const float SectionUnderlineHeight = 2f;
         public const float HeroHeight = 200f;
 
+        // FM-Style Layout
+        public const float FMHeaderHeight = 80f;
+        public const float FMAccentLineHeight = 3f;
+        public const float FMSidebarWidth = 160f;
+        public const float FMNavItemHeight = 44f;
+        public const float FMNavIconSize = 18f;
+        public const float FMNavDividerHeight = 1f;
+        public const float FMTeamLogoSize = 64f;
+        public const float FMCardHeaderHeight = 32f;
+        public const float FMCardContentPadding = 12f;
+        public static readonly Color FMSidebarBg = new Color32(18, 22, 32, 255);
+        public static readonly Color FMNavHover = new Color32(30, 35, 50, 255);
+        public static readonly Color FMNavActive = new Color32(35, 42, 60, 255);
+        public static readonly Color FMCardHeaderBg = new Color32(22, 26, 38, 255);
+        public static readonly Color FMDivider = new Color(1f, 1f, 1f, 0.06f);
+
         // Fonts
         public static int FontSizeHeroNumber = 36;
         public static int FontSizeScoreNumber = 42;

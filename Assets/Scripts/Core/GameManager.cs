@@ -167,6 +167,12 @@ namespace NBAHeadCoach.Core
             {
                 Instance = this;
                 DontDestroyOnLoad(gameObject);
+
+                // Auto-attach ArtInjector for runtime sprite injection
+                var artInjectorType = System.Type.GetType("NBAHeadCoach.UI.ArtInjector");
+                if (artInjectorType != null && GetComponent(artInjectorType) == null)
+                    gameObject.AddComponent(artInjectorType);
+
                 Initialize();
             }
             else

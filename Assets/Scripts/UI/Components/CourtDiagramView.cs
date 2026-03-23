@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using NBAHeadCoach.Core;
 using NBAHeadCoach.Core.Data;
+using NBAHeadCoach.Core.Util;
 
 namespace NBAHeadCoach.UI.Components
 {
@@ -70,6 +71,10 @@ namespace NBAHeadCoach.UI.Components
 
         private void Awake()
         {
+            // Load court sprite from ArtManager if not assigned in Inspector
+            if (_halfCourtSprite == null)
+                _halfCourtSprite = ArtManager.GetHalfCourt();
+
             if (_courtBackground != null && _halfCourtSprite != null)
             {
                 _courtBackground.sprite = _halfCourtSprite;

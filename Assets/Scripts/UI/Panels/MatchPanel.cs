@@ -5,6 +5,7 @@ using UnityEngine.UI;
 using NBAHeadCoach.Core;
 using NBAHeadCoach.Core.Data;
 using NBAHeadCoach.Core.Simulation;
+using NBAHeadCoach.Core.Util;
 using NBAHeadCoach.UI.Components;
 using TimeoutReason = NBAHeadCoach.Core.Gameplay.TimeoutReason;
 
@@ -213,6 +214,18 @@ namespace NBAHeadCoach.UI.Panels
             if (_quarterText != null) _quarterText.text = "Q1";
             if (_clockText != null) _clockText.text = "12:00";
             if (_shotClockText != null) _shotClockText.text = "24";
+
+            // Load team logos
+            if (_homeLogo != null)
+            {
+                var hs = ArtManager.GetTeamLogo(homeTeam.TeamId);
+                if (hs != null) { _homeLogo.sprite = hs; _homeLogo.preserveAspect = true; }
+            }
+            if (_awayLogo != null)
+            {
+                var aws = ArtManager.GetTeamLogo(awayTeam.TeamId);
+                if (aws != null) { _awayLogo.sprite = aws; _awayLogo.preserveAspect = true; }
+            }
 
             // Initialize lineups display
             RefreshLineups();

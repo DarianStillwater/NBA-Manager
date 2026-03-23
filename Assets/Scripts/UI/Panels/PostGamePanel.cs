@@ -6,6 +6,7 @@ using UnityEngine.UI;
 using NBAHeadCoach.Core;
 using NBAHeadCoach.Core.Data;
 using NBAHeadCoach.Core.Simulation;
+using NBAHeadCoach.Core.Util;
 using PlayerGameStats = NBAHeadCoach.Core.Simulation.PlayerGameStats;
 
 namespace NBAHeadCoach.UI.Panels
@@ -119,6 +120,26 @@ namespace NBAHeadCoach.UI.Panels
             _summary = summary;
             _playerTeamId = GameManager.Instance?.PlayerTeamId ?? "";
             _playerWon = summary?.PlayerWon ?? false;
+
+            // Load result background with win/loss status icon
+            if (_resultBackground != null)
+            {
+                var statusSprite = ArtManager.GetStatusIcon(_playerWon ? "win" : "loss");
+                if (statusSprite != null) _resultBackground.sprite = statusSprite;
+            }
+
+            // Load player of the game silhouette
+            if (_potgImage != null && summary?.PlayerOfTheGame != null)
+            {
+                // Look up the actual Player to get position
+                var potgId = summary.PlayerOfTheGame.PlayerId;
+                var potgPlayer = GameManager.Instance?.PlayerDatabase?.GetPlayer(potgId);
+                if (potgPlayer != null)
+                {
+                    var silhouette = ArtManager.GetPositionSilhouette(potgPlayer.Position.ToString());
+                    if (silhouette != null) { _potgImage.sprite = silhouette; _potgImage.preserveAspect = true; }
+                }
+            }
 
             RefreshUI();
         }

@@ -45,4 +45,3 @@ test_output*.txt
 test_failures.txt
 test_results.txt
 debug_shots.txt
-.mcp.json

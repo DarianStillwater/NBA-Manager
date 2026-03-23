@@ -5,6 +5,7 @@ using UnityEngine.UI;
 using System.Collections.Generic;
 using NBAHeadCoach.Core;
 using NBAHeadCoach.Core.Data;
+using NBAHeadCoach.Core.Util;
 using NBAHeadCoach.UI.Components;
 using CalendarEvent = NBAHeadCoach.Core.Data.CalendarEvent;
 using SeasonPhase = NBAHeadCoach.Core.Data.SeasonPhase;
@@ -100,6 +101,7 @@ namespace NBAHeadCoach.UI.Panels
         // Team Header refs
         private Image _headerBgImage;
         private Image _headerAccentStrip;
+        private Image _headerTeamLogoImage;
         private Text _headerTeamName;
         private Text _headerCoachName;
         private Text _headerSeasonPhase;
@@ -274,6 +276,15 @@ namespace NBAHeadCoach.UI.Panels
             hlg.childForceExpandWidth = false;
             hlg.childForceExpandHeight = true;
             hlg.childAlignment = TextAnchor.MiddleLeft;
+
+            // Team logo
+            GameObject logoGo = new GameObject("TeamLogo", typeof(RectTransform));
+            logoGo.transform.SetParent(headerGo.transform, false);
+            _headerTeamLogoImage = logoGo.AddComponent<Image>();
+            _headerTeamLogoImage.preserveAspect = true;
+            LayoutElement logoLE = logoGo.AddComponent<LayoutElement>();
+            logoLE.preferredWidth = 36f;
+            logoLE.preferredHeight = 36f;
 
             // Team name (larger, bold)
             _headerTeamName = CreateText(headerGo.transform, "", UITheme.FontSizeHeader + 2, FontStyle.Bold, UITheme.TextPrimary, 300f);
@@ -685,6 +696,10 @@ namespace NBAHeadCoach.UI.Panels
 
             string teamFullName = $"{team.City} {team.Name}";
 
+            // DEBUG: Test art loading
+            var debugTex = Resources.Load<Texture2D>($"Art/Teams/logo_{team.TeamId.ToLower()}");
+            Debug.Log($"[DashboardPanel] ART DEBUG: TeamId={team.TeamId}, Texture={debugTex != null}, _teamNameText={_teamNameText != null}, _teamLogo={_teamLogo != null}, _headerTeamLogoImage={_headerTeamLogoImage != null}");
+
             // Legacy (kept for backward compat if scene-wired)
             if (_teamNameText != null) _teamNameText.text = teamFullName;
             if (_recordText != null) _recordText.text = $"{team.Wins}-{team.Losses}";
@@ -705,6 +720,43 @@ namespace NBAHeadCoach.UI.Panels
             {
                 var career = GameManager.Instance.Career;
                 if (career != null) _coachNameText.text = $"Coach {career.PersonName}";
+            }
+
+            // Team logo from ArtManager — inject dynamically if needed
+            var teamLogoSprite = ArtManager.GetTeamLogo(team.TeamId);
+            if (teamLogoSprite != null)
+            {
+                // ESPN path
+                if (_headerTeamLogoImage != null)
+                    _headerTeamLogoImage.sprite = teamLogoSprite;
+
+                // Legacy path — create/update a logo next to the team name
+                if (_teamLogo != null)
+                {
+                    _teamLogo.sprite = teamLogoSprite;
+                    _teamLogo.preserveAspect = true;
+                }
+                else if (_teamNameText != null)
+                {
+                    // Dynamically create a logo image next to the team name
+                    var existing = _teamNameText.transform.parent.Find("DynamicTeamLogo");
+                    if (existing == null)
+                    {
+                        var logoGo = new GameObject("DynamicTeamLogo", typeof(RectTransform));
+                        logoGo.transform.SetParent(_teamNameText.transform.parent, false);
+                        logoGo.transform.SetAsFirstSibling();
+                        var logoImg = logoGo.AddComponent<Image>();
+                        logoImg.sprite = teamLogoSprite;
+                        logoImg.preserveAspect = true;
+                        var logoRect = logoGo.GetComponent<RectTransform>();
+                        logoRect.anchorMin = new Vector2(0, 0.5f);
+                        logoRect.anchorMax = new Vector2(0, 0.5f);
+                        logoRect.pivot = new Vector2(0, 0.5f);
+                        logoRect.sizeDelta = new Vector2(48, 48);
+                        logoRect.anchoredPosition = new Vector2(-56, 0);
+                        _teamLogo = logoImg;
+                    }
+                }
             }
 
             // ESPN header - team-colored broadcast bar
