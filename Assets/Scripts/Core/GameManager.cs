@@ -168,10 +168,19 @@ namespace NBAHeadCoach.Core
                 Instance = this;
                 DontDestroyOnLoad(gameObject);
 
-                // Auto-attach ArtInjector for runtime sprite injection
+                // Auto-attach GameShell (FM layout) + ArtInjector (panel content)
+                var gameShellType = System.Type.GetType("NBAHeadCoach.UI.Shell.GameShell");
+                if (gameShellType != null && GetComponent(gameShellType) == null)
+                    gameObject.AddComponent(gameShellType);
+
                 var artInjectorType = System.Type.GetType("NBAHeadCoach.UI.ArtInjector");
                 if (artInjectorType != null && GetComponent(artInjectorType) == null)
                     gameObject.AddComponent(artInjectorType);
+
+                // Auto-attach MenuInjector for runtime main menu UI
+                var menuInjectorType = System.Type.GetType("NBAHeadCoach.UI.MenuInjector");
+                if (menuInjectorType != null && GetComponent(menuInjectorType) == null)
+                    gameObject.AddComponent(menuInjectorType);
 
                 Initialize();
             }
@@ -641,7 +650,17 @@ namespace NBAHeadCoach.Core
             foreach (var playerState in data.PlayerStates)
             {
                 var player = PlayerDatabase.GetPlayer(playerState.PlayerId);
-                playerState?.ApplyTo(player);
+                if (player != null)
+                {
+                    // Preserve BirthDate from database (save doesn't store it correctly)
+                    var savedBirthDate = player.BirthDate;
+                    playerState?.ApplyTo(player);
+                    if (player.BirthDate.Year < 1900 && savedBirthDate.Year >= 1900)
+                        player.BirthDate = savedBirthDate;
+                    // Ensure energy is initialized
+                    if (player.Energy <= 0) player.Energy = 100f;
+                    if (player.Morale <= 0) player.Morale = 75f;
+                }
             }
 
             // Initialize season controller with saved calendar

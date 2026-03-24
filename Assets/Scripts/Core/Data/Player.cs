@@ -21,6 +21,14 @@ namespace NBAHeadCoach.Core.Data
         public string JerseyNumber;
         public Position Position;
         public DateTime BirthDate;  // Store birthdate, calculate age dynamically
+        [SerializeField] private string BirthDateString; // For JSON deserialization (ISO format)
+
+        /// <summary>Parse BirthDateString into BirthDate after JSON deserialization.</summary>
+        public void ParseBirthDate()
+        {
+            if (!string.IsNullOrEmpty(BirthDateString) && BirthDate.Year < 1900)
+                DateTime.TryParse(BirthDateString, out BirthDate);
+        }
         public int YearsPro; // 0 = Rookie
         public float HeightInches; // e.g., 78 = 6'6"
         public float WeightLbs;

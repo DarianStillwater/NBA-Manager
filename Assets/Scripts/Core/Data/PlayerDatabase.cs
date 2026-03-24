@@ -163,6 +163,45 @@ namespace NBAHeadCoach.Core.Data
             try
             {
                 string json = File.ReadAllText(filePath);
+
+                // Preprocess: convert Position strings to enum ints for JsonUtility
+                json = json.Replace("\"Position\": \"PG\"", "\"Position\": 1");
+                json = json.Replace("\"Position\": \"SG\"", "\"Position\": 2");
+                json = json.Replace("\"Position\": \"SF\"", "\"Position\": 3");
+                json = json.Replace("\"Position\": \"PF\"", "\"Position\": 4");
+                json = json.Replace("\"Position\": \"C\"", "\"Position\": 5");
+                json = json.Replace("\"Position\":\"PG\"", "\"Position\":1");
+                json = json.Replace("\"Position\":\"SG\"", "\"Position\":2");
+                json = json.Replace("\"Position\":\"SF\"", "\"Position\":3");
+                json = json.Replace("\"Position\":\"PF\"", "\"Position\":4");
+                json = json.Replace("\"Position\":\"C\"", "\"Position\":5");
+
+                // Extract PlayerId→BirthDate mapping before we mangle the JSON
+                var birthDates = new Dictionary<string, string>();
+                try
+                {
+                    // Use a simple JSON tokenizer approach
+                    var matches = System.Text.RegularExpressions.Regex.Matches(json,
+                        @"""PlayerId""\s*:\s*""([^""]+)""");
+                    var bdMatches = System.Text.RegularExpressions.Regex.Matches(json,
+                        @"""BirthDate""\s*:\s*""(\d{4}-\d{2}-\d{2})""");
+
+                    // Both lists should be same length — one per player
+                    int count = Math.Min(matches.Count, bdMatches.Count);
+                    for (int i = 0; i < count; i++)
+                        birthDates[matches[i].Groups[1].Value] = bdMatches[i].Groups[1].Value;
+
+                    Debug.Log($"[PlayerDatabase] Extracted {birthDates.Count} birthdates");
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning($"[PlayerDatabase] BirthDate extraction failed: {ex.Message}");
+                }
+
+                // Remove BirthDate lines entirely — JsonUtility can't parse ISO date strings to DateTime
+                json = System.Text.RegularExpressions.Regex.Replace(json,
+                    @"\s*""BirthDate""\s*:\s*""[^""]*""\s*,?", "");
+
                 var wrapper = JsonUtility.FromJson<PlayerListWrapper>(json);
 
                 if (wrapper?.Players == null)
@@ -178,6 +217,18 @@ namespace NBAHeadCoach.Core.Data
                         Debug.LogWarning($"Skipping player with no ID in {filePath}");
                         continue;
                     }
+
+                    // Post-deserialization: parse BirthDate from extracted strings
+                    if (birthDates.TryGetValue(player.PlayerId, out string bdStr))
+                    {
+                        if (DateTime.TryParse(bdStr, out DateTime bd))
+                            player.BirthDate = bd;
+                    }
+
+                    // Initialize dynamic state
+                    if (player.Energy <= 0) player.Energy = 100f;
+                    if (player.Morale <= 0) player.Morale = 75f;
+                    if (player.Form <= 0) player.Form = 50f;
 
                     if (_players.ContainsKey(player.PlayerId))
                     {
