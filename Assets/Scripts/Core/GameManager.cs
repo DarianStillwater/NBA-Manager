@@ -634,7 +634,13 @@ namespace NBAHeadCoach.Core
             _playerTeamId = data.PlayerTeamId;
             _userRoleConfig = data.UserRoleConfig ?? new UserRoleConfiguration { CurrentRole = UserRole.Both };
             _currentSeason = data.CurrentSeason;
-            _currentDate = data.CurrentDate;
+            // Restore date from string backup (JsonUtility can't roundtrip DateTime)
+            if (!string.IsNullOrEmpty(data.CurrentDateStr) && DateTime.TryParse(data.CurrentDateStr, out var parsedDate))
+                _currentDate = parsedDate;
+            else if (data.CurrentDate.Year > 1)
+                _currentDate = data.CurrentDate;
+            else
+                _currentDate = new DateTime(_currentSeason, 10, 1);
 
             // Restore team states
             foreach (var teamState in data.TeamStates)
@@ -714,11 +720,13 @@ namespace NBAHeadCoach.Core
             {
                 SaveVersion = SaveData.CURRENT_VERSION,
                 SaveTimestamp = DateTime.Now,
+                SaveTimestampStr = DateTime.Now.ToString("o"),
                 Career = _career,
                 PlayerTeamId = _playerTeamId,
                 UserRoleConfig = _userRoleConfig,
                 CurrentSeason = _currentSeason,
                 CurrentDate = _currentDate,
+                CurrentDateStr = _currentDate.ToString("o"),
                 TeamStates = CreateTeamStates(),
                 PlayerStates = CreatePlayerStates(),
                 CalendarData = SeasonController.CreateCalendarSaveData(),

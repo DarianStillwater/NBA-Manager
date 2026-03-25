@@ -113,8 +113,8 @@ namespace NBAHeadCoach.UI.Shell
 
             var hlg = row.AddComponent<HorizontalLayoutGroup>();
             hlg.spacing = 4;
-            hlg.padding = new RectOffset(8, 8, 0, 0);
-            hlg.childControlWidth = false;
+            hlg.padding = new RectOffset(12, 8, 0, 0);
+            hlg.childControlWidth = true;
             hlg.childControlHeight = true;
             hlg.childForceExpandWidth = false;
             hlg.childForceExpandHeight = true;
@@ -129,7 +129,8 @@ namespace NBAHeadCoach.UI.Shell
             var cell = Text(row, "Cell", content, 12, style, color ?? UITheme.TextSecondary);
             cell.gameObject.AddComponent<LayoutElement>().preferredWidth = width;
             cell.alignment = TextAnchor.MiddleLeft;
-            cell.horizontalOverflow = HorizontalWrapMode.Overflow;
+            cell.horizontalOverflow = HorizontalWrapMode.Wrap;
+            cell.verticalOverflow = VerticalWrapMode.Truncate;
         }
 
         public static void FillCard(Text text)

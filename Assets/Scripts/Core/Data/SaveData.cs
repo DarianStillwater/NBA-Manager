@@ -18,6 +18,7 @@ namespace NBAHeadCoach.Core
         [Header("Metadata")]
         public string SaveVersion = CURRENT_VERSION;
         public DateTime SaveTimestamp;
+        public string SaveTimestampStr; // ISO string backup (JsonUtility can't roundtrip DateTime)
         public string SaveName;
         public string SaveSlot;
         public bool IsIronman;  // Ironman mode - single save, no reload
@@ -31,6 +32,7 @@ namespace NBAHeadCoach.Core
         [Header("Season")]
         public int CurrentSeason;
         public DateTime CurrentDate;
+        public string CurrentDateStr; // ISO string backup
         public SeasonPhase CurrentPhase;
 
         [Header("League State")]
@@ -73,6 +75,14 @@ namespace NBAHeadCoach.Core
         /// </summary>
         public SaveSlotInfo CreateSlotInfo()
         {
+            // Parse dates from string backups (JsonUtility can't roundtrip DateTime)
+            DateTime date = CurrentDate;
+            if (!string.IsNullOrEmpty(CurrentDateStr) && DateTime.TryParse(CurrentDateStr, out var pd))
+                date = pd;
+            DateTime timestamp = SaveTimestamp;
+            if (!string.IsNullOrEmpty(SaveTimestampStr) && DateTime.TryParse(SaveTimestampStr, out var pt))
+                timestamp = pt;
+
             return new SaveSlotInfo
             {
                 SlotName = SaveSlot,
@@ -80,9 +90,9 @@ namespace NBAHeadCoach.Core
                 CoachName = Career?.PersonName ?? "Unknown",
                 TeamId = PlayerTeamId,
                 Season = CurrentSeason,
-                Date = CurrentDate,
+                Date = date,
                 Record = GetRecordString(),
-                SaveTimestamp = SaveTimestamp,
+                SaveTimestamp = timestamp,
                 IsIronman = IsIronman
             };
         }

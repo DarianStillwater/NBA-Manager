@@ -169,18 +169,21 @@ namespace NBAHeadCoach.UI.Shell
             cnr.anchorMin = new Vector2(0, 0.1f); cnr.anchorMax = new Vector2(0.6f, 0.38f);
             cnr.offsetMin = new Vector2(textLeft, 0); cn.alignment = TextAnchor.MiddleLeft;
 
-            // Record
+            // Record + Date
+            var date = GameManager.Instance?.CurrentDate ?? DateTime.Now;
             _headerRecordText = UIBuilder.Text(hr, "Record", $"{team.Wins}-{team.Losses}", 22, FontStyle.Bold, Color.white);
             var rr = _headerRecordText.GetComponent<RectTransform>();
-            rr.anchorMin = new Vector2(0.7f, 0.35f); rr.anchorMax = new Vector2(1, 0.85f);
-            rr.offsetMax = new Vector2(-20, 0); _headerRecordText.alignment = TextAnchor.MiddleRight;
+            rr.anchorMin = new Vector2(0.7f, 0.4f); rr.anchorMax = new Vector2(1, 0.95f);
+            rr.sizeDelta = Vector2.zero;
+            rr.offsetMin = Vector2.zero; rr.offsetMax = new Vector2(-20, 0);
+            _headerRecordText.alignment = TextAnchor.MiddleRight;
 
-            // Date
-            var date = GameManager.Instance?.CurrentDate ?? DateTime.Now;
-            _headerDateText = UIBuilder.Text(hr, "Date", date.ToString("MMMM dd, yyyy"), 13, FontStyle.Normal, UITheme.TextSecondary);
+            _headerDateText = UIBuilder.Text(hr, "Date", date.ToString("MMMM dd, yyyy"), 12, FontStyle.Normal, UITheme.TextSecondary);
             var dr = _headerDateText.GetComponent<RectTransform>();
-            dr.anchorMin = new Vector2(0.7f, 0.1f); dr.anchorMax = new Vector2(1, 0.38f);
-            dr.offsetMax = new Vector2(-20, 0); _headerDateText.alignment = TextAnchor.MiddleRight;
+            dr.anchorMin = new Vector2(0.7f, 0.05f); dr.anchorMax = new Vector2(1, 0.4f);
+            dr.sizeDelta = Vector2.zero;
+            dr.offsetMin = Vector2.zero; dr.offsetMax = new Vector2(-20, 0);
+            _headerDateText.alignment = TextAnchor.MiddleRight;
 
             // Accent line
             var accent = UIBuilder.Child(parent, "AccentLine");
@@ -246,10 +249,7 @@ namespace NBAHeadCoach.UI.Shell
                     ShowPreGame(nextGame);
                 }
             });
-            CreateActionButton(sidebar.transform, "Save Game", UITheme.FMNavHover, () =>
-            {
-                _sceneController?.SendMessage("OnSaveGameClicked", SendMessageOptions.DontRequireReceiver);
-            });
+            CreateActionButton(sidebar.transform, "Save Game", UITheme.FMNavHover, () => ShowPanel("SaveGame"));
             CreateActionButton(sidebar.transform, "Main Menu", new Color(0.4f, 0.2f, 0.2f), () =>
             {
                 GameManager.Instance?.ReturnToMainMenu();
