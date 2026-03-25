@@ -209,20 +209,70 @@ namespace NBAHeadCoach.Core
         {
             _schedule.Clear();
 
-            // Use the existing SeasonCalendar if available, otherwise create schedule
-            string playerTeamId = _gameManager.PlayerTeamId;
-
             if (_playerCalendar == null)
-            {
                 _playerCalendar = new SeasonCalendar();
+
+            // Generate league-wide schedule: each team plays ~82 games
+            var teams = _gameManager.AllTeams;
+            if (teams == null || teams.Count < 2) return;
+
+            var rng = new System.Random(_currentSeason);
+            var teamGames = new Dictionary<string, int>(); // track games per team
+            foreach (var t in teams) teamGames[t.TeamId] = 0;
+
+            int gameId = 0;
+            DateTime gameDate = new DateTime(_currentSeason, 10, 22);
+            DateTime seasonEnd = new DateTime(_currentSeason + 1, 4, 15);
+
+            // Generate ~15 games per day across the league (avg NBA has ~13-15 games/day)
+            while (gameDate < seasonEnd)
+            {
+                // Skip All-Star break
+                if (gameDate >= _allStarBreak && gameDate < _allStarBreak.AddDays(5))
+                {
+                    gameDate = gameDate.AddDays(1);
+                    continue;
+                }
+
+                // Pick ~7 matchups per day (14 teams playing = 7 games)
+                int gamesPerDay = rng.Next(5, 9);
+                var available = teams.Where(t => teamGames[t.TeamId] < 82).Select(t => t.TeamId).ToList();
+
+                // Shuffle available
+                for (int i = available.Count - 1; i > 0; i--)
+                {
+                    int j = rng.Next(i + 1);
+                    var tmp = available[i]; available[i] = available[j]; available[j] = tmp;
+                }
+
+                int paired = 0;
+                for (int i = 0; i + 1 < available.Count && paired < gamesPerDay; i += 2)
+                {
+                    string home = available[i];
+                    string away = available[i + 1];
+
+                    _schedule.Add(new CalendarEvent
+                    {
+                        EventId = $"GAME_{_currentSeason}_{gameId:D4}",
+                        Date = gameDate,
+                        Type = CalendarEventType.Game,
+                        HomeTeamId = home,
+                        AwayTeamId = away,
+                        IsHomeGame = home == _gameManager.PlayerTeamId,
+                        GameNumber = teamGames.GetValueOrDefault(home, 0) + 1
+                    });
+
+                    teamGames[home]++;
+                    teamGames[away]++;
+                    gameId++;
+                    paired++;
+                }
+
+                gameDate = gameDate.AddDays(1);
             }
 
-            // Generate full 82-game schedule for player's team
-            // This is a simplified version - would integrate with full schedule generation
-            _schedule = GenerateTeamSchedule(playerTeamId, _currentSeason);
-
-            // Sort by date
             _schedule = _schedule.OrderBy(e => e.Date).ToList();
+            Debug.Log($"[SeasonController] Generated league schedule: {_schedule.Count} total games");
         }
 
         private List<CalendarEvent> GenerateTeamSchedule(string teamId, int season)
@@ -456,7 +506,7 @@ namespace NBAHeadCoach.Core
                 player.Energy = Mathf.Min(100, player.Energy + energyRecovery);
 
                 // Clean up old minutes tracking (keep last 14 days)
-                if (player.RecentMinutes != null)
+                if (player.RecentMinutes != null && _currentDate.Year > 1)
                 {
                     var cutoff = _currentDate.AddDays(-14);
                     player.RecentMinutes.RemoveAll(r => r.Date < cutoff);
@@ -545,8 +595,10 @@ namespace NBAHeadCoach.Core
         /// </summary>
         public CalendarEvent GetNextGame()
         {
+            string pid = _gameManager.PlayerTeamId;
             return _schedule
-                .Where(e => e.Type == CalendarEventType.Game && e.Date >= _currentDate && !e.IsCompleted)
+                .Where(e => e.Type == CalendarEventType.Game && e.Date >= _currentDate && !e.IsCompleted
+                    && (e.HomeTeamId == pid || e.AwayTeamId == pid))
                 .OrderBy(e => e.Date)
                 .FirstOrDefault();
         }
@@ -556,8 +608,10 @@ namespace NBAHeadCoach.Core
         /// </summary>
         public List<CalendarEvent> GetUpcomingGames(int count = 5)
         {
+            string pid = _gameManager.PlayerTeamId;
             return _schedule
-                .Where(e => e.Type == CalendarEventType.Game && e.Date >= _currentDate && !e.IsCompleted)
+                .Where(e => e.Type == CalendarEventType.Game && e.Date >= _currentDate && !e.IsCompleted
+                    && (e.HomeTeamId == pid || e.AwayTeamId == pid))
                 .OrderBy(e => e.Date)
                 .Take(count)
                 .ToList();
@@ -568,10 +622,12 @@ namespace NBAHeadCoach.Core
         /// </summary>
         public CalendarEvent GetTodaysGame()
         {
+            string pid = _gameManager.PlayerTeamId;
             return _schedule.FirstOrDefault(e =>
                 e.Type == CalendarEventType.Game &&
                 e.Date.Date == _currentDate.Date &&
-                !e.IsCompleted);
+                !e.IsCompleted &&
+                (e.HomeTeamId == pid || e.AwayTeamId == pid));
         }
 
         /// <summary>
@@ -592,6 +648,8 @@ namespace NBAHeadCoach.Core
 
             _completedGames.Add(result);
             game.IsCompleted = true;
+            game.HomeScore = homeScore;
+            game.AwayScore = awayScore;
             _currentGameIndex++;
 
             // Update standings

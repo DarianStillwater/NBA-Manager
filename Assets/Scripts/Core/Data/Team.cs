@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
+using NBAHeadCoach.Core.AI;
 
 namespace NBAHeadCoach.Core.Data
 {
@@ -31,6 +33,7 @@ namespace NBAHeadCoach.Core.Data
 
         // ==================== STAFF ====================
         public string HeadCoachId;
+        [NonSerialized] public AICoachPersonality CoachPersonality;
 
         // ==================== ROSTER ====================
         public List<string> RosterPlayerIds = new List<string>(); // Up to 15 players
@@ -231,6 +234,91 @@ namespace NBAHeadCoach.Core.Data
         public void AdjustMomentum(float delta)
         {
             Momentum = Mathf.Clamp(Momentum + delta, 0f, 100f);
+        }
+
+        // ==================== AUTO-INITIALIZATION ====================
+
+        /// <summary>
+        /// Sets starting lineup: best player at each position, then coach-style adjustments.
+        /// </summary>
+        public void AutoSetStartingLineup(AICoachPersonality coach = null)
+        {
+            if (Roster == null || Roster.Count < 5) return;
+            var used = new HashSet<string>();
+            var starters = new List<Player>();
+
+            // Pick best player at each standard position
+            var positions = new[] { Position.PointGuard, Position.ShootingGuard,
+                                    Position.SmallForward, Position.PowerForward, Position.Center };
+            foreach (var pos in positions)
+            {
+                var best = Roster.Where(p => p != null && p.Position == pos && !string.IsNullOrEmpty(p.PlayerId) && !used.Contains(p.PlayerId))
+                                 .OrderByDescending(p => p.OverallRating).FirstOrDefault();
+                if (best != null) { starters.Add(best); used.Add(best.PlayerId); }
+            }
+            // Fill remaining with best available
+            while (starters.Count < 5)
+            {
+                var next = Roster.Where(p => p != null && !string.IsNullOrEmpty(p.PlayerId) && !used.Contains(p.PlayerId))
+                                 .OrderByDescending(p => p.OverallRating).FirstOrDefault();
+                if (next == null) break;
+                starters.Add(next); used.Add(next.PlayerId);
+            }
+
+            // Coach style adjustments
+            if (coach != null && starters.Count == 5)
+            {
+                // Fast pace coach: swap slowest starter for faster bench player
+                if (coach.PreferredPace > 95)
+                    TrySwapForAttribute(starters, used, p => p.Speed, ascending: true, minGain: 10);
+
+                // 3PT-heavy coach: swap worst shooter for better bench shooter
+                if (coach.ThreePointEmphasis > 75)
+                    TrySwapForAttribute(starters, used, p => p.Shot_Three, ascending: true, minGain: 10);
+
+                // Defense-first coach: swap weakest defender for better bench defender
+                if (coach.DefensiveAggression > 75)
+                    TrySwapForAttribute(starters, used, p => p.Defense_Perimeter + p.Defense_Interior, ascending: true, minGain: 15);
+            }
+
+            StartingLineupIds = starters.Select(p => p.PlayerId).ToArray();
+            if (StartingLineupIds.Length < 5) Array.Resize(ref StartingLineupIds, 5);
+        }
+
+        private void TrySwapForAttribute(List<Player> starters, HashSet<string> used,
+            Func<Player, float> attribute, bool ascending, float minGain)
+        {
+            var worst = starters.OrderBy(attribute).First();
+            var bestBench = Roster.Where(p => p != null && !string.IsNullOrEmpty(p.PlayerId) && !used.Contains(p.PlayerId)
+                && attribute(p) > attribute(worst) + minGain)
+                .OrderByDescending(attribute).FirstOrDefault();
+            if (bestBench != null)
+            {
+                used.Remove(worst.PlayerId);
+                starters.Remove(worst);
+                starters.Add(bestBench);
+                used.Add(bestBench.PlayerId);
+            }
+        }
+
+        /// <summary>
+        /// Sets team strategy based on AI coach personality traits.
+        /// </summary>
+        public void AutoSetStrategy(AICoachPersonality coach)
+        {
+            if (coach == null) return;
+
+            OffensiveStrategy = new TeamStrategy
+            {
+                TargetPace = coach.PreferredPace,
+                ThreePointFrequency = coach.ThreePointEmphasis,
+                PostUpFrequency = coach.PostPlayEmphasis,
+            };
+            // Set the Pace property (maps to 0-100 scale)
+            OffensiveStrategy.Pace = Mathf.RoundToInt((coach.PreferredPace - 80f) / 30f * 100f);
+
+            DefensiveStrategy = new TeamStrategy();
+            DefensiveStrategy.Pace = OffensiveStrategy.Pace;
         }
     }
 }

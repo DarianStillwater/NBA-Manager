@@ -64,6 +64,26 @@ namespace NBAHeadCoach.UI
 
         public static string FontName = "LegacyRuntime.ttf";
 
+        // Frosted glass card style (semi-transparent, visibly lighter than background)
+        public static readonly Color CardFrosted = new Color(0.15f, 0.17f, 0.22f, 0.85f);        // ~#262B38 @ 85%
+        public static readonly Color CardHeaderFrosted = new Color(0.12f, 0.14f, 0.20f, 0.95f);   // ~#1F2433 @ 95%
+        public static readonly Color HoverHighlight = new Color(1f, 1f, 1f, 0.08f);               // white 8% overlay
+        public static Color NavActiveGlow(Color teamColor) => new Color(teamColor.r, teamColor.g, teamColor.b, 0.35f);
+
+        /// <summary>Lighten a color toward white.</summary>
+        public static Color LightenColor(Color c, float factor)
+            => Color.Lerp(c, Color.white, Mathf.Clamp01(factor));
+
+        // Team gradient helpers for header/sidebar
+        public static Color TeamHeaderGradientTop(Color c) => DarkenColor(c, 0.5f);
+        public static Color TeamHeaderGradientBottom(Color c) => DarkenColor(c, 0.3f);
+        public static Color TeamSidebarGradientTop(Color c) => DarkenColor(c, 0.3f);
+        public static Color TeamSidebarGradientBottom(Color c) => DarkenColor(c, 0.15f);
+
+        // Button gradient helpers
+        public static Color ButtonGradientTop(Color c) => DarkenColor(c, 0.6f);
+        public static Color ButtonGradientBottom(Color c) => DarkenColor(c, 0.35f);
+
         /// <summary>
         /// Parse a hex color string (e.g. "#E03A3E") into a Color, with fallback.
         /// </summary>

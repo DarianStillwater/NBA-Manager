@@ -463,6 +463,9 @@ namespace NBAHeadCoach.Core
             // Initialize all managers with new game data
             InitializeManagersForNewGame();
 
+            // Initialize all 30 teams with AI coach personalities, lineups, and strategies
+            InitializeAllTeamCoaches();
+
             // Fire event
             OnNewGameStarted?.Invoke();
 
@@ -576,6 +579,22 @@ namespace NBAHeadCoach.Core
 
             // Initialize trade AI enhancement systems with player team
             SetupTradeSystemsForTeam(_playerTeamId);
+        }
+
+        /// <summary>
+        /// Initialize all 30 teams with AI coach personalities, starting lineups, and strategies.
+        /// </summary>
+        private void InitializeAllTeamCoaches()
+        {
+            var rng = new System.Random();
+            foreach (var team in _allTeams)
+            {
+                if (team == null) continue;
+                team.CoachPersonality = AI.AICoachPersonality.GenerateRandom(rng);
+                team.AutoSetStrategy(team.CoachPersonality);
+                team.AutoSetStartingLineup(team.CoachPersonality);
+                Debug.Log($"[GameManager] {team.Abbreviation}: Coach={team.CoachPersonality.OffensiveStyle}, Pace={team.CoachPersonality.PreferredPace:0}, 3PT={team.CoachPersonality.ThreePointEmphasis}, Starters={string.Join(",", team.StartingLineupIds?.Take(5) ?? new string[0])}");
+            }
         }
 
         /// <summary>
@@ -709,6 +728,9 @@ namespace NBAHeadCoach.Core
 
             // Set up trade systems with loaded player team
             SetupTradeSystemsForTeam(_playerTeamId);
+
+            // Ensure all teams have valid lineups and strategies after restore
+            InitializeAllTeamCoaches();
         }
 
         /// <summary>
@@ -770,10 +792,58 @@ namespace NBAHeadCoach.Core
             _currentDate = _currentDate.AddDays(1);
             SeasonController.AdvanceDay();
 
+            // Simulate all other league games for today
+            SimulateLeagueGamesForDate(_currentDate);
+
             // Process daily trade offers from AI teams
             _tradeOfferGenerator?.ProcessDailyOffers();
 
             OnDayAdvanced?.Invoke(_currentDate);
+        }
+
+        /// <summary>
+        /// Simulates all non-player league games scheduled for a given date.
+        /// Uses full game simulation for realistic stats and standings updates.
+        /// </summary>
+        private void SimulateLeagueGamesForDate(DateTime date)
+        {
+            if (SeasonController == null || _allTeams == null || _allTeams.Count == 0) return;
+
+            // Get all games for today from the master schedule (league-wide)
+            var todaysGames = SeasonController.Schedule?
+                .Where(g => g.Date.Date == date.Date && !g.IsCompleted && g.Type == Data.CalendarEventType.Game)
+                .ToList();
+
+            if (todaysGames == null || todaysGames.Count == 0) return;
+
+            string playerTeamId = PlayerTeamId;
+            var simulator = new Simulation.GameSimulator(PlayerDatabase);
+
+            foreach (var game in todaysGames)
+            {
+                // Skip player's game — they handle it manually via pre-game screen
+                if (game.HomeTeamId == playerTeamId || game.AwayTeamId == playerTeamId)
+                    continue;
+
+                var homeTeam = GetTeam(game.HomeTeamId);
+                var awayTeam = GetTeam(game.AwayTeamId);
+                if (homeTeam == null || awayTeam == null) continue;
+
+                try
+                {
+                    var result = simulator.SimulateGame(homeTeam, awayTeam);
+                    SeasonController.RecordGameResult(game, result.HomeScore, result.AwayScore);
+                }
+                catch (System.Exception ex)
+                {
+                    // Fallback: random result if simulation fails
+                    Debug.LogWarning($"[GameManager] League sim failed for {game.AwayTeamId}@{game.HomeTeamId}: {ex.Message}");
+                    int homeScore = UnityEngine.Random.Range(90, 120);
+                    int awayScore = UnityEngine.Random.Range(90, 120);
+                    if (homeScore == awayScore) homeScore += 2; // no ties
+                    SeasonController.RecordGameResult(game, homeScore, awayScore);
+                }
+            }
         }
 
         /// <summary>

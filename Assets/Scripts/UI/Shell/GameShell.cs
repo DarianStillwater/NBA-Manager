@@ -33,6 +33,14 @@ namespace NBAHeadCoach.UI.Shell
         // Panel registry
         private Dictionary<string, IGamePanel> _panels = new Dictionary<string, IGamePanel>();
 
+        // Action button tracking for enable/disable during game day flow
+        private List<Button> _actionButtons = new List<Button>();
+        private bool _isGameDayFlow = false;
+
+        // Nav item tracking for active state updates
+        private List<(GameObject go, string panelId, Image bg, Transform indicator, Text iconText, Text labelText)> _navItemRefs
+            = new List<(GameObject, string, Image, Transform, Text, Text)>();
+
         // Player detail state
         private Player _detailPlayer;
         private string _playerTab = "Overview";
@@ -100,6 +108,9 @@ namespace NBAHeadCoach.UI.Shell
                 _originalUI[i].SetActive(false);
             }
 
+            _navItemRefs.Clear();
+            _actionButtons.Clear();
+            _isGameDayFlow = false;
             if (_fmRoot != null) Destroy(_fmRoot);
             _fmRoot = new GameObject("FMDashboard", typeof(RectTransform));
             _fmRoot.transform.SetParent(canvas.transform, false);
@@ -141,7 +152,9 @@ namespace NBAHeadCoach.UI.Shell
             var hr = header.GetComponent<RectTransform>();
             hr.anchorMin = new Vector2(0, 1); hr.anchorMax = Vector2.one;
             hr.pivot = new Vector2(0.5f, 1); hr.sizeDelta = new Vector2(0, UITheme.FMHeaderHeight);
-            header.AddComponent<Image>().color = UITheme.DarkenColor(primary, 0.25f);
+            var headerImg = header.AddComponent<Image>();
+            headerImg.color = Color.white;
+            UIBuilder.ApplyGradient(header, UITheme.TeamHeaderGradientTop(primary), UITheme.TeamHeaderGradientBottom(primary));
 
             // Logo
             var logo = UIBuilder.Child(hr, "TeamLogo");
@@ -154,6 +167,7 @@ namespace NBAHeadCoach.UI.Shell
             var logoSprite = ArtManager.GetTeamLogo(team.TeamId);
             if (logoSprite != null) logoImg.sprite = logoSprite;
             else logoImg.color = new Color(1, 1, 1, 0.2f);
+            UIBuilder.ApplyShadow(logo, 1, -1, 0.5f);
 
             float textLeft = 16 + UITheme.FMTeamLogoSize + 16;
 
@@ -192,7 +206,7 @@ namespace NBAHeadCoach.UI.Shell
             ar.pivot = new Vector2(0.5f, 1);
             ar.sizeDelta = new Vector2(0, UITheme.FMAccentLineHeight);
             ar.anchoredPosition = new Vector2(0, -UITheme.FMHeaderHeight);
-            accent.AddComponent<Image>().color = secondary;
+            accent.AddComponent<Image>().color = UITheme.AccentPrimary;
         }
 
         // ═══════════════════════════════════════════════════════
@@ -205,7 +219,9 @@ namespace NBAHeadCoach.UI.Shell
             var sr = sidebar.GetComponent<RectTransform>();
             sr.anchorMin = Vector2.zero; sr.anchorMax = new Vector2(0, 1);
             sr.pivot = new Vector2(0, 0.5f); sr.sizeDelta = new Vector2(UITheme.FMSidebarWidth, 0);
-            sidebar.AddComponent<Image>().color = UITheme.FMSidebarBg;
+            var sidebarImg = sidebar.AddComponent<Image>();
+            sidebarImg.color = Color.white;
+            UIBuilder.ApplyGradient(sidebar, UITheme.TeamSidebarGradientTop(teamColor), UITheme.TeamSidebarGradientBottom(teamColor));
 
             var vlg = sidebar.AddComponent<VerticalLayoutGroup>();
             vlg.childControlWidth = true; vlg.childControlHeight = false;
@@ -221,11 +237,19 @@ namespace NBAHeadCoach.UI.Shell
                 new[] { "\u2699", "Staff",     "Staff" },
             };
 
+            var navGOs = new Dictionary<string, GameObject>();
             foreach (var nav in navItems)
             {
                 bool isActive = nav[2] == "Dashboard";
-                CreateNavItem(sidebar.transform, nav[0], nav[1], nav[2], teamColor, isActive);
+                var navGo = CreateNavItem(sidebar.transform, nav[0], nav[1], nav[2], teamColor, isActive);
+                navGOs[nav[2]] = navGo;
             }
+
+            // Activity indicators
+            if (navGOs.ContainsKey("Inbox"))
+                AddActivityDot(navGOs["Inbox"], UITheme.AccentPrimary);
+            if (navGOs.ContainsKey("Schedule") && GameManager.Instance?.SeasonController?.GetTodaysGame() != null)
+                AddActivityDot(navGOs["Schedule"], UITheme.Success);
 
             CreateDivider(sidebar.transform);
 
@@ -244,7 +268,8 @@ namespace NBAHeadCoach.UI.Shell
                 var nextGame = sc?.GetNextGame();
                 if (nextGame != null)
                 {
-                    while (GameManager.Instance.CurrentDate.Date < nextGame.Date.Date)
+                    int safety = 0;
+                    while (GameManager.Instance.CurrentDate.Date < nextGame.Date.Date && safety++ < 200)
                         GameManager.Instance.AdvanceDay();
                     ShowPreGame(nextGame);
                 }
@@ -256,25 +281,27 @@ namespace NBAHeadCoach.UI.Shell
             });
         }
 
-        private void CreateNavItem(Transform parent, string icon, string label, string panelId, Color teamColor, bool active)
+        private GameObject CreateNavItem(Transform parent, string icon, string label, string panelId, Color teamColor, bool active)
         {
             var item = new GameObject($"Nav_{label}", typeof(RectTransform));
             item.transform.SetParent(parent, false);
             item.AddComponent<LayoutElement>().preferredHeight = UITheme.FMNavItemHeight;
             var bg = item.AddComponent<Image>();
-            bg.color = active ? UITheme.FMNavActive : Color.clear;
+            bg.color = active ? UITheme.DarkenColor(teamColor, 0.5f) : Color.clear;
+
             var btn = item.AddComponent<Button>();
-            var c = btn.colors; c.highlightedColor = UITheme.FMNavHover; c.pressedColor = UITheme.FMNavActive; btn.colors = c;
+            var c = btn.colors;
+            c.highlightedColor = new Color(1f, 1f, 1f, 0.1f);
+            c.pressedColor = UITheme.DarkenColor(teamColor, 0.4f);
+            btn.colors = c;
             btn.onClick.AddListener(() => OnNavClicked(panelId));
 
-            if (active)
-            {
-                var ind = UIBuilder.Child(item.GetComponent<RectTransform>(), "ActiveBar");
-                var ir = ind.GetComponent<RectTransform>();
-                ir.anchorMin = Vector2.zero; ir.anchorMax = new Vector2(0, 1);
-                ir.pivot = new Vector2(0, 0.5f); ir.sizeDelta = new Vector2(4, 0);
-                ind.AddComponent<Image>().color = teamColor;
-            }
+            // Active indicator bar (always created, toggled via color)
+            var ind = UIBuilder.Child(item.GetComponent<RectTransform>(), "ActiveBar");
+            var ir = ind.GetComponent<RectTransform>();
+            ir.anchorMin = Vector2.zero; ir.anchorMax = new Vector2(0, 1);
+            ir.pivot = new Vector2(0, 0.5f); ir.sizeDelta = new Vector2(5, 0);
+            ind.AddComponent<Image>().color = active ? teamColor : Color.clear;
 
             var iconText = UIBuilder.Text(item.GetComponent<RectTransform>(), "Icon", icon,
                 (int)UITheme.FMNavIconSize, FontStyle.Normal, active ? teamColor : UITheme.TextSecondary);
@@ -290,6 +317,35 @@ namespace NBAHeadCoach.UI.Shell
             lr.anchorMin = Vector2.zero; lr.anchorMax = Vector2.one;
             lr.offsetMin = new Vector2(50, 0); lr.offsetMax = new Vector2(-8, 0);
             labelText.alignment = TextAnchor.MiddleLeft;
+
+            // Track for active state updates
+            _navItemRefs.Add((item, panelId, bg, ind.transform, iconText, labelText));
+
+            return item;
+        }
+
+        private void UpdateNavActiveStates(string activePanelId)
+        {
+            foreach (var nav in _navItemRefs)
+            {
+                bool isActive = nav.panelId == activePanelId;
+                nav.bg.color = isActive ? UITheme.DarkenColor(_teamColor, 0.5f) : Color.clear;
+                nav.indicator.GetComponent<Image>().color = isActive ? _teamColor : Color.clear;
+                nav.iconText.color = isActive ? _teamColor : UITheme.TextSecondary;
+                nav.labelText.color = isActive ? Color.white : UITheme.TextSecondary;
+                nav.labelText.fontStyle = isActive ? FontStyle.Bold : FontStyle.Normal;
+            }
+        }
+
+        private void AddActivityDot(GameObject navItem, Color color)
+        {
+            var dot = UIBuilder.Child(navItem.GetComponent<RectTransform>(), "Dot");
+            var dr = dot.GetComponent<RectTransform>();
+            dr.anchorMin = new Vector2(1, 0.5f); dr.anchorMax = new Vector2(1, 0.5f);
+            dr.pivot = new Vector2(1, 0.5f);
+            dr.sizeDelta = new Vector2(8, 8);
+            dr.anchoredPosition = new Vector2(-8, 0);
+            dot.AddComponent<Image>().color = color;
         }
 
         private void CreateActionButton(Transform parent, string label, Color bgColor, Action onClick)
@@ -297,10 +353,18 @@ namespace NBAHeadCoach.UI.Shell
             var item = new GameObject($"Btn_{label}", typeof(RectTransform));
             item.transform.SetParent(parent, false);
             item.AddComponent<LayoutElement>().preferredHeight = 38;
-            item.AddComponent<Image>().color = UITheme.DarkenColor(bgColor, 0.4f);
+            var img = item.AddComponent<Image>();
+            img.color = UITheme.DarkenColor(bgColor, 0.5f);  // direct visible color
+            UIBuilder.ApplyOutline(item, UITheme.DarkenColor(bgColor, 0.3f), 1f);
+
             var btn = item.AddComponent<Button>();
-            var c = btn.colors; c.highlightedColor = UITheme.DarkenColor(bgColor, 0.6f); c.pressedColor = bgColor; btn.colors = c;
+            var c = btn.colors;
+            c.highlightedColor = UITheme.LightenColor(bgColor, 0.3f);
+            c.pressedColor = UITheme.DarkenColor(bgColor, 0.7f);
+            btn.colors = c;
             btn.onClick.AddListener(() => onClick?.Invoke());
+            _actionButtons.Add(btn);
+
             var text = UIBuilder.Text(item.GetComponent<RectTransform>(), "Label", label, 13, FontStyle.Bold, Color.white);
             UIBuilder.Stretch(text.gameObject);
             text.alignment = TextAnchor.MiddleCenter;
@@ -326,6 +390,7 @@ namespace NBAHeadCoach.UI.Shell
         {
             if (_currentPanel == panelId) return;
             _currentPanel = panelId;
+            UpdateNavActiveStates(panelId);
             ShowPanel(panelId);
         }
 
@@ -333,6 +398,10 @@ namespace NBAHeadCoach.UI.Shell
         public void ShowPanel(string panelId)
         {
             if (_contentArea == null) return;
+
+            // Re-enable sidebar buttons when returning to a regular panel
+            if (panelId != "PreGame" && panelId != "PostGame" && panelId != "PlayerDetail")
+                EnableActionButtons();
 
             // Destroy and recreate content area to avoid stale components
             var parent = _contentArea.parent;
@@ -344,7 +413,24 @@ namespace NBAHeadCoach.UI.Shell
             _contentArea.anchorMax = Vector2.one;
             _contentArea.offsetMin = new Vector2(UITheme.FMSidebarWidth, 0);
             _contentArea.offsetMax = Vector2.zero;
-            newContent.AddComponent<Image>().color = UITheme.Background;
+            newContent.AddComponent<Image>().color = UITheme.TeamTintedBackground(_teamColor, 0.08f);
+
+            // Subtle pattern overlay for visual texture
+            var patternGo = UIBuilder.Child(newContent.GetComponent<RectTransform>(), "Pattern");
+            UIBuilder.Stretch(patternGo);
+            var patternImg = patternGo.AddComponent<Image>();
+            var patternSprite = Resources.Load<Sprite>("Art/Backgrounds/panel_bg_dark");
+            if (patternSprite != null)
+            {
+                patternImg.sprite = patternSprite;
+                patternImg.type = Image.Type.Tiled;
+                patternImg.color = new Color(1, 1, 1, 0.03f);
+            }
+            else
+            {
+                patternImg.color = Color.clear;
+            }
+            patternImg.raycastTarget = false;
 
             var team = _currentTeam ?? GameManager.Instance?.GetPlayerTeam();
             if (team == null) return;
@@ -360,6 +446,9 @@ namespace NBAHeadCoach.UI.Shell
                 UIBuilder.Stretch(placeholder.gameObject);
                 placeholder.alignment = TextAnchor.MiddleCenter;
             }
+
+            // Panel transition: fade in + scale up
+            newContent.AddComponent<Components.PanelTransition>();
         }
 
         public void RefreshCurrentPanel()
@@ -373,9 +462,24 @@ namespace NBAHeadCoach.UI.Shell
         //  PRE-GAME / POST-GAME HOOKS
         // ═══════════════════════════════════════════════════════
 
+        private void DisableActionButtons()
+        {
+            _isGameDayFlow = true;
+            foreach (var btn in _actionButtons)
+                if (btn != null) btn.interactable = false;
+        }
+
+        private void EnableActionButtons()
+        {
+            _isGameDayFlow = false;
+            foreach (var btn in _actionButtons)
+                if (btn != null) btn.interactable = true;
+        }
+
         public void ShowPreGame(CalendarEvent gameEvent)
         {
             _currentPanel = "PreGame";
+            DisableActionButtons();
             // Delegate to ArtInjector which registers the PreGame panel dynamically
             var artInjector = GetComponent<ArtInjector>();
             artInjector?.ShowPreGame(gameEvent);

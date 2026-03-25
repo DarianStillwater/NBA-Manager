@@ -202,6 +202,38 @@ namespace NBAHeadCoach.Core.Data
                 json = System.Text.RegularExpressions.Regex.Replace(json,
                     @"\s*""BirthDate""\s*:\s*""[^""]*""\s*,?", "");
 
+                // Extract Attributes blocks per player (JsonUtility can't map nested objects to flat fields)
+                var playerAttributes = new Dictionary<string, Dictionary<string, int>>();
+                try
+                {
+                    // Find each player's Attributes block
+                    var attrPattern = new System.Text.RegularExpressions.Regex(
+                        @"""PlayerId""\s*:\s*""([^""]+)"".*?""Attributes""\s*:\s*\{([^}]+)\}",
+                        System.Text.RegularExpressions.RegexOptions.Singleline);
+                    var attrMatches = attrPattern.Matches(json);
+                    foreach (System.Text.RegularExpressions.Match m in attrMatches)
+                    {
+                        string pid = m.Groups[1].Value;
+                        string attrsBlock = m.Groups[2].Value;
+                        var attrs = new Dictionary<string, int>();
+                        var kvPattern = new System.Text.RegularExpressions.Regex(@"""(\w+)""\s*:\s*(\d+)");
+                        foreach (System.Text.RegularExpressions.Match kv in kvPattern.Matches(attrsBlock))
+                            attrs[kv.Groups[1].Value] = int.Parse(kv.Groups[2].Value);
+                        playerAttributes[pid] = attrs;
+                    }
+                    Debug.Log($"[PlayerDatabase] Extracted attributes for {playerAttributes.Count} players");
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning($"[PlayerDatabase] Attribute extraction failed: {ex.Message}");
+                }
+
+                // Remove Attributes blocks so JsonUtility doesn't choke on nested objects
+                json = System.Text.RegularExpressions.Regex.Replace(json,
+                    @"\s*""Attributes""\s*:\s*\{[^}]*\}\s*,?", "");
+                // Clean up trailing commas before closing braces (invalid JSON)
+                json = System.Text.RegularExpressions.Regex.Replace(json, @",\s*}", "}");
+
                 var wrapper = JsonUtility.FromJson<PlayerListWrapper>(json);
 
                 if (wrapper?.Players == null)
@@ -223,6 +255,51 @@ namespace NBAHeadCoach.Core.Data
                     {
                         if (DateTime.TryParse(bdStr, out DateTime bd))
                             player.BirthDate = bd;
+                    }
+
+                    // Map attributes from extracted JSON block to Player fields
+                    if (playerAttributes.TryGetValue(player.PlayerId, out var attrs))
+                    {
+                        // Physical
+                        if (attrs.TryGetValue("Speed", out int v)) player.Speed = v;
+                        if (attrs.TryGetValue("Acceleration", out v)) player.Acceleration = v;
+                        if (attrs.TryGetValue("Strength", out v)) player.Strength = v;
+                        if (attrs.TryGetValue("Vertical", out v)) player.Vertical = v;
+                        if (attrs.TryGetValue("Stamina", out v)) player.Stamina = v;
+                        if (attrs.TryGetValue("OverallDurability", out v)) player.Durability = v;
+
+                        // Offense - Scoring
+                        if (attrs.TryGetValue("InsideScoring", out v)) player.Finishing_Rim = v;
+                        if (attrs.TryGetValue("Layups", out v)) player.Shot_Close = v;
+                        if (attrs.TryGetValue("PostMoves", out v)) player.Finishing_PostMoves = v;
+                        if (attrs.TryGetValue("MidRange", out v)) player.Shot_MidRange = v;
+                        if (attrs.TryGetValue("ThreePoint", out v)) player.Shot_Three = v;
+                        if (attrs.TryGetValue("FreeThrow", out v)) player.FreeThrow = v;
+
+                        // Offense - Playmaking
+                        if (attrs.TryGetValue("BallHandle", out v)) player.BallHandling = v;
+                        if (attrs.TryGetValue("PassAccuracy", out v)) player.Passing = v;
+                        if (attrs.TryGetValue("OffensiveIQ", out v)) player.OffensiveIQ = v;
+                        if (attrs.TryGetValue("PassVision", out v)) player.SpeedWithBall = v; // closest mapping
+
+                        // Defense
+                        if (attrs.TryGetValue("PerimeterDefense", out v)) player.Defense_Perimeter = v;
+                        if (attrs.TryGetValue("InteriorDefense", out v)) player.Defense_Interior = v;
+                        if (attrs.TryGetValue("Steal", out v)) player.Steal = v;
+                        if (attrs.TryGetValue("Block", out v)) player.Block = v;
+                        if (attrs.TryGetValue("DefensiveRebound", out v)) player.DefensiveRebound = v;
+                        if (attrs.TryGetValue("DefensiveIQ", out v)) player.DefensiveIQ = v;
+
+                        // Mental
+                        if (attrs.TryGetValue("Intangibles", out v)) player.BasketballIQ = v;
+                        if (attrs.TryGetValue("OffensiveConsistency", out v)) player.Consistency = v;
+                        if (attrs.TryGetValue("Hustle", out v)) player.WorkEthic = v;
+                        if (attrs.TryGetValue("Potential", out v)) player.Coachability = v;
+                        if (attrs.TryGetValue("DrawFoul", out v)) player.Clutch = v; // approximate
+
+                        // Dunking (map to closest)
+                        if (attrs.TryGetValue("StandingDunk", out int sd) && attrs.TryGetValue("DrivingDunk", out int dd))
+                            player.Vertical = Math.Max(player.Vertical, Math.Max(sd, dd));
                     }
 
                     // Initialize dynamic state
@@ -451,6 +528,17 @@ namespace NBAHeadCoach.Core.Data
                 if (!string.IsNullOrEmpty(player.TeamId) && _teams.TryGetValue(player.TeamId, out var team))
                 {
                     team.Roster.Add(player);
+                }
+            }
+
+            // Sync RosterPlayerIds from Roster
+            foreach (var team in _teams.Values)
+            {
+                team.RosterPlayerIds.Clear();
+                foreach (var player in team.Roster)
+                {
+                    if (!string.IsNullOrEmpty(player?.PlayerId))
+                        team.RosterPlayerIds.Add(player.PlayerId);
                 }
             }
         }

@@ -66,16 +66,14 @@ namespace NBAHeadCoach.Core.Simulation
             InitializePlayerStats(homeTeam);
             InitializePlayerStats(awayTeam);
 
-            // Initialize on-court lineups (starters)
-            for (int i = 0; i < 5; i++)
-            {
-                _homeOnCourt[i] = homeTeam.StartingLineupIds[i];
-                _awayOnCourt[i] = awayTeam.StartingLineupIds[i];
-            }
+            // Initialize on-court lineups (starters) — fill nulls from roster
+            SetupLineup(_homeOnCourt, homeTeam);
+            SetupLineup(_awayOnCourt, awayTeam);
 
             // Reset all player energy to 100
             foreach (var pid in homeTeam.RosterPlayerIds.Concat(awayTeam.RosterPlayerIds))
             {
+                if (string.IsNullOrEmpty(pid)) continue;
                 var p = _playerDatabase.GetPlayer(pid);
                 if (p != null) p.Energy = 100f;
             }
@@ -348,15 +346,64 @@ namespace NBAHeadCoach.Core.Simulation
         }
 
         /// <summary>
+        /// Sets up the 5-player on-court lineup, falling back to roster if StartingLineupIds has nulls.
+        /// </summary>
+        private void SetupLineup(string[] onCourt, Team team)
+        {
+            var starters = team.StartingLineupIds;
+            var rosterIds = team.RosterPlayerIds?.Where(id => !string.IsNullOrEmpty(id)).ToList()
+                            ?? new List<string>();
+            var used = new HashSet<string>();
+
+            for (int i = 0; i < 5; i++)
+            {
+                if (starters != null && i < starters.Length && !string.IsNullOrEmpty(starters[i]))
+                {
+                    onCourt[i] = starters[i];
+                    used.Add(starters[i]);
+                }
+                else
+                {
+                    // Pick next available roster player
+                    var fallback = rosterIds.FirstOrDefault(id => !used.Contains(id));
+                    onCourt[i] = fallback ?? "unknown";
+                    if (fallback != null) used.Add(fallback);
+                }
+            }
+        }
+
+        /// <summary>
         /// Gets the 5 active players for a team from on-court tracking.
         /// </summary>
         private Player[] GetActivePlayers(Team team)
         {
             var onCourt = team.TeamId == _homeTeam.TeamId ? _homeOnCourt : _awayOnCourt;
             var players = new Player[5];
+            var usedIds = new HashSet<string>();
+
             for (int i = 0; i < 5; i++)
             {
-                players[i] = _playerDatabase.GetPlayer(onCourt[i]);
+                if (!string.IsNullOrEmpty(onCourt[i]))
+                    players[i] = _playerDatabase.GetPlayer(onCourt[i]);
+
+                if (players[i] != null)
+                {
+                    usedIds.Add(onCourt[i]);
+                }
+                else
+                {
+                    // Fallback: grab any roster player not already on court
+                    foreach (var p in team.Roster)
+                    {
+                        if (p != null && !string.IsNullOrEmpty(p.PlayerId) && !usedIds.Contains(p.PlayerId))
+                        {
+                            players[i] = p;
+                            onCourt[i] = p.PlayerId;
+                            usedIds.Add(p.PlayerId);
+                            break;
+                        }
+                    }
+                }
             }
             return players;
         }

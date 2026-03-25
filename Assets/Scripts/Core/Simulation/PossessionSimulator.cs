@@ -629,7 +629,7 @@ namespace NBAHeadCoach.Core.Simulation
             bool blocked = false;
             if (defenderDistance < 3f)
             {
-                float blockChance = (defender.Block / 100f) * (1f - defenderDistance / 4f) * 0.015f;
+                float blockChance = (defender.Block / 100f) * (1f - defenderDistance / 4f) * 0.07f;
 
                 // TENDENCY INTEGRATION: Defensive tendencies affect block attempts
                 if (defender.Tendencies != null)

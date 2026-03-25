@@ -71,6 +71,8 @@ namespace NBAHeadCoach.Core.Data
 
         // State
         public bool IsCompleted;       // Has this event occurred?
+        public int HomeScore;          // Final score (set after completion)
+        public int AwayScore;
 
         public bool IsGameDay => Type == CalendarEventType.Game;
     }

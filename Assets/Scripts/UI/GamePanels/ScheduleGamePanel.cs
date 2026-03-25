@@ -81,7 +81,15 @@ namespace NBAHeadCoach.UI.GamePanels
             var sc = GameManager.Instance?.SeasonController;
             if (sc?.Schedule == null) return;
 
-            var games = sc.Schedule.OrderBy(g => g.Date).ToList();
+            // Filter to player's team only
+            string pid = team.TeamId;
+            var games = sc.Schedule
+                .Where(g => g.HomeTeamId == pid || g.AwayTeamId == pid)
+                .OrderBy(g => g.Date).ToList();
+
+            // Add Result column header
+            B.TableCell(headerRow, "Result", 60, FontStyle.Bold, UITheme.AccentPrimary);
+
             for (int i = 0; i < games.Count; i++)
             {
                 var game = games[i];
@@ -92,8 +100,9 @@ namespace NBAHeadCoach.UI.GamePanels
                 var bgColor = i % 2 == 0 ? UITheme.CardBackground : UITheme.FMCardHeaderBg;
                 bool isToday = game.Date.Date == (GameManager.Instance?.CurrentDate.Date ?? DateTime.MinValue);
                 if (isToday) bgColor = UITheme.TeamTintedCard(teamColor, 0.2f);
+                if (game.IsCompleted) bgColor = UITheme.CardHeaderFrosted;
 
-                var row = B.TableRow(lcr, 26, bgColor);
+                var row = B.TableRow(lcr, 24, bgColor);
                 var btn = row.gameObject.AddComponent<Button>();
                 var bc = btn.colors; bc.highlightedColor = UITheme.FMNavHover; btn.colors = bc;
 
@@ -113,6 +122,21 @@ namespace NBAHeadCoach.UI.GamePanels
                 B.TableCell(row, opp?.Abbreviation ?? oppId, 130, FontStyle.Normal, Color.white);
                 B.TableCell(row, isHome ? "HOME" : "AWAY", 45, FontStyle.Normal,
                     isHome ? UITheme.Success : UITheme.TextSecondary);
+
+                // Show result for completed games
+                if (game.IsCompleted)
+                {
+                    int homeScore = game.HomeScore;
+                    int awayScore = game.AwayScore;
+                    bool won = (isHome && homeScore > awayScore) || (!isHome && awayScore > homeScore);
+                    string resultStr = isHome ? $"{homeScore}-{awayScore}" : $"{awayScore}-{homeScore}";
+                    B.TableCell(row, won ? $"W {resultStr}" : $"L {resultStr}", 60, FontStyle.Bold,
+                        won ? UITheme.Success : UITheme.Danger);
+                }
+                else
+                {
+                    B.TableCell(row, "—", 60, FontStyle.Normal, UITheme.TextSecondary);
+                }
             }
         }
 

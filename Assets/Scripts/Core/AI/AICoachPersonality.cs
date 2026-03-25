@@ -97,6 +97,65 @@ namespace NBAHeadCoach.Core.AI
         [Range(0, 100)] public int MotivationAbility = 60;        // Rally the team
         [Range(0, 100)] public int MediaManagement = 50;          // Handle media
 
+        // ==================== FACTORY ====================
+
+        /// <summary>
+        /// Generate a fully random AI coach personality with diverse traits.
+        /// </summary>
+        public static AICoachPersonality GenerateRandom(System.Random rng)
+        {
+            var coach = new AICoachPersonality
+            {
+                CoachId = Guid.NewGuid().ToString("N").Substring(0, 8),
+                CoachName = $"Coach {rng.Next(100, 999)}",
+
+                OffensiveStyle = (OffensivePhilosophy)rng.Next(0, Enum.GetValues(typeof(OffensivePhilosophy)).Length),
+                PreferredPace = rng.Next(82, 108),
+                ThreePointEmphasis = rng.Next(20, 85),
+                IsolationTendency = rng.Next(10, 65),
+                PickAndRollEmphasis = rng.Next(25, 80),
+                PostPlayEmphasis = rng.Next(10, 65),
+                BallMovementPriority = rng.Next(30, 85),
+
+                DefensiveStyle = (DefensivePhilosophy)rng.Next(0, Enum.GetValues(typeof(DefensivePhilosophy)).Length),
+                DefensiveAggression = rng.Next(25, 80),
+                ZoneUsageTendency = rng.Next(5, 45),
+                SwitchingTendency = rng.Next(15, 75),
+                BlitzingTendency = rng.Next(10, 55),
+                DoubleTeamTendency = rng.Next(15, 60),
+
+                RotationStyle = (RotationPhilosophy)rng.Next(0, Enum.GetValues(typeof(RotationPhilosophy)).Length),
+                RotationDepth = rng.Next(7, 12),
+                YoungPlayerTrust = rng.Next(20, 80),
+                VeteranPreference = rng.Next(20, 80),
+                LoadManagementTendency = rng.Next(10, 65),
+                MatchupBasedSubbing = rng.Next(20, 75),
+
+                InGameAdjustmentSpeed = rng.Next(30, 85),
+                HalftimeAdjustmentQuality = rng.Next(35, 85),
+                PlayoffAdjustments = rng.Next(40, 85),
+                Stubbornness = rng.Next(20, 75),
+                Predictability = rng.Next(20, 75),
+                Aggression = rng.Next(25, 75),
+
+                TimeoutAggressiveness = rng.Next(30, 75),
+                ATOPlayQuality = rng.Next(40, 85),
+                PointsRunBeforeTimeout = rng.Next(6, 12),
+
+                ClutchPressure = rng.Next(25, 75),
+                RiskTakingClutch = rng.Next(25, 75),
+                FoulingUp3Tendency = rng.NextDouble() > 0.3,
+                HoldForLastShotTendency = rng.NextDouble() > 0.4,
+
+                Temperament = (CoachTemperament)rng.Next(0, Enum.GetValues(typeof(CoachTemperament)).Length),
+                TechnicalFoulRisk = rng.Next(5, 50),
+                MotivationAbility = rng.Next(35, 85),
+                MediaManagement = rng.Next(30, 80),
+            };
+            coach.GenerateAdjustmentPatterns();
+            return coach;
+        }
+
         // ==================== DECISION MAKING ====================
 
         /// <summary>
