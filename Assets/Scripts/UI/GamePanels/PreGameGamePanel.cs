@@ -26,7 +26,7 @@ namespace NBAHeadCoach.UI.GamePanels
             var playerTeam = gm?.GetTeam(playerTeamId);
             var oppTeam = gm?.GetTeam(oppId);
 
-            var scroll = UIBuilder.ScrollArea(parent);
+            var scroll = UIBuilder.FixedArea(parent);
 
             var title = UIBuilder.Text(scroll, "Title", "GAME DAY", 22, FontStyle.Bold, UITheme.AccentPrimary);
             title.gameObject.AddComponent<LayoutElement>().preferredHeight = 36;

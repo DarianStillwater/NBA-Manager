@@ -143,6 +143,29 @@ namespace NBAHeadCoach.UI.Shell
             return contentRect;
         }
 
+        /// <summary>
+        /// Creates a fixed VLG content area (no scroll). Use instead of ScrollArea for no-scroll panels.
+        /// </summary>
+        public static RectTransform FixedArea(RectTransform parent, int spacing = 2, int padding = 8)
+        {
+            var content = Child(parent, "Content");
+            var contentRect = content.GetComponent<RectTransform>();
+            // Anchor to top, stretch horizontally, auto-size vertically
+            contentRect.anchorMin = new Vector2(0, 1);
+            contentRect.anchorMax = Vector2.one;
+            contentRect.pivot = new Vector2(0.5f, 1);
+            contentRect.sizeDelta = Vector2.zero;
+            var vlg = content.AddComponent<VerticalLayoutGroup>();
+            vlg.spacing = spacing;
+            vlg.padding = new RectOffset(padding, padding, padding, padding);
+            vlg.childControlWidth = true;
+            vlg.childControlHeight = false;
+            vlg.childForceExpandWidth = true;
+            vlg.childForceExpandHeight = false;
+            content.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            return contentRect;
+        }
+
         public static RectTransform TableRow(RectTransform parent, float height, Color bgColor)
         {
             var row = new GameObject("Row", typeof(RectTransform));
@@ -150,6 +173,7 @@ namespace NBAHeadCoach.UI.Shell
             var le = row.AddComponent<LayoutElement>();
             le.preferredHeight = height;
             le.minHeight = height;
+            le.flexibleHeight = 0;
             row.AddComponent<Image>().color = bgColor;
 
             var hlg = row.AddComponent<HorizontalLayoutGroup>();

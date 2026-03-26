@@ -11,7 +11,7 @@ namespace NBAHeadCoach.UI.GamePanels
     {
         public void Build(RectTransform parent, Team team, Color teamColor)
         {
-            var scroll = B.ScrollArea(parent);
+            var scroll = B.FixedArea(parent);
             var title = B.Text(scroll, "Title", "COACHING STAFF", 18, FontStyle.Bold, UITheme.AccentPrimary);
             title.gameObject.AddComponent<LayoutElement>().preferredHeight = 28;
 

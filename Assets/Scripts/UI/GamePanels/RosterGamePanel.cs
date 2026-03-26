@@ -20,7 +20,7 @@ namespace NBAHeadCoach.UI.GamePanels
 
         public void Build(RectTransform parent, Team team, Color teamColor)
         {
-            var scroll = B.ScrollArea(parent);
+            var scroll = B.FixedArea(parent, spacing: 1, padding: 4);
             var title = B.Text(scroll, "Title", "SQUAD", 18, FontStyle.Bold, UITheme.AccentPrimary);
             title.gameObject.AddComponent<LayoutElement>().preferredHeight = 28;
 
@@ -162,7 +162,7 @@ namespace NBAHeadCoach.UI.GamePanels
             rr.anchorMin = new Vector2(0.56f, 0); rr.anchorMax = Vector2.one; rr.sizeDelta = Vector2.zero;
 
             // LEFT: scrollable bio + contract + status
-            var leftScroll = B.ScrollArea(lr);
+            var leftScroll = B.FixedArea(lr, spacing: 0, padding: 4);
 
             // Bio
             string draftInfo = p.DraftRound > 0 ? $"{p.DraftYear} R{p.DraftRound} Pick #{p.DraftPick}" : "Undrafted";
@@ -219,7 +219,7 @@ namespace NBAHeadCoach.UI.GamePanels
             if (p.IsCaptain) AddInfoRow(leftScroll, "Role", "\u2605 CAPTAIN", UITheme.AccentPrimary);
 
             // RIGHT: scrollable scouting badges
-            var rightScroll = B.ScrollArea(rr);
+            var rightScroll = B.FixedArea(rr, spacing: 0, padding: 4);
 
             var scoutTitle = B.Text(rightScroll, "ScoutTitle", "SCOUTING REPORT", 11, FontStyle.Bold, UITheme.AccentSecondary);
             scoutTitle.gameObject.AddComponent<LayoutElement>().preferredHeight = 18;
@@ -267,7 +267,7 @@ namespace NBAHeadCoach.UI.GamePanels
 
         private void BuildStats(RectTransform parent, Player p)
         {
-            var scroll = B.ScrollArea(parent);
+            var scroll = B.FixedArea(parent, spacing: 1, padding: 4);
             var s = p.CurrentSeasonStats;
 
             // Current Season

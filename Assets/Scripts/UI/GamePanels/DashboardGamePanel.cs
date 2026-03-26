@@ -14,16 +14,11 @@ namespace NBAHeadCoach.UI.GamePanels
     {
         public void Build(RectTransform parent, Team team, Color teamColor)
         {
-            var scroll = parent.gameObject.AddComponent<ScrollRect>();
-            var viewport = B.Child(parent, "Viewport"); B.Stretch(viewport);
-            viewport.AddComponent<RectMask2D>();
-            var content = B.Child(viewport.GetComponent<RectTransform>(), "Content");
+            var content = B.Child(parent, "Content");
             var cr = B.Stretch(content);
-            content.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
             var vlg = content.AddComponent<VerticalLayoutGroup>();
-            vlg.spacing = 12; vlg.padding = new RectOffset(16, 16, 16, 16);
+            vlg.spacing = 8; vlg.padding = new RectOffset(12, 12, 8, 8);
             vlg.childControlWidth = true; vlg.childControlHeight = false; vlg.childForceExpandWidth = true;
-            scroll.content = cr; scroll.viewport = viewport.GetComponent<RectTransform>(); scroll.horizontal = false;
 
             var title = B.Text(cr, "Title", "DASHBOARD", 18, FontStyle.Bold, UITheme.AccentPrimary);
             title.gameObject.AddComponent<LayoutElement>().preferredHeight = 28;

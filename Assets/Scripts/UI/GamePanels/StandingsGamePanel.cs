@@ -12,36 +12,70 @@ namespace NBAHeadCoach.UI.GamePanels
 {
     public class StandingsGamePanel : IGamePanel
     {
+        private string _activeConference = "Eastern";
+        private GameShell _shell;
+
         public void Build(RectTransform parent, Team team, Color teamColor)
         {
-            var scroll = B.ScrollArea(parent);
-            var title = B.Text(scroll, "Title", "STANDINGS", 18, FontStyle.Bold, UITheme.AccentPrimary);
-            title.gameObject.AddComponent<LayoutElement>().preferredHeight = 28;
+            // Tab bar at top
+            var tabBar = B.Child(parent, "TabBar");
+            var tbr = tabBar.GetComponent<RectTransform>();
+            tbr.anchorMin = new Vector2(0, 1); tbr.anchorMax = Vector2.one;
+            tbr.pivot = new Vector2(0.5f, 1); tbr.sizeDelta = new Vector2(0, 32);
+            var tabHlg = tabBar.AddComponent<HorizontalLayoutGroup>();
+            tabHlg.spacing = 0; tabHlg.childControlWidth = true; tabHlg.childControlHeight = true;
+            tabHlg.childForceExpandWidth = true;
+
+            foreach (var conf in new[] { "Eastern", "Western" })
+            {
+                var c = conf;
+                var tGo = B.Child(tbr, $"Tab_{conf}");
+                tGo.AddComponent<Image>().color = conf == _activeConference ? UITheme.FMNavActive : Color.clear;
+                var tText = B.Text(tGo.GetComponent<RectTransform>(), "T", $"{conf.ToUpper()} CONFERENCE",
+                    12, FontStyle.Bold, conf == _activeConference ? UITheme.AccentPrimary : UITheme.TextSecondary);
+                tText.alignment = TextAnchor.MiddleCenter; B.Stretch(tText.gameObject);
+
+                // Accent underline
+                var acc = B.Child(tGo.GetComponent<RectTransform>(), "Acc");
+                var accr = acc.GetComponent<RectTransform>();
+                accr.anchorMin = Vector2.zero; accr.anchorMax = new Vector2(1, 0); accr.sizeDelta = new Vector2(0, 2);
+                acc.AddComponent<Image>().color = conf == _activeConference ? UITheme.AccentPrimary : Color.clear;
+
+                tGo.AddComponent<Button>().onClick.AddListener(() =>
+                {
+                    _activeConference = c;
+                    // Find shell and rebuild
+                    var shell = GameManager.Instance?.GetComponent<GameShell>();
+                    shell?.RegisterPanel("Standings", this);
+                    shell?.ShowPanel("Standings");
+                });
+            }
+
+            // Content area below tabs
+            var content = B.Child(parent, "Content");
+            var cr = content.GetComponent<RectTransform>();
+            cr.anchorMin = Vector2.zero; cr.anchorMax = Vector2.one;
+            cr.offsetMin = Vector2.zero; cr.offsetMax = new Vector2(0, -32);
+
+            var area = B.FixedArea(cr, spacing: 0, padding: 2);
 
             var sc = GameManager.Instance?.SeasonController;
             if (sc == null) return;
 
-            BuildConferenceTable(scroll, "EASTERN CONFERENCE", "Eastern", team, teamColor, sc);
-            var spacer = new GameObject("Spacer", typeof(RectTransform));
-            spacer.transform.SetParent(scroll, false);
-            spacer.AddComponent<LayoutElement>().preferredHeight = 16;
-            BuildConferenceTable(scroll, "WESTERN CONFERENCE", "Western", team, teamColor, sc);
+            BuildConferenceTable(area, _activeConference, team, teamColor, sc);
         }
 
-        private void BuildConferenceTable(RectTransform parent, string title, string conference,
-            Team team, Color teamColor, SeasonController sc)
+        private void BuildConferenceTable(RectTransform parent, string conference, Team team, Color teamColor, SeasonController sc)
         {
-            var confTitle = B.Text(parent, $"Title_{conference}", title, 14, FontStyle.Bold, UITheme.AccentSecondary);
-            confTitle.gameObject.AddComponent<LayoutElement>().preferredHeight = 24;
-
-            var headerRow = B.TableRow(parent, 26, UITheme.FMCardHeaderBg);
-            B.TableCell(headerRow, "#", 30, FontStyle.Bold, UITheme.AccentPrimary);
-            B.TableCell(headerRow, "", 24);
-            B.TableCell(headerRow, "Team", 160, FontStyle.Bold, UITheme.AccentPrimary);
-            B.TableCell(headerRow, "W", 35, FontStyle.Bold, UITheme.AccentPrimary);
-            B.TableCell(headerRow, "L", 35, FontStyle.Bold, UITheme.AccentPrimary);
-            B.TableCell(headerRow, "PCT", 50, FontStyle.Bold, UITheme.AccentPrimary);
-            B.TableCell(headerRow, "GB", 40, FontStyle.Bold, UITheme.AccentPrimary);
+            // Header row
+            var headerRow = B.TableRow(parent, 22, UITheme.FMCardHeaderBg);
+            B.TableCell(headerRow, "#", 28, FontStyle.Bold, UITheme.AccentPrimary);
+            B.TableCell(headerRow, "", 22);
+            B.TableCell(headerRow, "Team", 150, FontStyle.Bold, UITheme.AccentPrimary);
+            B.TableCell(headerRow, "W", 32, FontStyle.Bold, UITheme.AccentPrimary);
+            B.TableCell(headerRow, "L", 32, FontStyle.Bold, UITheme.AccentPrimary);
+            B.TableCell(headerRow, "PCT", 45, FontStyle.Bold, UITheme.AccentPrimary);
+            B.TableCell(headerRow, "GB", 38, FontStyle.Bold, UITheme.AccentPrimary);
 
             var standings = sc.GetConferenceStandings(conference);
             if (standings == null) return;
@@ -54,6 +88,7 @@ namespace NBAHeadCoach.UI.GamePanels
                 var bgColor = isPlayer ? UITheme.TeamTintedCard(teamColor, 0.25f) :
                     (i % 2 == 0 ? UITheme.CardBackground : UITheme.FMCardHeaderBg);
 
+                // Playoff cutoff line after 10th team
                 if (rank == 11)
                 {
                     var line = new GameObject("PlayoffLine", typeof(RectTransform));
@@ -62,8 +97,8 @@ namespace NBAHeadCoach.UI.GamePanels
                     line.AddComponent<LayoutElement>().preferredHeight = 2;
                 }
 
-                var row = B.TableRow(parent, 26, bgColor);
-                B.TableCell(row, rank.ToString(), 30, FontStyle.Normal,
+                var row = B.TableRow(parent, 22, bgColor);
+                B.TableCell(row, rank.ToString(), 28, FontStyle.Normal,
                     rank <= 6 ? UITheme.Success : rank <= 10 ? UITheme.Warning : UITheme.TextSecondary);
 
                 var logoGo = new GameObject("Logo", typeof(RectTransform));
@@ -71,16 +106,16 @@ namespace NBAHeadCoach.UI.GamePanels
                 var logoImg = logoGo.AddComponent<Image>(); logoImg.preserveAspect = true;
                 var logoSprite = ArtManager.GetTeamLogo(s.TeamId);
                 if (logoSprite != null) logoImg.sprite = logoSprite;
-                logoGo.AddComponent<LayoutElement>().preferredWidth = 24;
+                logoGo.AddComponent<LayoutElement>().preferredWidth = 22;
 
                 var teamObj = GameManager.Instance?.GetTeam(s.TeamId);
                 string teamName = teamObj != null ? $"{teamObj.City} {teamObj.Name}" : s.TeamName;
-                B.TableCell(row, teamName, 160, isPlayer ? FontStyle.Bold : FontStyle.Normal,
+                B.TableCell(row, teamName, 150, isPlayer ? FontStyle.Bold : FontStyle.Normal,
                     isPlayer ? Color.white : UITheme.TextSecondary);
-                B.TableCell(row, s.Wins.ToString(), 35, FontStyle.Normal, Color.white);
-                B.TableCell(row, s.Losses.ToString(), 35, FontStyle.Normal, Color.white);
-                B.TableCell(row, s.WinPercentage.ToString(".000"), 50, FontStyle.Normal, UITheme.TextSecondary);
-                B.TableCell(row, s.GamesBehind == 0 ? "—" : s.GamesBehind.ToString("0.0"), 40,
+                B.TableCell(row, s.Wins.ToString(), 32, FontStyle.Normal, Color.white);
+                B.TableCell(row, s.Losses.ToString(), 32, FontStyle.Normal, Color.white);
+                B.TableCell(row, s.WinPercentage.ToString(".000"), 45, FontStyle.Normal, UITheme.TextSecondary);
+                B.TableCell(row, s.GamesBehind == 0 ? "—" : s.GamesBehind.ToString("0.0"), 38,
                     FontStyle.Normal, UITheme.TextSecondary);
             }
         }

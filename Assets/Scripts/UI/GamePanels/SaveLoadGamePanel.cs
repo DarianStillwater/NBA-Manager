@@ -23,8 +23,7 @@ namespace NBAHeadCoach.UI.GamePanels
             _selectedSlot = null;
             _rowHighlights.Clear();
 
-            // Use same pattern as other working panels — full-width scroll
-            var scrollContent = UIBuilder.ScrollArea(parent);
+            var scrollContent = UIBuilder.FixedArea(parent);
 
             string title = _isLoadMode ? "LOAD GAME" : "SAVE GAME";
             var titleText = UIBuilder.Text(scrollContent, "Title", title, 18, FontStyle.Bold, UITheme.AccentPrimary);

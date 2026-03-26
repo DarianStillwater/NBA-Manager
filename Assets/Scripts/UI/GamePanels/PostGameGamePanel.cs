@@ -91,7 +91,7 @@ namespace NBAHeadCoach.UI.GamePanels
             bar.anchorMin = Vector2.zero; bar.anchorMax = Vector2.one;
             bar.offsetMin = Vector2.zero; bar.offsetMax = new Vector2(0, -100);
 
-            var scroll = UIBuilder.ScrollArea(bar);
+            var scroll = UIBuilder.FixedArea(bar, spacing: 0, padding: 2);
             var vlg = scroll.GetComponent<VerticalLayoutGroup>();
             if (vlg != null) { vlg.spacing = 0; vlg.padding = new RectOffset(4, 4, 2, 2); }
 
