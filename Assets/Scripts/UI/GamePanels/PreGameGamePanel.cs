@@ -84,7 +84,10 @@ namespace NBAHeadCoach.UI.GamePanels
                 var awayTeam = isHome ? oppTeam : playerTeam;
                 var simulator = new NBAHeadCoach.Core.Simulation.GameSimulator(gm.PlayerDatabase);
                 var result = simulator.SimulateGame(homeTeam, awayTeam);
+                simulator.RecordGameToPlayerStats(result, gameEvent.EventId, gameEvent.Date);
                 gm?.SeasonController?.RecordGameResult(gameEvent, result.HomeScore, result.AwayScore);
+                gm?.LeagueStats?.AddGameResult(result.BoxScore);
+                gm?.LeagueStats?.Recalculate();
                 Debug.Log($"[PreGame] Game simulated: {result.AwayScore}-{result.HomeScore}. Record: {playerTeam?.Wins}-{playerTeam?.Losses}");
 
                 // Show post-game via shell

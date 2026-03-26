@@ -225,11 +225,10 @@ namespace NBAHeadCoach.Core.Simulation
                     overtimePeriods: overtimePeriods > 0 ? overtimePeriods : 0
                 );
 
-                // Add to player's current season stats
-                if (player.CurrentSeasonStats != null)
-                {
-                    player.CurrentSeasonStats.AddGameFromLog(gameLog);
-                }
+                // Add to player's current season stats (auto-create if missing)
+                if (player.CurrentSeasonStats == null)
+                    player.StartNewSeason(System.DateTime.Now.Year, player.TeamId);
+                player.CurrentSeasonStats?.AddGameFromLog(gameLog);
             }
         }
 

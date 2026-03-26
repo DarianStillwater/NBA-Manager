@@ -153,7 +153,7 @@ namespace NBAHeadCoach.Core
         /// Initializes fresh season stats for all players.
         /// Called at the start of each new season.
         /// </summary>
-        private void InitializePlayerSeasonStats(int season)
+        public void InitializePlayerSeasonStats(int season)
         {
             var allPlayers = _gameManager.PlayerDatabase?.GetAllPlayers();
             if (allPlayers == null) return;

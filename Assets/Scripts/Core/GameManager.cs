@@ -62,6 +62,7 @@ namespace NBAHeadCoach.Core
 
         [Header("Core Managers")]
         public PlayerDatabase PlayerDatabase { get; private set; }
+        public Manager.LeagueStatsAggregator LeagueStats { get; private set; } = new Manager.LeagueStatsAggregator();
         public SeasonController SeasonController { get; private set; }
         public MatchFlowController MatchController { get; private set; }
         public SaveLoadManager SaveLoad { get; private set; }
@@ -466,6 +467,9 @@ namespace NBAHeadCoach.Core
             // Initialize all 30 teams with AI coach personalities, lineups, and strategies
             InitializeAllTeamCoaches();
 
+            // Initialize season stats for all players (must be after rosters are loaded)
+            SeasonController.InitializePlayerSeasonStats(_currentSeason);
+
             // Fire event
             OnNewGameStarted?.Invoke();
 
@@ -731,6 +735,9 @@ namespace NBAHeadCoach.Core
 
             // Ensure all teams have valid lineups and strategies after restore
             InitializeAllTeamCoaches();
+
+            // Ensure all players have season stats initialized
+            SeasonController.InitializePlayerSeasonStats(_currentSeason);
         }
 
         /// <summary>
@@ -819,10 +826,13 @@ namespace NBAHeadCoach.Core
             string playerTeamId = PlayerTeamId;
             var simulator = new Simulation.GameSimulator(PlayerDatabase);
 
+            // Only skip the player's NEXT game (the one they'll manually play/sim)
+            var nextPlayerGame = SeasonController.GetNextGame();
+
             foreach (var game in todaysGames)
             {
-                // Skip player's game — they handle it manually via pre-game screen
-                if (game.HomeTeamId == playerTeamId || game.AwayTeamId == playerTeamId)
+                // Only skip the specific game the player is about to play
+                if (nextPlayerGame != null && game.EventId == nextPlayerGame.EventId)
                     continue;
 
                 var homeTeam = GetTeam(game.HomeTeamId);
@@ -832,7 +842,9 @@ namespace NBAHeadCoach.Core
                 try
                 {
                     var result = simulator.SimulateGame(homeTeam, awayTeam);
+                    simulator.RecordGameToPlayerStats(result, game.EventId, game.Date);
                     SeasonController.RecordGameResult(game, result.HomeScore, result.AwayScore);
+                    LeagueStats.AddGameResult(result.BoxScore);
                 }
                 catch (System.Exception ex)
                 {
@@ -843,6 +855,24 @@ namespace NBAHeadCoach.Core
                     if (homeScore == awayScore) homeScore += 2; // no ties
                     SeasonController.RecordGameResult(game, homeScore, awayScore);
                 }
+            }
+
+            // Recalculate league averages and advanced stats for all players
+            LeagueStats.Recalculate();
+            RecalculateAllAdvancedStats();
+        }
+
+        /// <summary>
+        /// Recalculate advanced stats for all players who have played games.
+        /// </summary>
+        private void RecalculateAllAdvancedStats()
+        {
+            var allPlayers = PlayerDatabase?.GetAllPlayers();
+            if (allPlayers == null) return;
+            foreach (var player in allPlayers)
+            {
+                if (player.CurrentSeasonStats != null && player.CurrentSeasonStats.GamesPlayed > 0)
+                    LeagueStats.CalculatePlayerAdvancedStats(player.CurrentSeasonStats);
             }
         }
 
