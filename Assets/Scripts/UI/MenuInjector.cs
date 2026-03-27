@@ -26,6 +26,9 @@ namespace NBAHeadCoach.UI
         private string _firstName = "";
         private string _lastName = "";
         private int _age = 45;
+        private int _birthMonth = 6;
+        private int _birthDay = 15;
+        private int _birthYear = 1980;
         private int _backgroundIndex;
         private string _selectedTeamId;
         private Team _selectedTeam;
@@ -107,7 +110,7 @@ namespace NBAHeadCoach.UI
             CreateChild(cr, "Spacer").AddComponent<LayoutElement>().preferredHeight = 40;
 
             MkMenuBtn(cr, "NEW GAME", UITheme.AccentPrimary, () => {
-                _currentStep = 0; _firstName = ""; _lastName = ""; _age = 45; _backgroundIndex = 0;
+                _currentStep = 0; _firstName = ""; _lastName = ""; _age = 45; _birthMonth = 6; _birthDay = 15; _birthYear = 1980; _backgroundIndex = 0;
                 _selectedTeamId = null; _selectedTeam = null; _selectedRole = UserRole.Both; _selectedDifficulty = DifficultyPreset.Normal;
                 ShowWizard();
             });
@@ -208,6 +211,7 @@ namespace NBAHeadCoach.UI
                 case 3: BuildDifficultyStep(); break;
                 case 4: BuildConfirmStep(); break;
             }
+
         }
 
         private void OnNext()
@@ -265,41 +269,68 @@ namespace NBAHeadCoach.UI
             var ln = PlaceInput(cr, _lastName, "Enter last name...", pad, ref y);
             ln.onValueChanged.AddListener(v => _lastName = v);
 
-            // AGE
+            // DATE OF BIRTH — uses button spinners instead of dropdowns
             y -= 6;
-            var ageText = PlaceLabel(cr, $"AGE: {_age}", pad, ref y);
+            PlaceLabel(cr, "DATE OF BIRTH", pad, ref y);
 
-            // Age bar: - [ticks] +
-            var ageGo = CreateChild(cr, "AgeBar");
-            var agr = ageGo.GetComponent<RectTransform>();
-            agr.anchorMin = new Vector2(0, 1); agr.anchorMax = new Vector2(1, 1); agr.pivot = new Vector2(0.5f, 1);
-            agr.offsetMin = new Vector2(pad, 0); agr.offsetMax = new Vector2(-pad, 0);
-            agr.anchoredPosition = new Vector2(0, y); agr.sizeDelta = new Vector2(agr.sizeDelta.x, 26);
-            var ageHlg = ageGo.AddComponent<HorizontalLayoutGroup>();
-            ageHlg.spacing = 2; ageHlg.childControlWidth = true; ageHlg.childControlHeight = true; ageHlg.childForceExpandWidth = false;
+            int currentYear = DateTime.Now.Year;
+            int minYear = currentYear - 70;
+            int maxYear = currentYear - 30;
+            string[] months = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
 
-            var minGo = CreateChild(agr, "-"); minGo.AddComponent<LayoutElement>().preferredWidth = 32;
-            minGo.AddComponent<Image>().color = UITheme.PanelHeader;
-            minGo.AddComponent<Button>().onClick.AddListener(() => { _age = Mathf.Max(35, _age - 1); UpdateAgeTicks(); ageText.text = $"AGE: {_age}"; });
-            var mt = MkText(minGo.GetComponent<RectTransform>(), "\u2212", 16, FontStyle.Bold, Color.white); mt.alignment = TextAnchor.MiddleCenter; Stretch(mt.gameObject);
+            var dobRow = CreateChild(cr, "DOBRow");
+            var dobr = dobRow.GetComponent<RectTransform>();
+            dobr.anchorMin = new Vector2(0, 1); dobr.anchorMax = new Vector2(1, 1); dobr.pivot = new Vector2(0.5f, 1);
+            dobr.offsetMin = new Vector2(pad, 0); dobr.offsetMax = new Vector2(-pad, 0);
+            dobr.anchoredPosition = new Vector2(0, y); dobr.sizeDelta = new Vector2(dobr.sizeDelta.x, 32);
+            var dobHlg = dobRow.AddComponent<HorizontalLayoutGroup>();
+            dobHlg.spacing = 6; dobHlg.childControlWidth = true; dobHlg.childControlHeight = true; dobHlg.childForceExpandWidth = false;
 
-            List<Image> _ageTicks = new List<Image>();
-            for (int a = 35; a <= 65; a++)
+            // Month spinner
+            Text monthText = null;
+            var monthSpinner = PlaceSpinner(dobr, months[_birthMonth - 1], 90, out monthText);
+
+            // Day spinner
+            Text dayText = null;
+            var daySpinner = PlaceSpinner(dobr, _birthDay.ToString(), 60, out dayText);
+
+            // Year spinner
+            Text yearText = null;
+            var yearSpinner = PlaceSpinner(dobr, _birthYear.ToString(), 90, out yearText);
+
+            y -= 38;
+
+            // Age display
+            RecalcAge();
+            var ageDisplay = PlaceLabel(cr, $"Age: {_age}", pad, ref y);
+            ageDisplay.color = UITheme.TextSecondary;
+            ageDisplay.fontStyle = FontStyle.Normal;
+
+            // Shared update logic
+            System.Action updateDOB = () =>
             {
-                var tick = CreateChild(agr, $"T{a}"); tick.AddComponent<LayoutElement>().flexibleWidth = 1;
-                var ti = tick.AddComponent<Image>(); ti.color = a <= _age ? UITheme.AccentPrimary : UITheme.PanelSurface;
-                _ageTicks.Add(ti);
-            }
+                int maxDay = DateTime.DaysInMonth(_birthYear, _birthMonth);
+                if (_birthDay > maxDay) _birthDay = maxDay;
+                monthText.text = months[_birthMonth - 1];
+                dayText.text = _birthDay.ToString();
+                yearText.text = _birthYear.ToString();
+                RecalcAge();
+                ageDisplay.text = $"Age: {_age}";
+            };
 
-            var plGo = CreateChild(agr, "+"); plGo.AddComponent<LayoutElement>().preferredWidth = 32;
-            plGo.AddComponent<Image>().color = UITheme.PanelHeader;
-            plGo.AddComponent<Button>().onClick.AddListener(() => { _age = Mathf.Min(65, _age + 1); UpdateAgeTicks(); ageText.text = $"AGE: {_age}"; });
-            var pt = MkText(plGo.GetComponent<RectTransform>(), "+", 16, FontStyle.Bold, Color.white); pt.alignment = TextAnchor.MiddleCenter; Stretch(pt.gameObject);
+            // Wire month buttons
+            monthSpinner.Item1.onClick.AddListener(() => { _birthMonth = _birthMonth <= 1 ? 12 : _birthMonth - 1; updateDOB(); });
+            monthSpinner.Item2.onClick.AddListener(() => { _birthMonth = _birthMonth >= 12 ? 1 : _birthMonth + 1; updateDOB(); });
 
-            // Store ticks for updating
-            _ageTickImages = _ageTicks;
+            // Wire day buttons
+            daySpinner.Item1.onClick.AddListener(() => { int max = DateTime.DaysInMonth(_birthYear, _birthMonth); _birthDay = _birthDay <= 1 ? max : _birthDay - 1; updateDOB(); });
+            daySpinner.Item2.onClick.AddListener(() => { int max = DateTime.DaysInMonth(_birthYear, _birthMonth); _birthDay = _birthDay >= max ? 1 : _birthDay + 1; updateDOB(); });
 
-            y -= 34;
+            // Wire year buttons
+            yearSpinner.Item1.onClick.AddListener(() => { _birthYear = _birthYear <= minYear ? maxYear : _birthYear - 1; updateDOB(); });
+            yearSpinner.Item2.onClick.AddListener(() => { _birthYear = _birthYear >= maxYear ? minYear : _birthYear + 1; updateDOB(); });
+
+            y -= 4;
 
             // BACKGROUND
             y -= 6;
@@ -349,12 +380,131 @@ namespace NBAHeadCoach.UI
             grid.cellSize = new Vector2(Mathf.Floor(cellW), Mathf.Floor(cellH));
         }
 
-        private List<Image> _ageTickImages;
-        private void UpdateAgeTicks()
+        private void RecalcAge()
         {
-            if (_ageTickImages == null) return;
-            for (int i = 0; i < _ageTickImages.Count; i++)
-                _ageTickImages[i].color = (i + 35) <= _age ? UITheme.AccentPrimary : UITheme.PanelSurface;
+            var dob = new DateTime(_birthYear, _birthMonth, Mathf.Min(_birthDay, DateTime.DaysInMonth(_birthYear, _birthMonth)));
+            var now = DateTime.Now;
+            _age = now.Year - dob.Year;
+            if (now < dob.AddYears(_age)) _age--;
+        }
+
+        private System.Tuple<Button, Button> PlaceSpinner(RectTransform parent, string initialValue, float width, out Text valueText)
+        {
+            var go = CreateChild(parent, "Spinner");
+            go.AddComponent<LayoutElement>().preferredWidth = width;
+            go.AddComponent<Image>().color = UITheme.PanelSurface;
+            var hlg = go.AddComponent<HorizontalLayoutGroup>();
+            hlg.childControlWidth = true; hlg.childControlHeight = true;
+            hlg.childForceExpandWidth = false; hlg.childForceExpandHeight = true;
+            hlg.padding = new RectOffset(2, 2, 0, 0);
+
+            // Left arrow button
+            var leftGo = CreateChild(go.GetComponent<RectTransform>(), "Left");
+            leftGo.AddComponent<LayoutElement>().preferredWidth = 20;
+            leftGo.AddComponent<Image>().color = UITheme.CardBackground;
+            var leftBtn = leftGo.AddComponent<Button>();
+            var lt = MkText(leftGo.GetComponent<RectTransform>(), "\u25C0", 9, FontStyle.Normal, UITheme.TextSecondary);
+            lt.alignment = TextAnchor.MiddleCenter; Stretch(lt.gameObject);
+
+            // Value display
+            var valGo = CreateChild(go.GetComponent<RectTransform>(), "Value");
+            valGo.AddComponent<LayoutElement>().flexibleWidth = 1;
+            var vt = MkText(valGo.GetComponent<RectTransform>(), initialValue, 12, FontStyle.Normal, Color.white);
+            vt.alignment = TextAnchor.MiddleCenter; Stretch(vt.gameObject);
+            valueText = vt;
+
+            // Right arrow button
+            var rightGo = CreateChild(go.GetComponent<RectTransform>(), "Right");
+            rightGo.AddComponent<LayoutElement>().preferredWidth = 20;
+            rightGo.AddComponent<Image>().color = UITheme.CardBackground;
+            var rightBtn = rightGo.AddComponent<Button>();
+            var rt2 = MkText(rightGo.GetComponent<RectTransform>(), "\u25B6", 9, FontStyle.Normal, UITheme.TextSecondary);
+            rt2.alignment = TextAnchor.MiddleCenter; Stretch(rt2.gameObject);
+
+            return new System.Tuple<Button, Button>(leftBtn, rightBtn);
+        }
+
+        private Dropdown PlaceDropdown(RectTransform parent, string[] options, int selected, float width)
+        {
+            var go = CreateChild(parent, "DD");
+            var le = go.AddComponent<LayoutElement>(); le.preferredWidth = width; le.minHeight = 28;
+            go.AddComponent<Image>().color = UITheme.PanelSurface;
+
+            // Label
+            var labelGo = CreateChild(go.GetComponent<RectTransform>(), "Label");
+            Stretch(labelGo);
+            labelGo.GetComponent<RectTransform>().offsetMin = new Vector2(8, 0);
+            labelGo.GetComponent<RectTransform>().offsetMax = new Vector2(-20, 0);
+            var label = labelGo.AddComponent<Text>();
+            label.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            label.fontSize = 13; label.color = Color.white; label.alignment = TextAnchor.MiddleLeft;
+            label.horizontalOverflow = HorizontalWrapMode.Overflow;
+            label.verticalOverflow = VerticalWrapMode.Overflow;
+
+            // Arrow
+            var arrowGo = CreateChild(go.GetComponent<RectTransform>(), "Arrow");
+            var arr = arrowGo.GetComponent<RectTransform>();
+            arr.anchorMin = new Vector2(1, 0); arr.anchorMax = Vector2.one;
+            arr.sizeDelta = new Vector2(20, 0); arr.anchoredPosition = new Vector2(-10, 0);
+            var arrowText = arrowGo.AddComponent<Text>();
+            arrowText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            arrowText.text = "\u25BC"; arrowText.fontSize = 9; arrowText.color = UITheme.TextSecondary;
+            arrowText.alignment = TextAnchor.MiddleCenter;
+
+            // Template (dropdown popup)
+            var templateGo = CreateChild(go.GetComponent<RectTransform>(), "Template");
+            var tr = templateGo.GetComponent<RectTransform>();
+            tr.anchorMin = new Vector2(0, 0); tr.anchorMax = new Vector2(1, 0);
+            tr.pivot = new Vector2(0.5f, 1); tr.sizeDelta = new Vector2(0, 150);
+            templateGo.AddComponent<Image>().color = UITheme.CardBackground;
+            templateGo.AddComponent<ScrollRect>();
+
+            var viewport = CreateChild(tr, "Viewport");
+            Stretch(viewport); viewport.AddComponent<RectMask2D>();
+
+            var contentGo = CreateChild(viewport.GetComponent<RectTransform>(), "Content");
+            var crt = contentGo.GetComponent<RectTransform>();
+            crt.anchorMin = new Vector2(0, 1); crt.anchorMax = Vector2.one;
+            crt.pivot = new Vector2(0.5f, 1); crt.sizeDelta = new Vector2(0, 28);
+            contentGo.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+            // Item template
+            var itemGo = CreateChild(crt, "Item");
+            itemGo.AddComponent<LayoutElement>().preferredHeight = 24;
+            var itemBg = itemGo.AddComponent<Image>(); itemBg.color = UITheme.PanelSurface;
+            itemGo.AddComponent<Toggle>().isOn = false;
+
+            var itemLabelGo = CreateChild(itemGo.GetComponent<RectTransform>(), "Item Label");
+            Stretch(itemLabelGo);
+            itemLabelGo.GetComponent<RectTransform>().offsetMin = new Vector2(8, 0);
+            var itemLabel = itemLabelGo.AddComponent<Text>();
+            itemLabel.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            itemLabel.fontSize = 12; itemLabel.color = Color.white;
+
+            templateGo.SetActive(false);
+
+            // Setup ScrollRect
+            var scroll = templateGo.GetComponent<ScrollRect>();
+            scroll.content = crt;
+            scroll.viewport = viewport.GetComponent<RectTransform>();
+
+            // Dropdown component
+            var dd = go.AddComponent<Dropdown>();
+            dd.captionText = label;
+            dd.template = tr;
+            dd.itemText = itemLabel;
+
+            dd.ClearOptions();
+            var optList = new List<Dropdown.OptionData>();
+            foreach (var o in options) optList.Add(new Dropdown.OptionData(o));
+            dd.AddOptions(optList);
+            int idx = Mathf.Clamp(selected, 0, options.Length - 1);
+            dd.value = idx;
+            dd.RefreshShownValue();
+            // Force label text in case RefreshShownValue doesn't work before Start()
+            label.text = options[idx];
+
+            return dd;
         }
 
         // ═══════════════════════════════════════════════════════
@@ -680,8 +830,10 @@ namespace NBAHeadCoach.UI
             if (GameManager.Instance == null) return;
             var bg = _backgrounds[_backgroundIndex];
             var diff = DifficultySettings.CreateFromPreset(_selectedDifficulty);
-            Debug.Log($"[MenuInjector] Starting: {_firstName} {_lastName}, Team: {_selectedTeamId}, Role: {_selectedRole}");
-            GameManager.Instance.StartNewGame(_firstName, _lastName, _age, _selectedTeamId, diff, bg.Tactical, bg.Dev, bg.Rep, _selectedRole);
+            int clampedDay = Mathf.Min(_birthDay, DateTime.DaysInMonth(_birthYear, _birthMonth));
+            var birthDate = new DateTime(_birthYear, _birthMonth, clampedDay);
+            Debug.Log($"[MenuInjector] Starting: {_firstName} {_lastName}, DOB: {birthDate:MMM dd, yyyy}, Team: {_selectedTeamId}, Role: {_selectedRole}");
+            GameManager.Instance.StartNewGame(_firstName, _lastName, _age, _selectedTeamId, diff, bg.Tactical, bg.Dev, bg.Rep, _selectedRole, birthDate);
         }
 
         // ═══════════════════════════════════════════════════════
@@ -810,10 +962,15 @@ namespace NBAHeadCoach.UI
         // Absolute positioning helpers for Step 1
         private Text PlaceLabel(RectTransform parent, string text, float padX, ref float y)
         {
-            var t = MkText(parent, text, 11, FontStyle.Bold, UITheme.AccentPrimary);
-            var r = t.GetComponent<RectTransform>(); r.anchorMin = new Vector2(0, 1); r.anchorMax = new Vector2(1, 1);
-            r.pivot = new Vector2(0.5f, 1); r.offsetMin = new Vector2(padX, 0); r.offsetMax = new Vector2(-padX, 0);
-            r.anchoredPosition = new Vector2(0, y); r.sizeDelta = new Vector2(r.sizeDelta.x, 18);
+            var container = CreateChild(parent, "Lbl_" + text);
+            var cr = container.GetComponent<RectTransform>();
+            cr.anchorMin = new Vector2(0, 1); cr.anchorMax = new Vector2(1, 1);
+            cr.pivot = new Vector2(0.5f, 1);
+            cr.offsetMin = new Vector2(padX, 0); cr.offsetMax = new Vector2(-padX, 0);
+            cr.anchoredPosition = new Vector2(0, y); cr.sizeDelta = new Vector2(cr.sizeDelta.x, 18);
+            var t = MkText(cr, text, 11, FontStyle.Bold, UITheme.AccentPrimary);
+            t.alignment = TextAnchor.MiddleLeft;
+            Stretch(t.gameObject);
             y -= 20;
             return t;
         }

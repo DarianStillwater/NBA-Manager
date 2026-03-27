@@ -5,6 +5,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using NBAHeadCoach.Core;
 using NBAHeadCoach.Core.Data;
+using NBAHeadCoach.Core.Manager;
 using NBAHeadCoach.Core.Util;
 using NBAHeadCoach.UI.GamePanels;
 
@@ -36,6 +37,7 @@ namespace NBAHeadCoach.UI.Shell
         // Action button tracking for enable/disable during game day flow
         private List<Button> _actionButtons = new List<Button>();
         private bool _isGameDayFlow = false;
+        private bool _continueRunning = false;
 
         // Nav item tracking for active state updates
         private List<(GameObject go, string panelId, Image bg, Transform indicator, Text iconText, Text labelText)> _navItemRefs
@@ -253,32 +255,12 @@ namespace NBAHeadCoach.UI.Shell
 
             CreateDivider(sidebar.transform);
 
-            CreateActionButton(sidebar.transform, "Advance Day", UITheme.Success, () =>
+            CreateActionButton(sidebar.transform, "\u25B6  Continue", UITheme.Success, () =>
             {
-                GameManager.Instance?.AdvanceDay();
-                var todaysGame = GameManager.Instance?.SeasonController?.GetTodaysGame();
-                if (todaysGame != null)
-                    ShowPreGame(todaysGame);
-                else
-                    RefreshCurrentPanel();
+                if (_continueRunning) return;
+                StartCoroutine(ContinueCoroutine());
             });
-            CreateActionButton(sidebar.transform, "Sim to Game", UITheme.AccentSecondary, () =>
-            {
-                var sc = GameManager.Instance?.SeasonController;
-                var nextGame = sc?.GetNextGame();
-                if (nextGame != null)
-                {
-                    int safety = 0;
-                    while (GameManager.Instance.CurrentDate.Date < nextGame.Date.Date && safety++ < 200)
-                        GameManager.Instance.AdvanceDay();
-                    ShowPreGame(nextGame);
-                }
-            });
-            CreateActionButton(sidebar.transform, "Save Game", UITheme.FMNavHover, () => ShowPanel("SaveGame"));
-            CreateActionButton(sidebar.transform, "Main Menu", new Color(0.4f, 0.2f, 0.2f), () =>
-            {
-                GameManager.Instance?.ReturnToMainMenu();
-            });
+            CreateActionButton(sidebar.transform, "\u2699  Menu", UITheme.FMNavHover, () => ShowPanel("Settings"));
         }
 
         private GameObject CreateNavItem(Transform parent, string icon, string label, string panelId, Color teamColor, bool active)
@@ -483,6 +465,79 @@ namespace NBAHeadCoach.UI.Shell
             // Delegate to ArtInjector which registers the PreGame panel dynamically
             var artInjector = GetComponent<ArtInjector>();
             artInjector?.ShowPreGame(gameEvent);
+        }
+
+        // ═══════════════════════════════════════════════════════
+        //  CONTINUE — advance day-by-day until stop trigger
+        // ═══════════════════════════════════════════════════════
+
+        private IEnumerator ContinueCoroutine()
+        {
+            _continueRunning = true;
+            DisableActionButtons();
+
+            var gm = GameManager.Instance;
+            var sc = gm?.SeasonController;
+            if (gm == null || sc == null) { _continueRunning = false; EnableActionButtons(); yield break; }
+
+            // Track stop conditions via events
+            bool phaseChanged = false;
+            bool playerInjured = false;
+            SeasonPhase newPhase = sc.CurrentPhase;
+
+            Action<SeasonPhase> onPhase = p => { phaseChanged = true; newPhase = p; };
+            sc.OnPhaseChanged += onPhase;
+
+            // Subscribe to injury events if InjuryManager exists
+            var injMgr = InjuryManager.Instance;
+            Action<Player, InjuryEvent> onInjury = (p, e) => { playerInjured = true; };
+            if (injMgr != null) injMgr.OnPlayerInjured += onInjury;
+
+            int safety = 0;
+            while (safety++ < 400)
+            {
+                // Check BEFORE advancing: does tomorrow have a game for our team?
+                var nextGame = sc.GetNextGame();
+                DateTime tomorrow = gm.CurrentDate.AddDays(1);
+                if (nextGame != null && nextGame.Date.Date == tomorrow.Date)
+                {
+                    // Advance to game day but DON'T simulate the player's game
+                    gm.AdvanceDay();
+                    RefreshLiveData(_currentTeam);
+                    Debug.Log($"[Continue] Stopped — game day: {nextGame.HomeTeamId} vs {nextGame.AwayTeamId} on {gm.CurrentDate:MMM dd}");
+                    ShowPanel("Dashboard");
+                    break;
+                }
+
+                gm.AdvanceDay();
+
+                // Update header date display
+                RefreshLiveData(_currentTeam);
+                yield return new WaitForSeconds(0.08f);
+
+                // Stop: season phase changed (milestone)
+                if (phaseChanged)
+                {
+                    Debug.Log($"[Continue] Stopped — phase changed to {newPhase}");
+                    ShowPanel("Dashboard");
+                    break;
+                }
+
+                // Stop: player injured
+                if (playerInjured)
+                {
+                    Debug.Log("[Continue] Stopped — player injury");
+                    ShowPanel("Dashboard");
+                    break;
+                }
+            }
+
+            // Cleanup event subscriptions
+            sc.OnPhaseChanged -= onPhase;
+            if (injMgr != null) injMgr.OnPlayerInjured -= onInjury;
+
+            _continueRunning = false;
+            EnableActionButtons();
         }
 
         // ═══════════════════════════════════════════════════════

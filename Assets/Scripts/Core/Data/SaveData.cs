@@ -28,6 +28,7 @@ namespace NBAHeadCoach.Core
         public string PlayerTeamId;
         public DifficultySettings Difficulty;
         public UserRoleConfiguration UserRoleConfig;
+        public GamePreferences Preferences = new GamePreferences();
 
         [Header("Season")]
         public int CurrentSeason;
@@ -711,6 +712,30 @@ namespace NBAHeadCoach.Core
         Legendary,
         Custom
     }
+
+    /// <summary>
+    /// User preferences that persist across save/load
+    /// </summary>
+    [Serializable]
+    public class GamePreferences
+    {
+        public AutoSaveFrequency AutoSave = AutoSaveFrequency.EveryGame;
+        public int AutoSaveSlots = 3;
+        public SimSpeedSetting SimSpeed = SimSpeedSetting.Normal;
+        public bool AutoSimRestDays = false;
+        public bool StatDecimals = true;
+        public CurrencyFormat Currency = CurrencyFormat.Abbreviated;
+        public int Volume = 50;
+    }
+
+    [Serializable]
+    public enum AutoSaveFrequency { Off, EveryGame, EveryDay }
+
+    [Serializable]
+    public enum SimSpeedSetting { Instant, Fast, Normal, Detailed }
+
+    [Serializable]
+    public enum CurrencyFormat { Abbreviated, Full }
 
     /// <summary>
     /// Serializable injury history for saves

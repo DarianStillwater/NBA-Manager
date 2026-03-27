@@ -183,6 +183,28 @@ namespace NBAHeadCoach.Core.Data
         public string LastName => PersonName?.Split(' ').LastOrDefault() ?? "";
         public int CurrentAge;
         public int BirthYear;
+        public string CoachBirthDateStr; // ISO date string for serialization
+        [NonSerialized] public DateTime CoachBirthDate;
+
+        /// <summary>Recalculate CurrentAge from CoachBirthDate relative to a reference date.</summary>
+        public void RecalculateAge(DateTime referenceDate)
+        {
+            if (CoachBirthDate.Year > 1)
+            {
+                int age = referenceDate.Year - CoachBirthDate.Year;
+                if (referenceDate < CoachBirthDate.AddYears(age)) age--;
+                CurrentAge = age;
+            }
+        }
+
+        /// <summary>Sync CoachBirthDate from/to serializable string.</summary>
+        public void SyncBirthDate()
+        {
+            if (!string.IsNullOrEmpty(CoachBirthDateStr))
+                DateTime.TryParse(CoachBirthDateStr, out CoachBirthDate);
+            else if (CoachBirthDate.Year > 1)
+                CoachBirthDateStr = CoachBirthDate.ToString("yyyy-MM-dd");
+        }
 
         // ==================== FORMER PLAYER INFO ====================
         public bool IsFormerPlayer;
@@ -422,14 +444,16 @@ namespace NBAHeadCoach.Core.Data
             int age,
             bool isFormerPlayer,
             string formerPlayerId = null,
-            PlayerCareerReference playingCareer = null)
+            PlayerCareerReference playingCareer = null,
+            DateTime? birthDate = null)
         {
-            return new UnifiedCareerProfile
+            var profile = new UnifiedCareerProfile
             {
                 ProfileId = Guid.NewGuid().ToString(),
                 PersonName = personName,
                 CurrentAge = age,
                 BirthYear = currentYear - age,
+                CoachBirthDate = birthDate ?? new DateTime(currentYear - age, 1, 1),
                 IsFormerPlayer = isFormerPlayer,
                 FormerPlayerId = formerPlayerId,
                 PlayingCareer = playingCareer,
@@ -448,6 +472,8 @@ namespace NBAHeadCoach.Core.Data
                         "Began coaching career")
                 }
             };
+            profile.SyncBirthDate();
+            return profile;
         }
 
         /// <summary>
@@ -459,14 +485,16 @@ namespace NBAHeadCoach.Core.Data
             int age,
             bool isFormerPlayer,
             string formerPlayerId = null,
-            PlayerCareerReference playingCareer = null)
+            PlayerCareerReference playingCareer = null,
+            DateTime? birthDate = null)
         {
-            return new UnifiedCareerProfile
+            var profile = new UnifiedCareerProfile
             {
                 ProfileId = Guid.NewGuid().ToString(),
                 PersonName = personName,
                 CurrentAge = age,
                 BirthYear = currentYear - age,
+                CoachBirthDate = birthDate ?? new DateTime(currentYear - age, 1, 1),
                 IsFormerPlayer = isFormerPlayer,
                 FormerPlayerId = formerPlayerId,
                 PlayingCareer = playingCareer,
@@ -485,6 +513,8 @@ namespace NBAHeadCoach.Core.Data
                         "Began front office career")
                 }
             };
+            profile.SyncBirthDate();
+            return profile;
         }
 
         /// <summary>

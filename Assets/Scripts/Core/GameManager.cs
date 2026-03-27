@@ -66,6 +66,7 @@ namespace NBAHeadCoach.Core
         public SeasonController SeasonController { get; private set; }
         public MatchFlowController MatchController { get; private set; }
         public SaveLoadManager SaveLoad { get; private set; }
+        public GamePreferences Preferences { get; set; } = new GamePreferences();
 
         // These managers are MonoBehaviours that register themselves
         // We store references when they initialize
@@ -381,7 +382,7 @@ namespace NBAHeadCoach.Core
 
         #region New Game
 
-        public void StartNewGame(string firstName, string lastName, int age, string teamId, DifficultySettings difficulty, int tactical, int development, int reputation, UserRole selectedRole = UserRole.Both)
+        public void StartNewGame(string firstName, string lastName, int age, string teamId, DifficultySettings difficulty, int tactical, int development, int reputation, UserRole selectedRole = UserRole.Both, DateTime? coachBirthDate = null)
         {
             Debug.Log($"[GameManager] Starting new game: {firstName} {lastName}, Team: {teamId}, Role: {selectedRole}");
 
@@ -405,7 +406,7 @@ namespace NBAHeadCoach.Core
             {
                 case UserRole.GMOnly:
                     // User is GM - create GM profile
-                    _career = UnifiedCareerProfile.CreateForFrontOffice(fullName, _currentSeason, age, false, "Player_GM", null);
+                    _career = UnifiedCareerProfile.CreateForFrontOffice(fullName, _currentSeason, age, false, "Player_GM", null, coachBirthDate);
                     _career.IsUserControlled = true;
                     _career.Reputation = reputation;
                     _career.HandleHired(_currentSeason, teamId, team?.Name ?? teamId, UnifiedRole.GeneralManager);
@@ -423,7 +424,7 @@ namespace NBAHeadCoach.Core
 
                 case UserRole.HeadCoachOnly:
                     // User is Head Coach - create coach profile
-                    _career = UnifiedCareerProfile.CreateForCoaching(fullName, _currentSeason, age, false, "Player_Coach", null);
+                    _career = UnifiedCareerProfile.CreateForCoaching(fullName, _currentSeason, age, false, "Player_Coach", null, coachBirthDate);
                     _career.IsUserControlled = true;
                     _career.TacticalRating = tactical;
                     _career.PlayerDevelopment = development;
@@ -444,7 +445,7 @@ namespace NBAHeadCoach.Core
                 case UserRole.Both:
                 default:
                     // User controls both - create combined coach profile (traditional mode)
-                    _career = UnifiedCareerProfile.CreateForCoaching(fullName, _currentSeason, age, false, "Player_Coach", null);
+                    _career = UnifiedCareerProfile.CreateForCoaching(fullName, _currentSeason, age, false, "Player_Coach", null, coachBirthDate);
                     _career.IsUserControlled = true;
                     _career.TacticalRating = tactical;
                     _career.PlayerDevelopment = development;
@@ -656,6 +657,7 @@ namespace NBAHeadCoach.Core
             _career = data.Career;
             _playerTeamId = data.PlayerTeamId;
             _userRoleConfig = data.UserRoleConfig ?? new UserRoleConfiguration { CurrentRole = UserRole.Both };
+            Preferences = data.Preferences ?? new GamePreferences();
             _currentSeason = data.CurrentSeason;
             // Restore date from string backup (JsonUtility can't roundtrip DateTime)
             if (!string.IsNullOrEmpty(data.CurrentDateStr) && DateTime.TryParse(data.CurrentDateStr, out var parsedDate))
@@ -753,6 +755,7 @@ namespace NBAHeadCoach.Core
                 Career = _career,
                 PlayerTeamId = _playerTeamId,
                 UserRoleConfig = _userRoleConfig,
+                Preferences = Preferences ?? new GamePreferences(),
                 CurrentSeason = _currentSeason,
                 CurrentDate = _currentDate,
                 CurrentDateStr = _currentDate.ToString("o"),
@@ -941,6 +944,18 @@ namespace NBAHeadCoach.Core
             _career = null;
             _playerTeamId = null;
 
+            ChangeState(GameState.MainMenu);
+            LoadScene(MAIN_MENU_SCENE);
+        }
+
+        /// <summary>
+        /// Retire from career without saving — ends the current career permanently.
+        /// </summary>
+        public void RetireFromCareer()
+        {
+            Debug.Log("[GameManager] Retiring from career");
+            _career = null;
+            _playerTeamId = null;
             ChangeState(GameState.MainMenu);
             LoadScene(MAIN_MENU_SCENE);
         }
