@@ -17,8 +17,12 @@ namespace NBAHeadCoach.UI.Components
         [SerializeField] private RectTransform _ballTransform;
         [SerializeField] private Image _ballImage;
         [SerializeField] private Image _shadowImage;
-        [SerializeField] private float _ballSize = 20f;
+        [SerializeField] private float _ballSize = 40f;
         [SerializeField] private Color _ballColor = new Color(0.9f, 0.5f, 0.1f);
+
+        [Header("Shot Scale Effect")]
+        [SerializeField] private float _baseScale = 1f;
+        [SerializeField] private float _apexScale = 1.8f;  // Ball grows to 1.8x at shot apex
 
         [Header("Animation Curves")]
         [SerializeField] private AnimationCurve _shotArcCurve = AnimationCurve.EaseInOut(0, 0, 1, 1);
@@ -171,7 +175,9 @@ namespace NBAHeadCoach.UI.Components
         {
             if (_ballImage != null)
             {
-                _ballImage.color = _ballColor;
+                // Only apply fallback color if no sprite loaded (sprite needs white to render correctly)
+                if (_ballImage.sprite == null)
+                    _ballImage.color = _ballColor;
             }
 
             if (_shadowImage != null)
@@ -225,7 +231,12 @@ namespace NBAHeadCoach.UI.Components
 
                 // Vertical arc - parabola: 4 * t * (1 - t) gives 0 at t=0, 1 at t=0.5, 0 at t=1
                 float arcT = _passArcCurve.Evaluate(t);
-                _currentHeight = maxHeight * 4f * arcT * (1f - arcT);
+                float arcValue = 4f * arcT * (1f - arcT);
+                _currentHeight = maxHeight * arcValue;
+
+                // Subtle scale pulse for passes (less dramatic than shots)
+                float passScale = Mathf.Lerp(_baseScale, _baseScale * 1.2f, arcValue);
+                _ballTransform.localScale = new Vector3(passScale, passScale, 1f);
 
                 // Apply position
                 _ballTransform.anchoredPosition = _currentPosition;
@@ -233,10 +244,11 @@ namespace NBAHeadCoach.UI.Components
                 yield return null;
             }
 
-            // Ensure final position
+            // Ensure final position and reset scale
             _currentPosition = to;
             _currentHeight = 0f;
             _ballTransform.anchoredPosition = to;
+            _ballTransform.localScale = new Vector3(_baseScale, _baseScale, 1f);
             _isFlying = false;
 
             onComplete?.Invoke();
@@ -248,7 +260,7 @@ namespace NBAHeadCoach.UI.Components
             _attachedPlayer = null;
 
             float distance = Vector2.Distance(from, basketPosition);
-            float duration = _shotDuration + (distance * 0.005f); // Slightly longer for longer shots
+            float duration = _shotDuration + (distance * 0.005f);
             float elapsed = 0f;
 
             // Higher arc for longer shots
@@ -262,15 +274,17 @@ namespace NBAHeadCoach.UI.Components
                 // Horizontal position
                 _currentPosition = Vector2.Lerp(from, basketPosition, t);
 
-                // Shot arc - steeper curve with peak at 60% through flight
-                float arcT = _shotArcCurve.Evaluate(t);
-                // Modified parabola that peaks later: creates more realistic shot trajectory
-                float peakOffset = 0.6f;
-                float arcValue = Mathf.Sin(arcT * Mathf.PI);
+                // Shot arc — peaks around 55% through flight for realistic trajectory
+                float arcValue = Mathf.Sin(t * Mathf.PI);
                 _currentHeight = maxHeight * arcValue;
 
-                // Apply position
-                _ballTransform.anchoredPosition = _currentPosition;
+                // Scale effect — ball grows at apex (simulates rising toward camera)
+                float heightNorm = arcValue; // 0→1→0
+                float scale = Mathf.Lerp(_baseScale, _apexScale, heightNorm);
+                _ballTransform.localScale = new Vector3(scale, scale, 1f);
+
+                // Apply position (offset upward by height for visual arc)
+                _ballTransform.anchoredPosition = _currentPosition + new Vector2(0, _currentHeight * 0.3f);
 
                 yield return null;
             }
@@ -291,11 +305,11 @@ namespace NBAHeadCoach.UI.Components
 
         private IEnumerator AnimateThroughNet(Vector2 basketPosition)
         {
-            // Quick drop through net
-            float duration = 0.15f;
+            // Quick drop through net — ball shrinks as it falls through
+            float duration = 0.2f;
             float elapsed = 0f;
             Vector2 startPos = basketPosition;
-            Vector2 endPos = basketPosition + new Vector2(0, -20f);
+            Vector2 endPos = basketPosition + new Vector2(0, -25f);
 
             while (elapsed < duration)
             {
@@ -304,6 +318,9 @@ namespace NBAHeadCoach.UI.Components
 
                 _currentPosition = Vector2.Lerp(startPos, endPos, t * t); // Accelerate downward
                 _currentHeight = Mathf.Lerp(10f, 0f, t);
+                // Shrink ball as it drops through net
+                float scale = Mathf.Lerp(_baseScale * 1.1f, _baseScale * 0.7f, t);
+                _ballTransform.localScale = new Vector3(scale, scale, 1f);
                 _ballTransform.anchoredPosition = _currentPosition;
 
                 yield return null;
@@ -312,21 +329,22 @@ namespace NBAHeadCoach.UI.Components
             _currentPosition = endPos;
             _currentHeight = 0f;
             _ballTransform.anchoredPosition = _currentPosition;
+            _ballTransform.localScale = new Vector3(_baseScale, _baseScale, 1f);
         }
 
         private IEnumerator AnimateRimBounce(Vector2 basketPosition)
         {
-            // Bounce off rim animation
-            float duration = 0.25f;
+            // Bounce off rim — ball pops on impact then bounces away
+            float duration = 0.35f;
             float elapsed = 0f;
 
-            // Random bounce direction
-            float bounceAngle = UnityEngine.Random.Range(-60f, 60f) * Mathf.Deg2Rad;
-            float bounceDistance = UnityEngine.Random.Range(30f, 60f);
+            // Random bounce direction (more outward)
+            float bounceAngle = UnityEngine.Random.Range(-70f, 70f) * Mathf.Deg2Rad;
+            float bounceDistance = UnityEngine.Random.Range(40f, 80f);
             Vector2 bounceDir = new Vector2(Mathf.Sin(bounceAngle), -Mathf.Cos(bounceAngle));
             Vector2 endPos = basketPosition + bounceDir * bounceDistance;
 
-            float bounceHeight = 20f;
+            float bounceHeight = 30f;
 
             while (elapsed < duration)
             {
@@ -335,9 +353,17 @@ namespace NBAHeadCoach.UI.Components
 
                 _currentPosition = Vector2.Lerp(basketPosition, endPos, t);
 
-                // Small bounce arc
+                // Bounce arc
                 float arcValue = 4f * t * (1f - t);
                 _currentHeight = bounceHeight * arcValue;
+
+                // Scale pop on rim contact then settle
+                float scale;
+                if (t < 0.15f)
+                    scale = Mathf.Lerp(_baseScale, _baseScale * 1.3f, t / 0.15f); // Impact pop
+                else
+                    scale = Mathf.Lerp(_baseScale * 1.3f, _baseScale, (t - 0.15f) / 0.85f); // Settle
+                _ballTransform.localScale = new Vector3(scale, scale, 1f);
 
                 _ballTransform.anchoredPosition = _currentPosition;
 
@@ -347,6 +373,7 @@ namespace NBAHeadCoach.UI.Components
             _currentPosition = endPos;
             _currentHeight = 0f;
             _ballTransform.anchoredPosition = _currentPosition;
+            _ballTransform.localScale = new Vector3(_baseScale, _baseScale, 1f);
         }
 
         #endregion
@@ -379,9 +406,12 @@ namespace NBAHeadCoach.UI.Components
             // Ball image with basketball sprite
             var ballImage = ballGO.AddComponent<Image>();
             ballImage.color = Color.white; // White so sprite renders at natural colors
+            ballImage.preserveAspect = true;
             var basketballSprite = NBAHeadCoach.Core.Util.ArtManager.GetBasketball();
+            Debug.Log($"[BallAnimator] Basketball sprite: {(basketballSprite != null ? $"{basketballSprite.texture.width}x{basketballSprite.texture.height}" : "NULL")}");
             if (basketballSprite != null) ballImage.sprite = basketballSprite;
             else ballImage.color = new Color(0.9f, 0.5f, 0.1f); // Fallback orange
+            Debug.Log($"[BallAnimator] Ball created: size={ballSize}, color={ballImage.color}, sprite={ballImage.sprite?.name ?? "none"}");
 
             // Add the BallAnimator component
             var component = ballGO.AddComponent<BallAnimator>();

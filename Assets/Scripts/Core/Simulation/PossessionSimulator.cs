@@ -178,6 +178,22 @@ namespace NBAHeadCoach.Core.Simulation
                         TargetPlayerId = shooter.PlayerId,
                         Outcome = EventOutcome.Success
                     });
+
+                    // Emit pass flight spatial state
+                    var passState = CreateSpatialState(endGameClock + 0.8f, quarter, possessionClock);
+                    passState.Ball = new BallState(
+                        (_offensePositions[_ballHandlerIndex].X + _offensePositions[shooterIndex].X) / 2f,
+                        (_offensePositions[_ballHandlerIndex].Y + _offensePositions[shooterIndex].Y) / 2f, 6f)
+                    {
+                        Status = BallStatus.InAir_Pass,
+                        HeldByPlayerId = null
+                    };
+                    result.SpatialStates.Add(passState);
+
+                    // Emit catch state (ball now held by shooter)
+                    _ballHandlerIndex = shooterIndex;
+                    var catchState = CreateSpatialState(endGameClock + 0.5f, quarter, possessionClock);
+                    result.SpatialStates.Add(catchState);
                 }
 
                 // Check for steal before shot (~5% chance)
@@ -208,6 +224,18 @@ namespace NBAHeadCoach.Core.Simulation
 
                     if (defenderFouls)
                     {
+                        // Emit shot flight spatial state (fouled shot)
+                        float basketXFoul = _isOffenseHome ? 42f : -42f;
+                        var foulShotFlightState = CreateSpatialState(endGameClock + 0.3f, quarter, possessionClock);
+                        foulShotFlightState.Ball = new BallState(
+                            (_offensePositions[shooterIndex].X + basketXFoul) / 2f,
+                            _offensePositions[shooterIndex].Y * 0.5f, 15f)
+                        {
+                            Status = BallStatus.InAir_Shot,
+                            HeldByPlayerId = null
+                        };
+                        result.SpatialStates.Add(foulShotFlightState);
+
                         var shotResult = ExecuteShotWithFoul(shooter, shooterIndex, defender, shotType, endGameClock, quarter, possessionClock);
                         result.Events.AddRange(shotResult.Events);
                         result.Outcome = shotResult.Outcome;
@@ -215,6 +243,18 @@ namespace NBAHeadCoach.Core.Simulation
                     }
                     else
                     {
+                        // Emit shot flight spatial state
+                        float basketX = _isOffenseHome ? 42f : -42f;
+                        var shotFlightState = CreateSpatialState(endGameClock + 0.3f, quarter, possessionClock);
+                        shotFlightState.Ball = new BallState(
+                            (_offensePositions[shooterIndex].X + basketX) / 2f,
+                            _offensePositions[shooterIndex].Y * 0.5f, 15f)
+                        {
+                            Status = BallStatus.InAir_Shot,
+                            HeldByPlayerId = null
+                        };
+                        result.SpatialStates.Add(shotFlightState);
+
                         var shotEvent = ExecuteShot(shooter, shooterIndex, endGameClock, quarter, possessionClock);
                         result.Events.Add(shotEvent);
 
@@ -508,11 +548,11 @@ namespace NBAHeadCoach.Core.Simulation
             _offensePositions[3] = new CourtPosition(36f * xMult, -8f);    // PF left block
             _offensePositions[4] = new CourtPosition(36f * xMult, 8f);     // C right block
 
-            // Defense - man-to-man
+            // Defense - man-to-man (offset toward basket to stay between offense and rim)
             for (int i = 0; i < 5; i++)
             {
-                float defX = Mathf.Lerp(_offensePositions[i].X, 42f * xMult, 0.25f);
-                float defY = _offensePositions[i].Y * 0.9f;
+                float defX = Mathf.Lerp(_offensePositions[i].X, 42f * xMult, 0.4f);
+                float defY = _offensePositions[i].Y * 0.7f;
                 _defensePositions[i] = new CourtPosition(defX, defY);
             }
         }
@@ -532,8 +572,12 @@ namespace NBAHeadCoach.Core.Simulation
                     _offensePositions[i].Y + dy
                 );
                 
-                // Defenders track their man
-                _defensePositions[i] = _defensePositions[i].MoveTowards(_offensePositions[i], 1.5f);
+                // Defenders track their man but stay slightly between offense and basket
+                var defTarget = new CourtPosition(
+                    Mathf.Lerp(_offensePositions[i].X, _defensePositions[i].X, 0.6f),
+                    _offensePositions[i].Y * 0.85f
+                );
+                _defensePositions[i] = _defensePositions[i].MoveTowards(defTarget, 1.2f);
             }
         }
 

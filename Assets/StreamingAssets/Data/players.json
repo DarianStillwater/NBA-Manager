@@ -46,7 +46,14 @@
         "DefensiveIQ": 65,
         "Intangibles": 85,
         "Potential": 92
-      }
+      },
+      "DraftYear": 2018,
+      "DraftRound": 1,
+      "DraftPick": 5,
+      "DraftedByTeamId": "DAL",
+      "College": "Oklahoma",
+      "ContractSalary": 46394100,
+      "ContractYears": 3
     },
     {
       "PlayerId": "jalen_johnson",
@@ -94,7 +101,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 85,
         "Potential": 92
-      }
+      },
+      "DraftYear": 2021,
+      "DraftRound": 1,
+      "DraftPick": 20,
+      "DraftedByTeamId": "ATL",
+      "College": "Duke",
+      "ContractSalary": 30000000,
+      "ContractYears": 6
     },
     {
       "PlayerId": "onyeka_okongwu",
@@ -142,7 +156,14 @@
         "DefensiveIQ": 82,
         "Intangibles": 85,
         "Potential": 88
-      }
+      },
+      "DraftYear": 2020,
+      "DraftRound": 1,
+      "DraftPick": 6,
+      "DraftedByTeamId": "ATL",
+      "College": "Southern California",
+      "ContractSalary": 15000000,
+      "ContractYears": 4
     },
     {
       "PlayerId": "kristaps_porzingis",
@@ -190,7 +211,9 @@
         "DefensiveIQ": 78,
         "Intangibles": 78,
         "Potential": 82
-      }
+      },
+      "ContractSalary": 30731707,
+      "ContractYears": 1
     },
     {
       "PlayerId": "zaccharie_risacher",
@@ -238,7 +261,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 78,
         "Potential": 90
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 1,
+      "DraftPick": 1,
+      "DraftedByTeamId": "ATL",
+      "College": "JL Bourg (France)",
+      "ContractSalary": 13197720,
+      "ContractYears": 4
     },
     {
       "PlayerId": "dyson_daniels",
@@ -286,7 +316,14 @@
         "DefensiveIQ": 85,
         "Intangibles": 82,
         "Potential": 88
-      }
+      },
+      "DraftYear": 2022,
+      "DraftRound": 1,
+      "DraftPick": 8,
+      "DraftedByTeamId": "NOP",
+      "College": "Ignite (G League)",
+      "ContractSalary": 7707709,
+      "ContractYears": 6
     },
     {
       "PlayerId": "de_andre_hunter",
@@ -334,7 +371,14 @@
         "DefensiveIQ": 75,
         "Intangibles": 75,
         "Potential": 80
-      }
+      },
+      "DraftYear": 2019,
+      "DraftRound": 1,
+      "DraftPick": 4,
+      "DraftedByTeamId": "LAL",
+      "College": "Virginia",
+      "ContractSalary": 23303571,
+      "ContractYears": 3
     },
     {
       "PlayerId": "larry_nance_jr",
@@ -382,7 +426,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 80,
         "Potential": 72
-      }
+      },
+      "DraftYear": 2015,
+      "DraftRound": 1,
+      "DraftPick": 27,
+      "DraftedByTeamId": "LAL",
+      "College": "Wyoming",
+      "ContractSalary": 2296274,
+      "ContractYears": 2
     },
     {
       "PlayerId": "vit_krejci",
@@ -430,7 +481,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 74,
         "Potential": 76
-      }
+      },
+      "DraftYear": 2020,
+      "DraftRound": 2,
+      "DraftPick": 37,
+      "DraftedByTeamId": "WAS",
+      "College": "Basket Zaragoza 2002 (Spain)",
+      "ContractSalary": 2349578,
+      "ContractYears": 3
     },
     {
       "PlayerId": "mouhamed_gueye",
@@ -478,7 +536,14 @@
         "DefensiveIQ": 70,
         "Intangibles": 75,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 2,
+      "DraftPick": 39,
+      "DraftedByTeamId": "CHA",
+      "College": "Washington State",
+      "ContractSalary": 2221677,
+      "ContractYears": 2
     },
     {
       "PlayerId": "nickeil_alexander_walker",
@@ -526,7 +591,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 75,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2019,
+      "DraftRound": 1,
+      "DraftPick": 17,
+      "DraftedByTeamId": "BKN",
+      "College": "Virginia Tech",
+      "ContractSalary": 15161800,
+      "ContractYears": 5
     },
     {
       "PlayerId": "nfaly_dante",
@@ -574,7 +646,10 @@
         "DefensiveIQ": 72,
         "Intangibles": 75,
         "Potential": 78
-      }
+      },
+      "College": "Oregon",
+      "ContractSalary": 2048494,
+      "ContractYears": 1
     },
     {
       "PlayerId": "nikola_durisic",
@@ -670,7 +745,14 @@
         "DefensiveIQ": 65,
         "Intangibles": 72,
         "Potential": 75
-      }
+      },
+      "DraftYear": 2022,
+      "DraftRound": 2,
+      "DraftPick": 32,
+      "DraftedByTeamId": "ORL",
+      "College": "Michigan",
+      "ContractSalary": 699440,
+      "ContractYears": 2
     },
     {
       "PlayerId": "luke_kennard",
@@ -718,7 +800,14 @@
         "DefensiveIQ": 65,
         "Intangibles": 78,
         "Potential": 75
-      }
+      },
+      "DraftYear": 2017,
+      "DraftRound": 1,
+      "DraftPick": 12,
+      "DraftedByTeamId": "DET",
+      "College": "Duke",
+      "ContractSalary": 11000000,
+      "ContractYears": 2
     },
     {
       "PlayerId": "eli_ndiaye",
@@ -814,7 +903,9 @@
         "DefensiveIQ": 68,
         "Intangibles": 78,
         "Potential": 85
-      }
+      },
+      "ContractSalary": 3237480,
+      "ContractYears": 5
     },
     {
       "PlayerId": "jacob_toppin",
@@ -862,7 +953,8 @@
         "DefensiveIQ": 68,
         "Intangibles": 75,
         "Potential": 78
-      }
+      },
+      "College": "Kentucky"
     },
     {
       "PlayerId": "keaton_wallace",
@@ -910,7 +1002,9 @@
         "DefensiveIQ": 65,
         "Intangibles": 72,
         "Potential": 72
-      }
+      },
+      "ContractSalary": 2296274,
+      "ContractYears": 2
     },
     {
       "PlayerId": "dominick_barlow",
@@ -958,7 +1052,9 @@
         "DefensiveIQ": 68,
         "Intangibles": 75,
         "Potential": 80
-      }
+      },
+      "ContractSalary": 3415000,
+      "ContractYears": 3
     },
     {
       "PlayerId": "jayson_tatum",
@@ -1006,7 +1102,14 @@
         "DefensiveIQ": 82,
         "Intangibles": 92,
         "Potential": 95
-      }
+      },
+      "DraftYear": 2017,
+      "DraftRound": 1,
+      "DraftPick": 3,
+      "DraftedByTeamId": "BOS",
+      "College": "Duke",
+      "ContractSalary": 54126450,
+      "ContractYears": 6
     },
     {
       "PlayerId": "jaylen_brown",
@@ -1054,7 +1157,14 @@
         "DefensiveIQ": 82,
         "Intangibles": 88,
         "Potential": 90
-      }
+      },
+      "DraftYear": 2016,
+      "DraftRound": 1,
+      "DraftPick": 3,
+      "DraftedByTeamId": "BOS",
+      "College": "California",
+      "ContractSalary": 53142264,
+      "ContractYears": 5
     },
     {
       "PlayerId": "derrick_white",
@@ -1102,7 +1212,14 @@
         "DefensiveIQ": 88,
         "Intangibles": 88,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2017,
+      "DraftRound": 1,
+      "DraftPick": 29,
+      "DraftedByTeamId": "SAS",
+      "College": "Colorado",
+      "ContractSalary": 28100000,
+      "ContractYears": 5
     },
     {
       "PlayerId": "payton_pritchard",
@@ -1150,7 +1267,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 88,
         "Potential": 80
-      }
+      },
+      "DraftYear": 2020,
+      "DraftRound": 1,
+      "DraftPick": 26,
+      "DraftedByTeamId": "BOS",
+      "College": "Oregon",
+      "ContractSalary": 7232143,
+      "ContractYears": 4
     },
     {
       "PlayerId": "sam_hauser",
@@ -1198,7 +1322,9 @@
         "DefensiveIQ": 72,
         "Intangibles": 80,
         "Potential": 78
-      }
+      },
+      "ContractSalary": 10044644,
+      "ContractYears": 5
     },
     {
       "PlayerId": "xavier_tillman",
@@ -1246,7 +1372,14 @@
         "DefensiveIQ": 82,
         "Intangibles": 82,
         "Potential": 75
-      }
+      },
+      "DraftYear": 2020,
+      "DraftRound": 2,
+      "DraftPick": 35,
+      "DraftedByTeamId": "SAC",
+      "College": "Michigan State",
+      "ContractSalary": 2546675,
+      "ContractYears": 2
     },
     {
       "PlayerId": "neemias_queta",
@@ -1294,7 +1427,14 @@
         "DefensiveIQ": 75,
         "Intangibles": 78,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2021,
+      "DraftRound": 2,
+      "DraftPick": 39,
+      "DraftedByTeamId": "SAC",
+      "College": "Utah State",
+      "ContractSalary": 2349578,
+      "ContractYears": 2
     },
     {
       "PlayerId": "jordan_walsh",
@@ -1342,7 +1482,14 @@
         "DefensiveIQ": 75,
         "Intangibles": 78,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 2,
+      "DraftPick": 38,
+      "DraftedByTeamId": "SAC",
+      "College": "Arkansas",
+      "ContractSalary": 2221677,
+      "ContractYears": 3
     },
     {
       "PlayerId": "baylor_scheierman",
@@ -1390,7 +1537,14 @@
         "DefensiveIQ": 68,
         "Intangibles": 78,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 1,
+      "DraftPick": 30,
+      "DraftedByTeamId": "BOS",
+      "College": "Creighton",
+      "ContractSalary": 2619000,
+      "ContractYears": 4
     },
     {
       "PlayerId": "anfernee_simons",
@@ -1438,7 +1592,14 @@
         "DefensiveIQ": 62,
         "Intangibles": 78,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2018,
+      "DraftRound": 1,
+      "DraftPick": 24,
+      "DraftedByTeamId": "POR",
+      "College": "IMG Academy",
+      "ContractSalary": 27678571,
+      "ContractYears": 2
     },
     {
       "PlayerId": "hugo_gonzalez",
@@ -1486,7 +1647,9 @@
         "DefensiveIQ": 70,
         "Intangibles": 75,
         "Potential": 85
-      }
+      },
+      "ContractSalary": 2783880,
+      "ContractYears": 5
     },
     {
       "PlayerId": "chris_boucher",
@@ -1534,7 +1697,10 @@
         "DefensiveIQ": 72,
         "Intangibles": 75,
         "Potential": 72
-      }
+      },
+      "College": "Oregon",
+      "ContractSalary": 2296274,
+      "ContractYears": 2
     },
     {
       "PlayerId": "luka_garza",
@@ -1582,7 +1748,14 @@
         "DefensiveIQ": 58,
         "Intangibles": 82,
         "Potential": 72
-      }
+      },
+      "DraftYear": 2021,
+      "DraftRound": 2,
+      "DraftPick": 52,
+      "DraftedByTeamId": "DET",
+      "College": "Iowa",
+      "ContractSalary": 2461463,
+      "ContractYears": 3
     },
     {
       "PlayerId": "josh_minott",
@@ -1630,7 +1803,14 @@
         "DefensiveIQ": 70,
         "Intangibles": 78,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2022,
+      "DraftRound": 2,
+      "DraftPick": 45,
+      "DraftedByTeamId": "CHA",
+      "College": "Memphis",
+      "ContractSalary": 2378870,
+      "ContractYears": 3
     },
     {
       "PlayerId": "ron_harper_jr",
@@ -1774,7 +1954,9 @@
         "DefensiveIQ": 72,
         "Intangibles": 78,
         "Potential": 80
-      }
+      },
+      "ContractSalary": 490128,
+      "ContractYears": 3
     },
     {
       "PlayerId": "cam_thomas",
@@ -1822,7 +2004,14 @@
         "DefensiveIQ": 58,
         "Intangibles": 78,
         "Potential": 88
-      }
+      },
+      "DraftYear": 2021,
+      "DraftRound": 1,
+      "DraftPick": 27,
+      "DraftedByTeamId": "BKN",
+      "College": "Louisiana State",
+      "ContractSalary": 844607,
+      "ContractYears": 2
     },
     {
       "PlayerId": "michael_porter_jr",
@@ -1870,7 +2059,14 @@
         "DefensiveIQ": 62,
         "Intangibles": 72,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2018,
+      "DraftRound": 1,
+      "DraftPick": 14,
+      "DraftedByTeamId": "DEN",
+      "College": "Missouri",
+      "ContractSalary": 38333050,
+      "ContractYears": 3
     },
     {
       "PlayerId": "nic_claxton",
@@ -1918,7 +2114,14 @@
         "DefensiveIQ": 82,
         "Intangibles": 80,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2019,
+      "DraftRound": 2,
+      "DraftPick": 31,
+      "DraftedByTeamId": "BKN",
+      "College": "Georgia",
+      "ContractSalary": 25352272,
+      "ContractYears": 4
     },
     {
       "PlayerId": "ziaire_williams",
@@ -1966,7 +2169,14 @@
         "DefensiveIQ": 68,
         "Intangibles": 75,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2021,
+      "DraftRound": 1,
+      "DraftPick": 10,
+      "DraftedByTeamId": "NOP",
+      "College": "Stanford",
+      "ContractSalary": 6250000,
+      "ContractYears": 3
     },
     {
       "PlayerId": "noah_clowney",
@@ -2014,7 +2224,14 @@
         "DefensiveIQ": 70,
         "Intangibles": 78,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 1,
+      "DraftPick": 21,
+      "DraftedByTeamId": "BKN",
+      "College": "Alabama",
+      "ContractSalary": 3398640,
+      "ContractYears": 3
     },
     {
       "PlayerId": "day_ron_sharpe",
@@ -2062,7 +2279,14 @@
         "DefensiveIQ": 68,
         "Intangibles": 75,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2021,
+      "DraftRound": 1,
+      "DraftPick": 29,
+      "DraftedByTeamId": "PHX",
+      "College": "North Carolina",
+      "ContractSalary": 6250000,
+      "ContractYears": 3
     },
     {
       "PlayerId": "terance_mann",
@@ -2110,7 +2334,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 82,
         "Potential": 75
-      }
+      },
+      "DraftYear": 2019,
+      "DraftRound": 2,
+      "DraftPick": 48,
+      "DraftedByTeamId": "LAC",
+      "College": "Florida State",
+      "ContractSalary": 15500000,
+      "ContractYears": 4
     },
     {
       "PlayerId": "jalen_wilson",
@@ -2158,7 +2389,14 @@
         "DefensiveIQ": 70,
         "Intangibles": 75,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 2,
+      "DraftPick": 51,
+      "DraftedByTeamId": "BKN",
+      "College": "Kansas",
+      "ContractSalary": 2221677,
+      "ContractYears": 2
     },
     {
       "PlayerId": "danny_wolf",
@@ -2206,7 +2444,9 @@
         "DefensiveIQ": 70,
         "Intangibles": 75,
         "Potential": 80
-      }
+      },
+      "ContractSalary": 2801280,
+      "ContractYears": 5
     },
     {
       "PlayerId": "haywood_highsmith",
@@ -2254,7 +2494,9 @@
         "DefensiveIQ": 75,
         "Intangibles": 80,
         "Potential": 72
-      }
+      },
+      "ContractSalary": 827984,
+      "ContractYears": 3
     },
     {
       "PlayerId": "ej_liddell",
@@ -2302,7 +2544,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 78,
         "Potential": 75
-      }
+      },
+      "DraftYear": 2022,
+      "DraftRound": 2,
+      "DraftPick": 41,
+      "DraftedByTeamId": "NOP",
+      "College": "Ohio State",
+      "ContractSalary": 706898,
+      "ContractYears": 3
     },
     {
       "PlayerId": "tyrese_martin",
@@ -2350,7 +2599,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 75,
         "Potential": 72
-      }
+      },
+      "DraftYear": 2022,
+      "DraftRound": 2,
+      "DraftPick": 51,
+      "DraftedByTeamId": "GSW",
+      "College": "Connecticut",
+      "ContractSalary": 2191897,
+      "ContractYears": 2
     },
     {
       "PlayerId": "tyson_etienne",
@@ -2446,7 +2702,9 @@
         "DefensiveIQ": 72,
         "Intangibles": 75,
         "Potential": 85
-      }
+      },
+      "ContractSalary": 3372240,
+      "ContractYears": 5
     },
     {
       "PlayerId": "egor_demin",
@@ -2494,7 +2752,9 @@
         "DefensiveIQ": 62,
         "Intangibles": 75,
         "Potential": 88
-      }
+      },
+      "ContractSalary": 6889200,
+      "ContractYears": 4
     },
     {
       "PlayerId": "ben_saraf",
@@ -2542,7 +2802,9 @@
         "DefensiveIQ": 60,
         "Intangibles": 72,
         "Potential": 85
-      }
+      },
+      "ContractSalary": 2884560,
+      "ContractYears": 5
     },
     {
       "PlayerId": "lamelo_ball",
@@ -2590,7 +2852,14 @@
         "DefensiveIQ": 65,
         "Intangibles": 88,
         "Potential": 95
-      }
+      },
+      "DraftYear": 2020,
+      "DraftRound": 1,
+      "DraftPick": 3,
+      "DraftedByTeamId": "CHA",
+      "College": "Illawarra (Australia)",
+      "ContractSalary": 37958760,
+      "ContractYears": 5
     },
     {
       "PlayerId": "brandon_miller",
@@ -2638,7 +2907,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 82,
         "Potential": 92
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 1,
+      "DraftPick": 2,
+      "DraftedByTeamId": "CHA",
+      "College": "Alabama",
+      "ContractSalary": 11968800,
+      "ContractYears": 3
     },
     {
       "PlayerId": "miles_bridges",
@@ -2686,7 +2962,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 72,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2018,
+      "DraftRound": 1,
+      "DraftPick": 12,
+      "DraftedByTeamId": "LAC",
+      "College": "Michigan State",
+      "ContractSalary": 25000000,
+      "ContractYears": 3
     },
     {
       "PlayerId": "collin_sexton",
@@ -2734,7 +3017,14 @@
         "DefensiveIQ": 62,
         "Intangibles": 78,
         "Potential": 80
-      }
+      },
+      "DraftYear": 2018,
+      "DraftRound": 1,
+      "DraftPick": 8,
+      "DraftedByTeamId": "CLE",
+      "College": "Alabama",
+      "ContractSalary": 18975000,
+      "ContractYears": 2
     },
     {
       "PlayerId": "tre_mann",
@@ -2782,7 +3072,14 @@
         "DefensiveIQ": 62,
         "Intangibles": 75,
         "Potential": 80
-      }
+      },
+      "DraftYear": 2021,
+      "DraftRound": 1,
+      "DraftPick": 18,
+      "DraftedByTeamId": "OKC",
+      "College": "Florida",
+      "ContractSalary": 8000000,
+      "ContractYears": 4
     },
     {
       "PlayerId": "tidjane_salaun",
@@ -2830,7 +3127,14 @@
         "DefensiveIQ": 70,
         "Intangibles": 75,
         "Potential": 88
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 1,
+      "DraftPick": 6,
+      "DraftedByTeamId": "CHA",
+      "College": "Cholet Basket (France)",
+      "ContractSalary": 7863240,
+      "ContractYears": 4
     },
     {
       "PlayerId": "mason_plumlee",
@@ -2878,7 +3182,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 80,
         "Potential": 70
-      }
+      },
+      "DraftYear": 2013,
+      "DraftRound": 1,
+      "DraftPick": 22,
+      "DraftedByTeamId": "BKN",
+      "College": "Duke",
+      "ContractSalary": 725834,
+      "ContractYears": 2
     },
     {
       "PlayerId": "grant_williams",
@@ -2926,7 +3237,14 @@
         "DefensiveIQ": 80,
         "Intangibles": 85,
         "Potential": 75
-      }
+      },
+      "DraftYear": 2019,
+      "DraftRound": 1,
+      "DraftPick": 22,
+      "DraftedByTeamId": "BOS",
+      "College": "Tennessee",
+      "ContractSalary": 13645500,
+      "ContractYears": 3
     },
     {
       "PlayerId": "josh_green",
@@ -2974,7 +3292,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 80,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2020,
+      "DraftRound": 1,
+      "DraftPick": 18,
+      "DraftedByTeamId": "DAL",
+      "College": "Arizona",
+      "ContractSalary": 13666667,
+      "ContractYears": 3
     },
     {
       "PlayerId": "moussa_diabate",
@@ -3022,7 +3347,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 75,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2022,
+      "DraftRound": 2,
+      "DraftPick": 43,
+      "DraftedByTeamId": "LAC",
+      "College": "Michigan",
+      "ContractSalary": 2270735,
+      "ContractYears": 2
     },
     {
       "PlayerId": "ryan_kalkbrenner",
@@ -3070,7 +3402,9 @@
         "DefensiveIQ": 72,
         "Intangibles": 78,
         "Potential": 78
-      }
+      },
+      "ContractSalary": 2296274,
+      "ContractYears": 5
     },
     {
       "PlayerId": "kon_knueppel",
@@ -3118,7 +3452,9 @@
         "DefensiveIQ": 68,
         "Intangibles": 78,
         "Potential": 85
-      }
+      },
+      "ContractSalary": 10015680,
+      "ContractYears": 5
     },
     {
       "PlayerId": "liam_mcneeley",
@@ -3166,7 +3502,9 @@
         "DefensiveIQ": 65,
         "Intangibles": 75,
         "Potential": 85
-      }
+      },
+      "ContractSalary": 2763960,
+      "ContractYears": 5
     },
     {
       "PlayerId": "pat_connaughton",
@@ -3214,7 +3552,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 78,
         "Potential": 70
-      }
+      },
+      "DraftYear": 2015,
+      "DraftRound": 2,
+      "DraftPick": 41,
+      "DraftedByTeamId": "BKN",
+      "College": "Notre Dame",
+      "ContractSalary": 10739683,
+      "ContractYears": 3
     },
     {
       "PlayerId": "antonio_reeves",
@@ -3262,7 +3607,12 @@
         "DefensiveIQ": 58,
         "Intangibles": 72,
         "Potential": 75
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 2,
+      "DraftPick": 47,
+      "DraftedByTeamId": "ORL",
+      "College": "Kentucky"
     },
     {
       "PlayerId": "kj_simpson",
@@ -3310,7 +3660,12 @@
         "DefensiveIQ": 65,
         "Intangibles": 78,
         "Potential": 80
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 2,
+      "DraftPick": 42,
+      "DraftedByTeamId": "CHA",
+      "College": "Colorado"
     },
     {
       "PlayerId": "coby_white",
@@ -3358,7 +3713,14 @@
         "DefensiveIQ": 65,
         "Intangibles": 80,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2019,
+      "DraftRound": 1,
+      "DraftPick": 7,
+      "DraftedByTeamId": "CHI",
+      "College": "North Carolina",
+      "ContractSalary": 12888889,
+      "ContractYears": 2
     },
     {
       "PlayerId": "nikola_vucevic",
@@ -3406,7 +3768,14 @@
         "DefensiveIQ": 70,
         "Intangibles": 82,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2011,
+      "DraftRound": 1,
+      "DraftPick": 16,
+      "DraftedByTeamId": "PHI",
+      "College": "Southern California",
+      "ContractSalary": 21481481,
+      "ContractYears": 2
     },
     {
       "PlayerId": "josh_giddey",
@@ -3454,7 +3823,14 @@
         "DefensiveIQ": 62,
         "Intangibles": 82,
         "Potential": 88
-      }
+      },
+      "DraftYear": 2021,
+      "DraftRound": 1,
+      "DraftPick": 6,
+      "DraftedByTeamId": "OKC",
+      "College": "NBA Global Academy (Australia)",
+      "ContractSalary": 25000000,
+      "ContractYears": 5
     },
     {
       "PlayerId": "patrick_williams",
@@ -3502,7 +3878,14 @@
         "DefensiveIQ": 75,
         "Intangibles": 78,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2020,
+      "DraftRound": 1,
+      "DraftPick": 4,
+      "DraftedByTeamId": "CHI",
+      "College": "Florida State",
+      "ContractSalary": 18000000,
+      "ContractYears": 5
     },
     {
       "PlayerId": "matas_buzelis",
@@ -3550,7 +3933,14 @@
         "DefensiveIQ": 70,
         "Intangibles": 78,
         "Potential": 90
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 1,
+      "DraftPick": 11,
+      "DraftedByTeamId": "CHI",
+      "College": "Ignite (G League)",
+      "ContractSalary": 5455560,
+      "ContractYears": 4
     },
     {
       "PlayerId": "ayo_dosunmu",
@@ -3598,7 +3988,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 85,
         "Potential": 80
-      }
+      },
+      "DraftYear": 2021,
+      "DraftRound": 2,
+      "DraftPick": 38,
+      "DraftedByTeamId": "CHI",
+      "College": "Illinois",
+      "ContractSalary": 7518518,
+      "ContractYears": 2
     },
     {
       "PlayerId": "kevin_huerter",
@@ -3646,7 +4043,14 @@
         "DefensiveIQ": 65,
         "Intangibles": 78,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2018,
+      "DraftRound": 1,
+      "DraftPick": 19,
+      "DraftedByTeamId": "ATL",
+      "College": "Maryland",
+      "ContractSalary": 17991071,
+      "ContractYears": 2
     },
     {
       "PlayerId": "zach_collins",
@@ -3694,7 +4098,14 @@
         "DefensiveIQ": 75,
         "Intangibles": 78,
         "Potential": 72
-      }
+      },
+      "DraftYear": 2017,
+      "DraftRound": 1,
+      "DraftPick": 10,
+      "DraftedByTeamId": "SAC",
+      "College": "Gonzaga",
+      "ContractSalary": 18080496,
+      "ContractYears": 2
     },
     {
       "PlayerId": "jalen_smith",
@@ -3742,7 +4153,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 75,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2020,
+      "DraftRound": 1,
+      "DraftPick": 10,
+      "DraftedByTeamId": "PHX",
+      "College": "Maryland",
+      "ContractSalary": 9000000,
+      "ContractYears": 3
     },
     {
       "PlayerId": "dalen_terry",
@@ -3790,7 +4208,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 82,
         "Potential": 80
-      }
+      },
+      "DraftYear": 2022,
+      "DraftRound": 1,
+      "DraftPick": 18,
+      "DraftedByTeamId": "CHI",
+      "College": "Arizona State",
+      "ContractSalary": 5399118,
+      "ContractYears": 2
     },
     {
       "PlayerId": "isaac_okoro",
@@ -3838,7 +4263,14 @@
         "DefensiveIQ": 82,
         "Intangibles": 82,
         "Potential": 80
-      }
+      },
+      "DraftYear": 2020,
+      "DraftRound": 1,
+      "DraftPick": 5,
+      "DraftedByTeamId": "CLE",
+      "College": "Auburn",
+      "ContractSalary": 11000000,
+      "ContractYears": 3
     },
     {
       "PlayerId": "julian_phillips",
@@ -3886,7 +4318,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 75,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 2,
+      "DraftPick": 35,
+      "DraftedByTeamId": "BOS",
+      "College": "Tennessee",
+      "ContractSalary": 2221677,
+      "ContractYears": 3
     },
     {
       "PlayerId": "jevon_carter",
@@ -3934,7 +4373,14 @@
         "DefensiveIQ": 82,
         "Intangibles": 82,
         "Potential": 72
-      }
+      },
+      "DraftYear": 2018,
+      "DraftRound": 2,
+      "DraftPick": 32,
+      "DraftedByTeamId": "MEM",
+      "College": "West Virginia",
+      "ContractSalary": 871000,
+      "ContractYears": 2
     },
     {
       "PlayerId": "tre_jones",
@@ -3982,7 +4428,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 82,
         "Potential": 75
-      }
+      },
+      "DraftYear": 2020,
+      "DraftRound": 2,
+      "DraftPick": 41,
+      "DraftedByTeamId": "SAS",
+      "College": "Duke",
+      "ContractSalary": 8000000,
+      "ContractYears": 4
     },
     {
       "PlayerId": "donovan_mitchell",
@@ -4030,7 +4483,14 @@
         "DefensiveIQ": 70,
         "Intangibles": 90,
         "Potential": 92
-      }
+      },
+      "DraftYear": 2017,
+      "DraftRound": 1,
+      "DraftPick": 13,
+      "DraftedByTeamId": "DEN",
+      "College": "Louisville",
+      "ContractSalary": 46394100,
+      "ContractYears": 4
     },
     {
       "PlayerId": "darius_garland",
@@ -4078,7 +4538,14 @@
         "DefensiveIQ": 62,
         "Intangibles": 85,
         "Potential": 90
-      }
+      },
+      "DraftYear": 2019,
+      "DraftRound": 1,
+      "DraftPick": 5,
+      "DraftedByTeamId": "CLE",
+      "College": "Vanderbilt",
+      "ContractSalary": 39446090,
+      "ContractYears": 4
     },
     {
       "PlayerId": "evan_mobley",
@@ -4126,7 +4593,14 @@
         "DefensiveIQ": 88,
         "Intangibles": 88,
         "Potential": 95
-      }
+      },
+      "DraftYear": 2021,
+      "DraftRound": 1,
+      "DraftPick": 3,
+      "DraftedByTeamId": "CLE",
+      "College": "Southern California",
+      "ContractSalary": 46394100,
+      "ContractYears": 6
     },
     {
       "PlayerId": "jarrett_allen",
@@ -4174,7 +4648,14 @@
         "DefensiveIQ": 82,
         "Intangibles": 85,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2017,
+      "DraftRound": 1,
+      "DraftPick": 22,
+      "DraftedByTeamId": "BKN",
+      "College": "Texas",
+      "ContractSalary": 20000000,
+      "ContractYears": 5
     },
     {
       "PlayerId": "max_strus",
@@ -4222,7 +4703,9 @@
         "DefensiveIQ": 72,
         "Intangibles": 82,
         "Potential": 78
-      }
+      },
+      "ContractSalary": 15936452,
+      "ContractYears": 3
     },
     {
       "PlayerId": "lonzo_ball",
@@ -4270,7 +4753,14 @@
         "DefensiveIQ": 82,
         "Intangibles": 82,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2017,
+      "DraftRound": 1,
+      "DraftPick": 2,
+      "DraftedByTeamId": "LAL",
+      "College": "UCLA",
+      "ContractSalary": 10000000,
+      "ContractYears": 2
     },
     {
       "PlayerId": "dean_wade",
@@ -4318,7 +4808,9 @@
         "DefensiveIQ": 75,
         "Intangibles": 80,
         "Potential": 75
-      }
+      },
+      "ContractSalary": 6623456,
+      "ContractYears": 1
     },
     {
       "PlayerId": "sam_merrill",
@@ -4366,7 +4858,14 @@
         "DefensiveIQ": 68,
         "Intangibles": 80,
         "Potential": 75
-      }
+      },
+      "DraftYear": 2020,
+      "DraftRound": 2,
+      "DraftPick": 60,
+      "DraftedByTeamId": "NOP",
+      "College": "Utah State",
+      "ContractSalary": 8482144,
+      "ContractYears": 5
     },
     {
       "PlayerId": "jaylon_tyson",
@@ -4414,7 +4913,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 78,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 1,
+      "DraftPick": 20,
+      "DraftedByTeamId": "CLE",
+      "College": "California",
+      "ContractSalary": 3492480,
+      "ContractYears": 4
     },
     {
       "PlayerId": "craig_porter_jr",
@@ -4462,7 +4968,9 @@
         "DefensiveIQ": 70,
         "Intangibles": 78,
         "Potential": 78
-      }
+      },
+      "ContractSalary": 2221677,
+      "ContractYears": 2
     },
     {
       "PlayerId": "thomas_bryant",
@@ -4510,7 +5018,14 @@
         "DefensiveIQ": 58,
         "Intangibles": 72,
         "Potential": 72
-      }
+      },
+      "DraftYear": 2017,
+      "DraftRound": 2,
+      "DraftPick": 42,
+      "DraftedByTeamId": "UTA",
+      "College": "Indiana",
+      "ContractSalary": 2296274,
+      "ContractYears": 2
     },
     {
       "PlayerId": "chris_livingston",
@@ -4558,7 +5073,12 @@
         "DefensiveIQ": 68,
         "Intangibles": 75,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 2,
+      "DraftPick": 58,
+      "DraftedByTeamId": "MIL",
+      "College": "Kentucky"
     },
     {
       "PlayerId": "tyrese_proctor",
@@ -4606,7 +5126,9 @@
         "DefensiveIQ": 65,
         "Intangibles": 75,
         "Potential": 82
-      }
+      },
+      "ContractSalary": 1272870,
+      "ContractYears": 5
     },
     {
       "PlayerId": "max_christie",
@@ -4654,7 +5176,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 78,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2022,
+      "DraftRound": 2,
+      "DraftPick": 35,
+      "DraftedByTeamId": "LAL",
+      "College": "Michigan State",
+      "ContractSalary": 7714286,
+      "ContractYears": 4
     },
     {
       "PlayerId": "moussa_cisse",
@@ -4750,7 +5279,14 @@
         "DefensiveIQ": 92,
         "Intangibles": 88,
         "Potential": 92
-      }
+      },
+      "DraftYear": 2012,
+      "DraftRound": 1,
+      "DraftPick": 1,
+      "DraftedByTeamId": "NOP",
+      "College": "Kentucky",
+      "ContractSalary": 54126450,
+      "ContractYears": 4
     },
     {
       "PlayerId": "dante_exum",
@@ -4798,7 +5334,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 75,
         "Potential": 75
-      }
+      },
+      "DraftYear": 2014,
+      "DraftRound": 1,
+      "DraftPick": 5,
+      "DraftedByTeamId": "UTA",
+      "College": "Australian Institute of Sport",
+      "ContractSalary": 2296274,
+      "ContractYears": 2
     },
     {
       "PlayerId": "cooper_flagg",
@@ -4846,7 +5389,9 @@
         "DefensiveIQ": 82,
         "Intangibles": 88,
         "Potential": 95
-      }
+      },
+      "ContractSalary": 13825920,
+      "ContractYears": 5
     },
     {
       "PlayerId": "daniel_gafford",
@@ -4894,7 +5439,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 82,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2019,
+      "DraftRound": 2,
+      "DraftPick": 38,
+      "DraftedByTeamId": "CHI",
+      "College": "Arkansas",
+      "ContractSalary": 14386320,
+      "ContractYears": 5
     },
     {
       "PlayerId": "jaden_hardy",
@@ -4942,7 +5494,14 @@
         "DefensiveIQ": 58,
         "Intangibles": 75,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2022,
+      "DraftRound": 2,
+      "DraftPick": 37,
+      "DraftedByTeamId": "SAC",
+      "College": "Ignite (G League)",
+      "ContractSalary": 6000000,
+      "ContractYears": 4
     },
     {
       "PlayerId": "kyrie_irving",
@@ -4990,7 +5549,14 @@
         "DefensiveIQ": 70,
         "Intangibles": 85,
         "Potential": 88
-      }
+      },
+      "DraftYear": 2011,
+      "DraftRound": 1,
+      "DraftPick": 1,
+      "DraftedByTeamId": "CLE",
+      "College": "Duke",
+      "ContractSalary": 36566002,
+      "ContractYears": 4
     },
     {
       "PlayerId": "miles_kelly",
@@ -5086,7 +5652,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 82,
         "Potential": 90
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 1,
+      "DraftPick": 12,
+      "DraftedByTeamId": "OKC",
+      "College": "Duke",
+      "ContractSalary": 5253360,
+      "ContractYears": 3
     },
     {
       "PlayerId": "naji_marshall",
@@ -5134,7 +5707,9 @@
         "DefensiveIQ": 78,
         "Intangibles": 82,
         "Potential": 78
-      }
+      },
+      "ContractSalary": 9000000,
+      "ContractYears": 3
     },
     {
       "PlayerId": "caleb_martin",
@@ -5182,7 +5757,9 @@
         "DefensiveIQ": 82,
         "Intangibles": 85,
         "Potential": 78
-      }
+      },
+      "ContractSalary": 9594044,
+      "ContractYears": 4
     },
     {
       "PlayerId": "ryan_nembhard",
@@ -5278,7 +5855,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 82,
         "Potential": 70
-      }
+      },
+      "DraftYear": 2014,
+      "DraftRound": 2,
+      "DraftPick": 45,
+      "DraftedByTeamId": "CHA",
+      "College": "Stanford",
+      "ContractSalary": 4000000,
+      "ContractYears": 2
     },
     {
       "PlayerId": "dangelo_russell",
@@ -5326,7 +5910,14 @@
         "DefensiveIQ": 58,
         "Intangibles": 78,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2015,
+      "DraftRound": 1,
+      "DraftPick": 2,
+      "DraftedByTeamId": "LAL",
+      "College": "Ohio State",
+      "ContractSalary": 5685000,
+      "ContractYears": 3
     },
     {
       "PlayerId": "klay_thompson",
@@ -5374,7 +5965,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 88,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2011,
+      "DraftRound": 1,
+      "DraftPick": 11,
+      "DraftedByTeamId": "GSW",
+      "College": "Washington State",
+      "ContractSalary": 16666667,
+      "ContractYears": 3
     },
     {
       "PlayerId": "pj_washington",
@@ -5422,7 +6020,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 80,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2019,
+      "DraftRound": 1,
+      "DraftPick": 12,
+      "DraftedByTeamId": "CHA",
+      "College": "Kentucky",
+      "ContractSalary": 14152174,
+      "ContractYears": 6
     },
     {
       "PlayerId": "brandon_williams",
@@ -5470,7 +6075,9 @@
         "DefensiveIQ": 68,
         "Intangibles": 75,
         "Potential": 75
-      }
+      },
+      "ContractSalary": 2270735,
+      "ContractYears": 1
     },
     {
       "PlayerId": "nikola_jokic",
@@ -5518,7 +6125,14 @@
         "DefensiveIQ": 82,
         "Intangibles": 95,
         "Potential": 98
-      }
+      },
+      "DraftYear": 2014,
+      "DraftRound": 2,
+      "DraftPick": 41,
+      "DraftedByTeamId": "DEN",
+      "College": "KK Mega Leks (Serbia)",
+      "ContractSalary": 55224526,
+      "ContractYears": 4
     },
     {
       "PlayerId": "jamal_murray",
@@ -5566,7 +6180,14 @@
         "DefensiveIQ": 68,
         "Intangibles": 90,
         "Potential": 90
-      }
+      },
+      "DraftYear": 2016,
+      "DraftRound": 1,
+      "DraftPick": 7,
+      "DraftedByTeamId": "DEN",
+      "College": "Kentucky",
+      "ContractSalary": 46394100,
+      "ContractYears": 5
     },
     {
       "PlayerId": "aaron_gordon",
@@ -5614,7 +6235,14 @@
         "DefensiveIQ": 82,
         "Intangibles": 85,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2014,
+      "DraftRound": 1,
+      "DraftPick": 4,
+      "DraftedByTeamId": "ORL",
+      "College": "Arizona",
+      "ContractSalary": 22841455,
+      "ContractYears": 5
     },
     {
       "PlayerId": "christian_braun",
@@ -5662,7 +6290,14 @@
         "DefensiveIQ": 82,
         "Intangibles": 85,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2022,
+      "DraftRound": 1,
+      "DraftPick": 21,
+      "DraftedByTeamId": "DEN",
+      "College": "Kansas",
+      "ContractSalary": 4921797,
+      "ContractYears": 7
     },
     {
       "PlayerId": "cameron_johnson",
@@ -5710,7 +6345,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 80,
         "Potential": 80
-      }
+      },
+      "DraftYear": 2019,
+      "DraftRound": 1,
+      "DraftPick": 11,
+      "DraftedByTeamId": "MIN",
+      "College": "North Carolina",
+      "ContractSalary": 21057065,
+      "ContractYears": 3
     },
     {
       "PlayerId": "jonas_valanciunas",
@@ -5758,7 +6400,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 80,
         "Potential": 75
-      }
+      },
+      "DraftYear": 2011,
+      "DraftRound": 1,
+      "DraftPick": 5,
+      "DraftedByTeamId": "TOR",
+      "College": "BC Lietuvos rytas (Lithuania)",
+      "ContractSalary": 10395000,
+      "ContractYears": 3
     },
     {
       "PlayerId": "bruce_brown",
@@ -5806,7 +6455,14 @@
         "DefensiveIQ": 85,
         "Intangibles": 88,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2018,
+      "DraftRound": 2,
+      "DraftPick": 42,
+      "DraftedByTeamId": "DET",
+      "College": "Miami (FL)",
+      "ContractSalary": 2296274,
+      "ContractYears": 2
     },
     {
       "PlayerId": "tim_hardaway_jr",
@@ -5854,7 +6510,14 @@
         "DefensiveIQ": 62,
         "Intangibles": 75,
         "Potential": 72
-      }
+      },
+      "DraftYear": 2013,
+      "DraftRound": 1,
+      "DraftPick": 24,
+      "DraftedByTeamId": "NYK",
+      "College": "Michigan",
+      "ContractSalary": 2296274,
+      "ContractYears": 2
     },
     {
       "PlayerId": "zeke_nnaji",
@@ -5902,7 +6565,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 78,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2020,
+      "DraftRound": 1,
+      "DraftPick": 22,
+      "DraftedByTeamId": "DEN",
+      "College": "Arizona",
+      "ContractSalary": 8177778,
+      "ContractYears": 4
     },
     {
       "PlayerId": "julian_strawther",
@@ -5950,7 +6620,14 @@
         "DefensiveIQ": 65,
         "Intangibles": 75,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 1,
+      "DraftPick": 29,
+      "DraftedByTeamId": "IND",
+      "College": "Gonzaga",
+      "ContractSalary": 2674200,
+      "ContractYears": 3
     },
     {
       "PlayerId": "peyton_watson",
@@ -5998,7 +6675,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 80,
         "Potential": 88
-      }
+      },
+      "DraftYear": 2022,
+      "DraftRound": 1,
+      "DraftPick": 30,
+      "DraftedByTeamId": "OKC",
+      "College": "California-Los Angeles",
+      "ContractSalary": 4356476,
+      "ContractYears": 2
     },
     {
       "PlayerId": "daron_holmes_ii",
@@ -6046,7 +6730,14 @@
         "DefensiveIQ": 75,
         "Intangibles": 78,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 1,
+      "DraftPick": 22,
+      "DraftedByTeamId": "PHX",
+      "College": "Dayton",
+      "ContractSalary": 3218760,
+      "ContractYears": 4
     },
     {
       "PlayerId": "hunter_tyson",
@@ -6094,7 +6785,14 @@
         "DefensiveIQ": 70,
         "Intangibles": 78,
         "Potential": 75
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 2,
+      "DraftPick": 37,
+      "DraftedByTeamId": "OKC",
+      "College": "Clemson",
+      "ContractSalary": 2221677,
+      "ContractYears": 2
     },
     {
       "PlayerId": "tamar_bates",
@@ -6238,7 +6936,9 @@
         "DefensiveIQ": 62,
         "Intangibles": 72,
         "Potential": 75
-      }
+      },
+      "ContractSalary": 623967,
+      "ContractYears": 2
     },
     {
       "PlayerId": "jalen_pickett",
@@ -6286,7 +6986,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 78,
         "Potential": 75
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 2,
+      "DraftPick": 32,
+      "DraftedByTeamId": "IND",
+      "College": "Penn State",
+      "ContractSalary": 2221677,
+      "ContractYears": 3
     },
     {
       "PlayerId": "cade_cunningham",
@@ -6334,7 +7041,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 88,
         "Potential": 94
-      }
+      },
+      "DraftYear": 2021,
+      "DraftRound": 1,
+      "DraftPick": 1,
+      "DraftedByTeamId": "DET",
+      "College": "Oklahoma State",
+      "ContractSalary": 46394100,
+      "ContractYears": 6
     },
     {
       "PlayerId": "jalen_duren",
@@ -6382,7 +7096,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 82,
         "Potential": 90
-      }
+      },
+      "DraftYear": 2022,
+      "DraftRound": 1,
+      "DraftPick": 13,
+      "DraftedByTeamId": "CHA",
+      "College": "Memphis",
+      "ContractSalary": 6483144,
+      "ContractYears": 2
     },
     {
       "PlayerId": "jaden_ivey",
@@ -6430,7 +7151,14 @@
         "DefensiveIQ": 65,
         "Intangibles": 78,
         "Potential": 88
-      }
+      },
+      "DraftYear": 2022,
+      "DraftRound": 1,
+      "DraftPick": 5,
+      "DraftedByTeamId": "DET",
+      "College": "Purdue",
+      "ContractSalary": 10107163,
+      "ContractYears": 2
     },
     {
       "PlayerId": "tobias_harris",
@@ -6478,7 +7206,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 80,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2011,
+      "DraftRound": 1,
+      "DraftPick": 19,
+      "DraftedByTeamId": "CHA",
+      "College": "Tennessee",
+      "ContractSalary": 26634146,
+      "ContractYears": 2
     },
     {
       "PlayerId": "ronald_holland_ii",
@@ -6526,7 +7261,14 @@
         "DefensiveIQ": 75,
         "Intangibles": 80,
         "Potential": 90
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 1,
+      "DraftPick": 5,
+      "DraftedByTeamId": "DET",
+      "College": "Ignite (G League)",
+      "ContractSalary": 8657280,
+      "ContractYears": 4
     },
     {
       "PlayerId": "caris_levert",
@@ -6574,7 +7316,14 @@
         "DefensiveIQ": 68,
         "Intangibles": 78,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2016,
+      "DraftRound": 1,
+      "DraftPick": 20,
+      "DraftedByTeamId": "IND",
+      "College": "Michigan",
+      "ContractSalary": 14104000,
+      "ContractYears": 3
     },
     {
       "PlayerId": "ausar_thompson",
@@ -6622,7 +7371,14 @@
         "DefensiveIQ": 82,
         "Intangibles": 85,
         "Potential": 90
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 1,
+      "DraftPick": 5,
+      "DraftedByTeamId": "DET",
+      "College": "Overtime Elite",
+      "ContractSalary": 8775000,
+      "ContractYears": 3
     },
     {
       "PlayerId": "isaiah_stewart",
@@ -6670,7 +7426,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 85,
         "Potential": 80
-      }
+      },
+      "DraftYear": 2020,
+      "DraftRound": 1,
+      "DraftPick": 16,
+      "DraftedByTeamId": "POR",
+      "College": "Washington",
+      "ContractSalary": 15000000,
+      "ContractYears": 4
     },
     {
       "PlayerId": "duncan_robinson",
@@ -6718,7 +7481,9 @@
         "DefensiveIQ": 68,
         "Intangibles": 78,
         "Potential": 75
-      }
+      },
+      "ContractSalary": 16834692,
+      "ContractYears": 4
     },
     {
       "PlayerId": "marcus_sasser",
@@ -6766,7 +7531,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 82,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 1,
+      "DraftPick": 25,
+      "DraftedByTeamId": "MEM",
+      "College": "Houston",
+      "ContractSalary": 2886720,
+      "ContractYears": 3
     },
     {
       "PlayerId": "paul_reed",
@@ -6814,7 +7586,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 82,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2020,
+      "DraftRound": 2,
+      "DraftPick": 58,
+      "DraftedByTeamId": "PHI",
+      "College": "DePaul",
+      "ContractSalary": 5335894,
+      "ContractYears": 3
     },
     {
       "PlayerId": "wendell_moore_jr",
@@ -6862,7 +7641,12 @@
         "DefensiveIQ": 70,
         "Intangibles": 75,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2022,
+      "DraftRound": 1,
+      "DraftPick": 26,
+      "DraftedByTeamId": "DAL",
+      "College": "Duke"
     },
     {
       "PlayerId": "javonte_green",
@@ -6910,7 +7694,9 @@
         "DefensiveIQ": 75,
         "Intangibles": 80,
         "Potential": 72
-      }
+      },
+      "ContractSalary": 2296274,
+      "ContractYears": 2
     },
     {
       "PlayerId": "bobi_klintman",
@@ -6958,7 +7744,14 @@
         "DefensiveIQ": 68,
         "Intangibles": 72,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 2,
+      "DraftPick": 37,
+      "DraftedByTeamId": "MIN",
+      "College": "Cairns Taipans (Australia)",
+      "ContractSalary": 1955377,
+      "ContractYears": 4
     },
     {
       "PlayerId": "daniss_jenkins",
@@ -7006,7 +7799,9 @@
         "DefensiveIQ": 65,
         "Intangibles": 72,
         "Potential": 75
-      }
+      },
+      "ContractSalary": 3809524,
+      "ContractYears": 3
     },
     {
       "PlayerId": "chaz_lanier",
@@ -7054,7 +7849,9 @@
         "DefensiveIQ": 65,
         "Intangibles": 72,
         "Potential": 78
-      }
+      },
+      "ContractSalary": 1372870,
+      "ContractYears": 5
     },
     {
       "PlayerId": "isaac_jones",
@@ -7102,7 +7899,9 @@
         "DefensiveIQ": 70,
         "Intangibles": 75,
         "Potential": 72
-      }
+      },
+      "ContractSalary": 1955377,
+      "ContractYears": 2
     },
     {
       "PlayerId": "tolu_smith",
@@ -7198,7 +7997,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 98,
         "Potential": 95
-      }
+      },
+      "DraftYear": 2009,
+      "DraftRound": 1,
+      "DraftPick": 7,
+      "DraftedByTeamId": "GSW",
+      "College": "Davidson",
+      "ContractSalary": 59606817,
+      "ContractYears": 3
     },
     {
       "PlayerId": "jimmy_butler",
@@ -7246,7 +8052,14 @@
         "DefensiveIQ": 90,
         "Intangibles": 95,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2011,
+      "DraftRound": 1,
+      "DraftPick": 30,
+      "DraftedByTeamId": "CHI",
+      "College": "Marquette",
+      "ContractSalary": 54126450,
+      "ContractYears": 3
     },
     {
       "PlayerId": "draymond_green",
@@ -7294,7 +8107,14 @@
         "DefensiveIQ": 98,
         "Intangibles": 92,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2012,
+      "DraftRound": 2,
+      "DraftPick": 35,
+      "DraftedByTeamId": "GSW",
+      "College": "Michigan State",
+      "ContractSalary": 25892857,
+      "ContractYears": 3
     },
     {
       "PlayerId": "jonathan_kuminga",
@@ -7342,7 +8162,14 @@
         "DefensiveIQ": 75,
         "Intangibles": 82,
         "Potential": 92
-      }
+      },
+      "DraftYear": 2021,
+      "DraftRound": 1,
+      "DraftPick": 7,
+      "DraftedByTeamId": "GSW",
+      "College": "Ignite (G League)",
+      "ContractSalary": 23799569,
+      "ContractYears": 3
     },
     {
       "PlayerId": "brandin_podziemski",
@@ -7390,7 +8217,14 @@
         "DefensiveIQ": 75,
         "Intangibles": 85,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 1,
+      "DraftPick": 19,
+      "DraftedByTeamId": "GSW",
+      "College": "Santa Clara",
+      "ContractSalary": 3687960,
+      "ContractYears": 3
     },
     {
       "PlayerId": "moses_moody",
@@ -7438,7 +8272,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 78,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2021,
+      "DraftRound": 1,
+      "DraftPick": 14,
+      "DraftedByTeamId": "GSW",
+      "College": "Arkansas",
+      "ContractSalary": 11574075,
+      "ContractYears": 4
     },
     {
       "PlayerId": "buddy_hield",
@@ -7486,7 +8327,14 @@
         "DefensiveIQ": 68,
         "Intangibles": 78,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2016,
+      "DraftRound": 1,
+      "DraftPick": 6,
+      "DraftedByTeamId": "NOP",
+      "College": "Oklahoma",
+      "ContractSalary": 9219512,
+      "ContractYears": 4
     },
     {
       "PlayerId": "de_anthony_melton",
@@ -7534,7 +8382,14 @@
         "DefensiveIQ": 82,
         "Intangibles": 80,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2018,
+      "DraftRound": 2,
+      "DraftPick": 46,
+      "DraftedByTeamId": "HOU",
+      "College": "Southern California",
+      "ContractSalary": 3080921,
+      "ContractYears": 3
     },
     {
       "PlayerId": "gary_payton_ii",
@@ -7582,7 +8437,9 @@
         "DefensiveIQ": 92,
         "Intangibles": 90,
         "Potential": 78
-      }
+      },
+      "ContractSalary": 2296274,
+      "ContractYears": 2
     },
     {
       "PlayerId": "al_horford",
@@ -7630,7 +8487,14 @@
         "DefensiveIQ": 85,
         "Intangibles": 88,
         "Potential": 70
-      }
+      },
+      "DraftYear": 2007,
+      "DraftRound": 1,
+      "DraftPick": 3,
+      "DraftedByTeamId": "ATL",
+      "College": "Florida",
+      "ContractSalary": 5685000,
+      "ContractYears": 3
     },
     {
       "PlayerId": "trayce_jackson_davis",
@@ -7678,7 +8542,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 82,
         "Potential": 80
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 2,
+      "DraftPick": 57,
+      "DraftedByTeamId": "WAS",
+      "College": "Indiana",
+      "ContractSalary": 2221677,
+      "ContractYears": 2
     },
     {
       "PlayerId": "quinten_post",
@@ -7726,7 +8597,14 @@
         "DefensiveIQ": 70,
         "Intangibles": 75,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 2,
+      "DraftPick": 52,
+      "DraftedByTeamId": "GSW",
+      "College": "Boston College",
+      "ContractSalary": 1955377,
+      "ContractYears": 2
     },
     {
       "PlayerId": "seth_curry",
@@ -7774,7 +8652,9 @@
         "DefensiveIQ": 68,
         "Intangibles": 78,
         "Potential": 75
-      }
+      },
+      "ContractSalary": 1755198,
+      "ContractYears": 2
     },
     {
       "PlayerId": "gui_santos",
@@ -7822,7 +8702,14 @@
         "DefensiveIQ": 70,
         "Intangibles": 75,
         "Potential": 80
-      }
+      },
+      "DraftYear": 2022,
+      "DraftRound": 2,
+      "DraftPick": 55,
+      "DraftedByTeamId": "GSW",
+      "College": "Associacao Atletica Ponte Preta (Brazil)",
+      "ContractSalary": 2221677,
+      "ContractYears": 2
     },
     {
       "PlayerId": "lj_cryer",
@@ -7918,7 +8805,9 @@
         "DefensiveIQ": 70,
         "Intangibles": 75,
         "Potential": 80
-      }
+      },
+      "ContractSalary": 1272870,
+      "ContractYears": 5
     },
     {
       "PlayerId": "malevy_leons",
@@ -8014,7 +8903,9 @@
         "DefensiveIQ": 72,
         "Intangibles": 78,
         "Potential": 72
-      }
+      },
+      "ContractSalary": 857804,
+      "ContractYears": 2
     },
     {
       "PlayerId": "kevin_durant",
@@ -8062,7 +8953,14 @@
         "DefensiveIQ": 82,
         "Intangibles": 90,
         "Potential": 92
-      }
+      },
+      "DraftYear": 2007,
+      "DraftRound": 1,
+      "DraftPick": 2,
+      "DraftedByTeamId": "OKC",
+      "College": "Texas",
+      "ContractSalary": 54708609,
+      "ContractYears": 4
     },
     {
       "PlayerId": "alperen_sengun",
@@ -8110,7 +9008,12 @@
         "DefensiveIQ": 78,
         "Intangibles": 88,
         "Potential": 95
-      }
+      },
+      "DraftYear": 2021,
+      "DraftRound": 1,
+      "DraftPick": 16,
+      "DraftedByTeamId": "OKC",
+      "College": "Besiktas (Turkey)"
     },
     {
       "PlayerId": "jabari_smith_jr",
@@ -8158,7 +9061,14 @@
         "DefensiveIQ": 82,
         "Intangibles": 82,
         "Potential": 92
-      }
+      },
+      "DraftYear": 2022,
+      "DraftRound": 1,
+      "DraftPick": 3,
+      "DraftedByTeamId": "HOU",
+      "College": "Auburn",
+      "ContractSalary": 12350392,
+      "ContractYears": 7
     },
     {
       "PlayerId": "amen_thompson",
@@ -8206,7 +9116,14 @@
         "DefensiveIQ": 82,
         "Intangibles": 85,
         "Potential": 92
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 1,
+      "DraftPick": 4,
+      "DraftedByTeamId": "HOU",
+      "College": "Overtime Elite",
+      "ContractSalary": 9690600,
+      "ContractYears": 3
     },
     {
       "PlayerId": "fred_vanvleet",
@@ -8254,7 +9171,10 @@
         "DefensiveIQ": 85,
         "Intangibles": 92,
         "Potential": 82
-      }
+      },
+      "College": "Wichita State",
+      "ContractSalary": 25000000,
+      "ContractYears": 3
     },
     {
       "PlayerId": "reed_sheppard",
@@ -8302,7 +9222,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 85,
         "Potential": 92
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 1,
+      "DraftPick": 3,
+      "DraftedByTeamId": "HOU",
+      "College": "Kentucky",
+      "ContractSalary": 10603560,
+      "ContractYears": 4
     },
     {
       "PlayerId": "tari_eason",
@@ -8350,7 +9277,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 82,
         "Potential": 88
-      }
+      },
+      "DraftYear": 2022,
+      "DraftRound": 1,
+      "DraftPick": 17,
+      "DraftedByTeamId": "HOU",
+      "College": "Louisiana State",
+      "ContractSalary": 5675766,
+      "ContractYears": 2
     },
     {
       "PlayerId": "steven_adams",
@@ -8398,7 +9332,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 90,
         "Potential": 75
-      }
+      },
+      "DraftYear": 2013,
+      "DraftRound": 1,
+      "DraftPick": 12,
+      "DraftedByTeamId": "OKC",
+      "College": "Pittsburgh",
+      "ContractSalary": 14130434,
+      "ContractYears": 4
     },
     {
       "PlayerId": "clint_capela",
@@ -8446,7 +9387,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 80,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2014,
+      "DraftRound": 1,
+      "DraftPick": 25,
+      "DraftedByTeamId": "HOU",
+      "College": "Elan Chalon (France)",
+      "ContractSalary": 6700000,
+      "ContractYears": 4
     },
     {
       "PlayerId": "dorian_finney_smith",
@@ -8494,7 +9442,9 @@
         "DefensiveIQ": 85,
         "Intangibles": 82,
         "Potential": 75
-      }
+      },
+      "ContractSalary": 12700000,
+      "ContractYears": 5
     },
     {
       "PlayerId": "jaesean_tate",
@@ -8542,7 +9492,9 @@
         "DefensiveIQ": 82,
         "Intangibles": 88,
         "Potential": 78
-      }
+      },
+      "ContractSalary": 2296274,
+      "ContractYears": 2
     },
     {
       "PlayerId": "jeff_green",
@@ -8590,7 +9542,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 82,
         "Potential": 70
-      }
+      },
+      "DraftYear": 2007,
+      "DraftRound": 1,
+      "DraftPick": 5,
+      "DraftedByTeamId": "BOS",
+      "College": "Georgetown",
+      "ContractSalary": 2296274,
+      "ContractYears": 2
     },
     {
       "PlayerId": "aaron_holiday",
@@ -8638,7 +9597,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 78,
         "Potential": 75
-      }
+      },
+      "DraftYear": 2018,
+      "DraftRound": 1,
+      "DraftPick": 23,
+      "DraftedByTeamId": "IND",
+      "College": "California-Los Angeles",
+      "ContractSalary": 2296274,
+      "ContractYears": 2
     },
     {
       "PlayerId": "josh_okogie",
@@ -8686,7 +9652,14 @@
         "DefensiveIQ": 85,
         "Intangibles": 85,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2018,
+      "DraftRound": 1,
+      "DraftPick": 20,
+      "DraftedByTeamId": "MIN",
+      "College": "Georgia Tech",
+      "ContractSalary": 2296274,
+      "ContractYears": 2
     },
     {
       "PlayerId": "isaiah_crawford",
@@ -8782,7 +9755,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 78,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 2,
+      "DraftPick": 33,
+      "DraftedByTeamId": "MIL",
+      "College": "Ignite (G League)",
+      "ContractSalary": 1955377,
+      "ContractYears": 2
     },
     {
       "PlayerId": "kevon_harris",
@@ -8878,7 +9858,14 @@
         "DefensiveIQ": 65,
         "Intangibles": 75,
         "Potential": 80
-      }
+      },
+      "DraftYear": 2022,
+      "DraftRound": 2,
+      "DraftPick": 53,
+      "DraftedByTeamId": "BOS",
+      "College": "Alabama",
+      "ContractSalary": 2270735,
+      "ContractYears": 2
     },
     {
       "PlayerId": "tyrese_haliburton",
@@ -8926,7 +9913,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 92,
         "Potential": 92
-      }
+      },
+      "DraftYear": 2020,
+      "DraftRound": 1,
+      "DraftPick": 12,
+      "DraftedByTeamId": "SAC",
+      "College": "Iowa State",
+      "ContractSalary": 45550512,
+      "ContractYears": 5
     },
     {
       "PlayerId": "pascal_siakam",
@@ -8974,7 +9968,14 @@
         "DefensiveIQ": 82,
         "Intangibles": 88,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2016,
+      "DraftRound": 1,
+      "DraftPick": 27,
+      "DraftedByTeamId": "TOR",
+      "College": "New Mexico State",
+      "ContractSalary": 45550512,
+      "ContractYears": 4
     },
     {
       "PlayerId": "bennedict_mathurin",
@@ -9022,7 +10023,14 @@
         "DefensiveIQ": 70,
         "Intangibles": 85,
         "Potential": 90
-      }
+      },
+      "DraftYear": 2022,
+      "DraftRound": 1,
+      "DraftPick": 6,
+      "DraftedByTeamId": "IND",
+      "College": "Arizona",
+      "ContractSalary": 9187573,
+      "ContractYears": 2
     },
     {
       "PlayerId": "andrew_nembhard",
@@ -9070,7 +10078,14 @@
         "DefensiveIQ": 82,
         "Intangibles": 88,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2022,
+      "DraftRound": 2,
+      "DraftPick": 31,
+      "DraftedByTeamId": "IND",
+      "College": "Gonzaga",
+      "ContractSalary": 18102000,
+      "ContractYears": 4
     },
     {
       "PlayerId": "obi_toppin",
@@ -9118,7 +10133,14 @@
         "DefensiveIQ": 65,
         "Intangibles": 80,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2020,
+      "DraftRound": 1,
+      "DraftPick": 8,
+      "DraftedByTeamId": "NYK",
+      "College": "Dayton",
+      "ContractSalary": 14000000,
+      "ContractYears": 4
     },
     {
       "PlayerId": "jarace_walker",
@@ -9166,7 +10188,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 80,
         "Potential": 88
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 1,
+      "DraftPick": 8,
+      "DraftedByTeamId": "WAS",
+      "College": "Houston",
+      "ContractSalary": 6665520,
+      "ContractYears": 3
     },
     {
       "PlayerId": "tj_mcconnell",
@@ -9214,7 +10243,9 @@
         "DefensiveIQ": 85,
         "Intangibles": 95,
         "Potential": 78
-      }
+      },
+      "ContractSalary": 10200000,
+      "ContractYears": 5
     },
     {
       "PlayerId": "aaron_nesmith",
@@ -9262,7 +10293,14 @@
         "DefensiveIQ": 80,
         "Intangibles": 85,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2020,
+      "DraftRound": 1,
+      "DraftPick": 14,
+      "DraftedByTeamId": "BOS",
+      "College": "Vanderbilt",
+      "ContractSalary": 11000000,
+      "ContractYears": 5
     },
     {
       "PlayerId": "isaiah_jackson",
@@ -9310,7 +10348,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 78,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2021,
+      "DraftRound": 1,
+      "DraftPick": 22,
+      "DraftedByTeamId": "LAL",
+      "College": "Kentucky",
+      "ContractSalary": 7600000,
+      "ContractYears": 4
     },
     {
       "PlayerId": "ben_sheppard",
@@ -9358,7 +10403,14 @@
         "DefensiveIQ": 75,
         "Intangibles": 80,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 1,
+      "DraftPick": 26,
+      "DraftedByTeamId": "IND",
+      "College": "Belmont",
+      "ContractSalary": 2790720,
+      "ContractYears": 3
     },
     {
       "PlayerId": "johnny_furphy",
@@ -9406,7 +10458,14 @@
         "DefensiveIQ": 70,
         "Intangibles": 75,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 2,
+      "DraftPick": 35,
+      "DraftedByTeamId": "SAS",
+      "College": "Kansas",
+      "ContractSalary": 1955377,
+      "ContractYears": 4
     },
     {
       "PlayerId": "kam_jones",
@@ -9454,7 +10513,9 @@
         "DefensiveIQ": 70,
         "Intangibles": 80,
         "Potential": 85
-      }
+      },
+      "ContractSalary": 1272870,
+      "ContractYears": 5
     },
     {
       "PlayerId": "tony_bradley",
@@ -9502,7 +10563,14 @@
         "DefensiveIQ": 70,
         "Intangibles": 75,
         "Potential": 72
-      }
+      },
+      "DraftYear": 2017,
+      "DraftRound": 1,
+      "DraftPick": 28,
+      "DraftedByTeamId": "LAL",
+      "College": "North Carolina",
+      "ContractSalary": 3204816,
+      "ContractYears": 2
     },
     {
       "PlayerId": "jay_huff",
@@ -9550,7 +10618,9 @@
         "DefensiveIQ": 72,
         "Intangibles": 75,
         "Potential": 75
-      }
+      },
+      "ContractSalary": 2349578,
+      "ContractYears": 4
     },
     {
       "PlayerId": "garrison_mathews",
@@ -9598,7 +10668,10 @@
         "DefensiveIQ": 70,
         "Intangibles": 78,
         "Potential": 72
-      }
+      },
+      "College": "Lipscomb",
+      "ContractSalary": 429325,
+      "ContractYears": 2
     },
     {
       "PlayerId": "quenton_jackson",
@@ -9790,7 +10863,14 @@
         "DefensiveIQ": 95,
         "Intangibles": 92,
         "Potential": 90
-      }
+      },
+      "DraftYear": 2011,
+      "DraftRound": 1,
+      "DraftPick": 15,
+      "DraftedByTeamId": "IND",
+      "College": "San Diego State",
+      "ContractSalary": 50000000,
+      "ContractYears": 3
     },
     {
       "PlayerId": "james_harden",
@@ -9838,7 +10918,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 85,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2009,
+      "DraftRound": 1,
+      "DraftPick": 3,
+      "DraftedByTeamId": "OKC",
+      "College": "Arizona State",
+      "ContractSalary": 39182693,
+      "ContractYears": 2
     },
     {
       "PlayerId": "bradley_beal",
@@ -9886,7 +10973,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 82,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2012,
+      "DraftRound": 1,
+      "DraftPick": 3,
+      "DraftedByTeamId": "WAS",
+      "College": "Florida",
+      "ContractSalary": 19383010,
+      "ContractYears": 6
     },
     {
       "PlayerId": "ivica_zubac",
@@ -9934,7 +11028,14 @@
         "DefensiveIQ": 80,
         "Intangibles": 85,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2016,
+      "DraftRound": 2,
+      "DraftPick": 32,
+      "DraftedByTeamId": "LAL",
+      "College": "KK Mega Vizura",
+      "ContractSalary": 18893980,
+      "ContractYears": 4
     },
     {
       "PlayerId": "john_collins",
@@ -9982,7 +11083,14 @@
         "DefensiveIQ": 68,
         "Intangibles": 78,
         "Potential": 80
-      }
+      },
+      "DraftYear": 2017,
+      "DraftRound": 1,
+      "DraftPick": 19,
+      "DraftedByTeamId": "ATL",
+      "College": "Wake Forest",
+      "ContractSalary": 26580000,
+      "ContractYears": 2
     },
     {
       "PlayerId": "brook_lopez",
@@ -10030,7 +11138,14 @@
         "DefensiveIQ": 88,
         "Intangibles": 85,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2008,
+      "DraftRound": 1,
+      "DraftPick": 10,
+      "DraftedByTeamId": "BKN",
+      "College": "Stanford",
+      "ContractSalary": 8750000,
+      "ContractYears": 3
     },
     {
       "PlayerId": "derrick_jones_jr",
@@ -10078,7 +11193,9 @@
         "DefensiveIQ": 78,
         "Intangibles": 78,
         "Potential": 78
-      }
+      },
+      "ContractSalary": 10000000,
+      "ContractYears": 3
     },
     {
       "PlayerId": "nicolas_batum",
@@ -10126,7 +11243,14 @@
         "DefensiveIQ": 82,
         "Intangibles": 88,
         "Potential": 72
-      }
+      },
+      "DraftYear": 2008,
+      "DraftRound": 1,
+      "DraftPick": 25,
+      "DraftedByTeamId": "HOU",
+      "College": "Le Mans Sarthe Basket (France)",
+      "ContractSalary": 5601600,
+      "ContractYears": 3
     },
     {
       "PlayerId": "bogdan_bogdanovic",
@@ -10174,7 +11298,14 @@
         "DefensiveIQ": 70,
         "Intangibles": 78,
         "Potential": 75
-      }
+      },
+      "DraftYear": 2014,
+      "DraftRound": 1,
+      "DraftPick": 27,
+      "DraftedByTeamId": "PHX",
+      "College": "KK Partizan (Serbia)",
+      "ContractSalary": 16020000,
+      "ContractYears": 3
     },
     {
       "PlayerId": "kris_dunn",
@@ -10222,7 +11353,14 @@
         "DefensiveIQ": 88,
         "Intangibles": 82,
         "Potential": 75
-      }
+      },
+      "DraftYear": 2016,
+      "DraftRound": 1,
+      "DraftPick": 5,
+      "DraftedByTeamId": "MIN",
+      "College": "Providence",
+      "ContractSalary": 5426400,
+      "ContractYears": 3
     },
     {
       "PlayerId": "kobe_brown",
@@ -10270,7 +11408,14 @@
         "DefensiveIQ": 75,
         "Intangibles": 78,
         "Potential": 80
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 1,
+      "DraftPick": 30,
+      "DraftedByTeamId": "LAC",
+      "College": "Missouri",
+      "ContractSalary": 2654880,
+      "ContractYears": 3
     },
     {
       "PlayerId": "jordan_miller",
@@ -10318,7 +11463,14 @@
         "DefensiveIQ": 75,
         "Intangibles": 78,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 2,
+      "DraftPick": 48,
+      "DraftedByTeamId": "LAC",
+      "College": "Miami (FL)",
+      "ContractSalary": 712637,
+      "ContractYears": 3
     },
     {
       "PlayerId": "cam_christie",
@@ -10366,7 +11518,14 @@
         "DefensiveIQ": 68,
         "Intangibles": 75,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 2,
+      "DraftPick": 46,
+      "DraftedByTeamId": "LAC",
+      "College": "Minnesota",
+      "ContractSalary": 1955377,
+      "ContractYears": 4
     },
     {
       "PlayerId": "rayj_dennis",
@@ -10462,7 +11621,9 @@
         "DefensiveIQ": 72,
         "Intangibles": 75,
         "Potential": 80
-      }
+      },
+      "ContractSalary": 475497,
+      "ContractYears": 3
     },
     {
       "PlayerId": "yanic_konan_niederhauser",
@@ -10558,7 +11719,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 92,
         "Potential": 98
-      }
+      },
+      "DraftYear": 2018,
+      "DraftRound": 1,
+      "DraftPick": 3,
+      "DraftedByTeamId": "ATL",
+      "College": "Real Madrid Baloncesto (Spain)",
+      "ContractSalary": 45999660,
+      "ContractYears": 5
     },
     {
       "PlayerId": "lebron_james",
@@ -10606,7 +11774,14 @@
         "DefensiveIQ": 85,
         "Intangibles": 98,
         "Potential": 88
-      }
+      },
+      "DraftYear": 2003,
+      "DraftRound": 1,
+      "DraftPick": 1,
+      "DraftedByTeamId": "CLE",
+      "College": "Saint Vincent-Saint Mary",
+      "ContractSalary": 52627153,
+      "ContractYears": 2
     },
     {
       "PlayerId": "deandre_ayton",
@@ -10654,7 +11829,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 75,
         "Potential": 88
-      }
+      },
+      "DraftYear": 2018,
+      "DraftRound": 1,
+      "DraftPick": 1,
+      "DraftedByTeamId": "PHX",
+      "College": "Arizona",
+      "ContractSalary": 25550814,
+      "ContractYears": 2
     },
     {
       "PlayerId": "austin_reaves",
@@ -10702,7 +11884,9 @@
         "DefensiveIQ": 78,
         "Intangibles": 90,
         "Potential": 85
-      }
+      },
+      "ContractSalary": 13937574,
+      "ContractYears": 3
     },
     {
       "PlayerId": "rui_hachimura",
@@ -10750,7 +11934,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 78,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2019,
+      "DraftRound": 1,
+      "DraftPick": 9,
+      "DraftedByTeamId": "WAS",
+      "College": "Gonzaga",
+      "ContractSalary": 18259259,
+      "ContractYears": 2
     },
     {
       "PlayerId": "marcus_smart",
@@ -10798,7 +11989,14 @@
         "DefensiveIQ": 95,
         "Intangibles": 92,
         "Potential": 80
-      }
+      },
+      "DraftYear": 2014,
+      "DraftRound": 1,
+      "DraftPick": 6,
+      "DraftedByTeamId": "BOS",
+      "College": "Oklahoma State",
+      "ContractSalary": 14786855,
+      "ContractYears": 2
     },
     {
       "PlayerId": "dalton_knecht",
@@ -10846,7 +12044,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 82,
         "Potential": 88
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 1,
+      "DraftPick": 17,
+      "DraftedByTeamId": "LAL",
+      "College": "Tennessee",
+      "ContractSalary": 4010160,
+      "ContractYears": 4
     },
     {
       "PlayerId": "jarred_vanderbilt",
@@ -10894,7 +12099,14 @@
         "DefensiveIQ": 88,
         "Intangibles": 88,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2018,
+      "DraftRound": 2,
+      "DraftPick": 41,
+      "DraftedByTeamId": "ORL",
+      "College": "Kentucky",
+      "ContractSalary": 11571429,
+      "ContractYears": 4
     },
     {
       "PlayerId": "maxi_kleber",
@@ -10942,7 +12154,9 @@
         "DefensiveIQ": 82,
         "Intangibles": 82,
         "Potential": 75
-      }
+      },
+      "ContractSalary": 11000000,
+      "ContractYears": 2
     },
     {
       "PlayerId": "jaxson_hayes",
@@ -10990,7 +12204,14 @@
         "DefensiveIQ": 70,
         "Intangibles": 72,
         "Potential": 80
-      }
+      },
+      "DraftYear": 2019,
+      "DraftRound": 1,
+      "DraftPick": 8,
+      "DraftedByTeamId": "ATL",
+      "College": "Texas",
+      "ContractSalary": 3449323,
+      "ContractYears": 2
     },
     {
       "PlayerId": "gabe_vincent",
@@ -11038,7 +12259,9 @@
         "DefensiveIQ": 75,
         "Intangibles": 78,
         "Potential": 75
-      }
+      },
+      "ContractSalary": 11500000,
+      "ContractYears": 2
     },
     {
       "PlayerId": "bronny_james",
@@ -11086,7 +12309,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 78,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 2,
+      "DraftPick": 55,
+      "DraftedByTeamId": "LAL",
+      "College": "Southern California",
+      "ContractSalary": 1955377,
+      "ContractYears": 4
     },
     {
       "PlayerId": "jake_laravia",
@@ -11134,7 +12364,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 78,
         "Potential": 80
-      }
+      },
+      "DraftYear": 2022,
+      "DraftRound": 1,
+      "DraftPick": 19,
+      "DraftedByTeamId": "MIN",
+      "College": "Wake Forest",
+      "ContractSalary": 6000000,
+      "ContractYears": 3
     },
     {
       "PlayerId": "nick_smith_jr",
@@ -11182,7 +12419,14 @@
         "DefensiveIQ": 65,
         "Intangibles": 75,
         "Potential": 88
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 1,
+      "DraftPick": 27,
+      "DraftedByTeamId": "CHA",
+      "College": "Arkansas",
+      "ContractSalary": 2710680,
+      "ContractYears": 2
     },
     {
       "PlayerId": "adou_thiero",
@@ -11230,7 +12474,9 @@
         "DefensiveIQ": 72,
         "Intangibles": 78,
         "Potential": 85
-      }
+      },
+      "ContractSalary": 1272870,
+      "ContractYears": 4
     },
     {
       "PlayerId": "drew_timme",
@@ -11278,7 +12524,9 @@
         "DefensiveIQ": 68,
         "Intangibles": 85,
         "Potential": 78
-      }
+      },
+      "ContractSalary": 1955377,
+      "ContractYears": 2
     },
     {
       "PlayerId": "chris_manon",
@@ -11374,7 +12622,14 @@
         "DefensiveIQ": 68,
         "Intangibles": 88,
         "Potential": 95
-      }
+      },
+      "DraftYear": 2019,
+      "DraftRound": 1,
+      "DraftPick": 2,
+      "DraftedByTeamId": "MEM",
+      "College": "Murray State",
+      "ContractSalary": 39446090,
+      "ContractYears": 4
     },
     {
       "PlayerId": "jaren_jackson_jr",
@@ -11422,7 +12677,14 @@
         "DefensiveIQ": 88,
         "Intangibles": 85,
         "Potential": 92
-      }
+      },
+      "DraftYear": 2018,
+      "DraftRound": 1,
+      "DraftPick": 4,
+      "DraftedByTeamId": "MEM",
+      "College": "Michigan State",
+      "ContractSalary": 35000000,
+      "ContractYears": 6
     },
     {
       "PlayerId": "zach_edey",
@@ -11470,7 +12732,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 85,
         "Potential": 90
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 1,
+      "DraftPick": 9,
+      "DraftedByTeamId": "MEM",
+      "College": "Purdue",
+      "ContractSalary": 6045000,
+      "ContractYears": 4
     },
     {
       "PlayerId": "kentavious_caldwell_pope",
@@ -11518,7 +12787,14 @@
         "DefensiveIQ": 88,
         "Intangibles": 90,
         "Potential": 80
-      }
+      },
+      "DraftYear": 2013,
+      "DraftRound": 1,
+      "DraftPick": 8,
+      "DraftedByTeamId": "DET",
+      "College": "Georgia",
+      "ContractSalary": 21621500,
+      "ContractYears": 3
     },
     {
       "PlayerId": "santi_aldama",
@@ -11566,7 +12842,14 @@
         "DefensiveIQ": 75,
         "Intangibles": 82,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2021,
+      "DraftRound": 1,
+      "DraftPick": 30,
+      "DraftedByTeamId": "UTA",
+      "College": "Loyola-Maryland",
+      "ContractSalary": 18485916,
+      "ContractYears": 4
     },
     {
       "PlayerId": "brandon_clarke",
@@ -11614,7 +12897,14 @@
         "DefensiveIQ": 82,
         "Intangibles": 85,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2019,
+      "DraftRound": 1,
+      "DraftPick": 21,
+      "DraftedByTeamId": "OKC",
+      "College": "Gonzaga",
+      "ContractSalary": 12500000,
+      "ContractYears": 3
     },
     {
       "PlayerId": "gg_jackson",
@@ -11662,7 +12952,14 @@
         "DefensiveIQ": 70,
         "Intangibles": 78,
         "Potential": 90
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 2,
+      "DraftPick": 45,
+      "DraftedByTeamId": "MEM",
+      "College": "South Carolina",
+      "ContractSalary": 2221677,
+      "ContractYears": 3
     },
     {
       "PlayerId": "ty_jerome",
@@ -11710,7 +13007,14 @@
         "DefensiveIQ": 75,
         "Intangibles": 82,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2019,
+      "DraftRound": 1,
+      "DraftPick": 24,
+      "DraftedByTeamId": "PHI",
+      "College": "Virginia",
+      "ContractSalary": 8781000,
+      "ContractYears": 4
     },
     {
       "PlayerId": "scotty_pippen_jr",
@@ -11758,7 +13062,9 @@
         "DefensiveIQ": 72,
         "Intangibles": 80,
         "Potential": 82
-      }
+      },
+      "ContractSalary": 2270735,
+      "ContractYears": 4
     },
     {
       "PlayerId": "john_konchar",
@@ -11806,7 +13112,9 @@
         "DefensiveIQ": 82,
         "Intangibles": 88,
         "Potential": 75
-      }
+      },
+      "ContractSalary": 6165000,
+      "ContractYears": 3
     },
     {
       "PlayerId": "kobe_bufkin",
@@ -11854,7 +13162,14 @@
         "DefensiveIQ": 70,
         "Intangibles": 78,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 1,
+      "DraftPick": 15,
+      "DraftedByTeamId": "ATL",
+      "College": "Michigan",
+      "ContractSalary": 976577,
+      "ContractYears": 3
     },
     {
       "PlayerId": "vince_williams_jr",
@@ -11902,7 +13217,14 @@
         "DefensiveIQ": 82,
         "Intangibles": 82,
         "Potential": 80
-      }
+      },
+      "DraftYear": 2022,
+      "DraftRound": 2,
+      "DraftPick": 47,
+      "DraftedByTeamId": "MEM",
+      "College": "Va Commonwealth",
+      "ContractSalary": 2301587,
+      "ContractYears": 2
     },
     {
       "PlayerId": "jock_landale",
@@ -11950,7 +13272,9 @@
         "DefensiveIQ": 75,
         "Intangibles": 82,
         "Potential": 75
-      }
+      },
+      "ContractSalary": 2296274,
+      "ContractYears": 2
     },
     {
       "PlayerId": "jaylen_wells",
@@ -11998,7 +13322,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 78,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 2,
+      "DraftPick": 39,
+      "DraftedByTeamId": "MEM",
+      "College": "Washington State",
+      "ContractSalary": 1955377,
+      "ContractYears": 4
     },
     {
       "PlayerId": "olivier_maxence_prosper",
@@ -12046,7 +13377,14 @@
         "DefensiveIQ": 75,
         "Intangibles": 78,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 1,
+      "DraftPick": 24,
+      "DraftedByTeamId": "SAC",
+      "College": "Marquette",
+      "ContractSalary": 1002360,
+      "ContractYears": 4
     },
     {
       "PlayerId": "cam_spencer",
@@ -12094,7 +13432,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 82,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 2,
+      "DraftPick": 53,
+      "DraftedByTeamId": "DET",
+      "College": "Connecticut",
+      "ContractSalary": 2537989,
+      "ContractYears": 5
     },
     {
       "PlayerId": "jahmai_mashack",
@@ -12238,7 +13583,9 @@
         "DefensiveIQ": 70,
         "Intangibles": 72,
         "Potential": 78
-      }
+      },
+      "ContractSalary": 5715120,
+      "ContractYears": 5
     },
     {
       "PlayerId": "bam_adebayo",
@@ -12286,7 +13633,14 @@
         "DefensiveIQ": 92,
         "Intangibles": 95,
         "Potential": 90
-      }
+      },
+      "DraftYear": 2017,
+      "DraftRound": 1,
+      "DraftPick": 14,
+      "DraftedByTeamId": "MIA",
+      "College": "Kentucky",
+      "ContractSalary": 37096620,
+      "ContractYears": 5
     },
     {
       "PlayerId": "tyler_herro",
@@ -12334,7 +13688,14 @@
         "DefensiveIQ": 70,
         "Intangibles": 85,
         "Potential": 88
-      }
+      },
+      "DraftYear": 2019,
+      "DraftRound": 1,
+      "DraftPick": 13,
+      "DraftedByTeamId": "MIA",
+      "College": "Kentucky",
+      "ContractSalary": 31000000,
+      "ContractYears": 3
     },
     {
       "PlayerId": "terry_rozier",
@@ -12382,7 +13743,14 @@
         "DefensiveIQ": 75,
         "Intangibles": 82,
         "Potential": 80
-      }
+      },
+      "DraftYear": 2015,
+      "DraftRound": 1,
+      "DraftPick": 16,
+      "DraftedByTeamId": "BOS",
+      "College": "Louisville",
+      "ContractSalary": 26643031,
+      "ContractYears": 2
     },
     {
       "PlayerId": "jaime_jaquez_jr",
@@ -12430,7 +13798,14 @@
         "DefensiveIQ": 80,
         "Intangibles": 90,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 1,
+      "DraftPick": 18,
+      "DraftedByTeamId": "MIA",
+      "College": "California-Los Angeles",
+      "ContractSalary": 3861600,
+      "ContractYears": 3
     },
     {
       "PlayerId": "nikola_jovic",
@@ -12478,7 +13853,14 @@
         "DefensiveIQ": 68,
         "Intangibles": 80,
         "Potential": 88
-      }
+      },
+      "DraftYear": 2022,
+      "DraftRound": 1,
+      "DraftPick": 27,
+      "DraftedByTeamId": "MIA",
+      "College": "KK Mega Leks (Serbia)",
+      "ContractSalary": 4445417,
+      "ContractYears": 6
     },
     {
       "PlayerId": "kelel_ware",
@@ -12526,7 +13908,14 @@
         "DefensiveIQ": 75,
         "Intangibles": 80,
         "Potential": 90
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 1,
+      "DraftPick": 15,
+      "DraftedByTeamId": "MIA",
+      "College": "Indiana",
+      "ContractSalary": 4443360,
+      "ContractYears": 4
     },
     {
       "PlayerId": "andrew_wiggins",
@@ -12574,7 +13963,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 78,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2014,
+      "DraftRound": 1,
+      "DraftPick": 1,
+      "DraftedByTeamId": "CLE",
+      "College": "Kansas",
+      "ContractSalary": 28223215,
+      "ContractYears": 3
     },
     {
       "PlayerId": "norman_powell",
@@ -12622,7 +14018,14 @@
         "DefensiveIQ": 75,
         "Intangibles": 85,
         "Potential": 80
-      }
+      },
+      "DraftYear": 2015,
+      "DraftRound": 2,
+      "DraftPick": 46,
+      "DraftedByTeamId": "MIL",
+      "College": "California-Los Angeles",
+      "ContractSalary": 20482758,
+      "ContractYears": 2
     },
     {
       "PlayerId": "davion_mitchell",
@@ -12670,7 +14073,14 @@
         "DefensiveIQ": 90,
         "Intangibles": 88,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2021,
+      "DraftRound": 1,
+      "DraftPick": 9,
+      "DraftedByTeamId": "SAC",
+      "College": "Baylor",
+      "ContractSalary": 11600000,
+      "ContractYears": 3
     },
     {
       "PlayerId": "simone_fontecchio",
@@ -12718,7 +14128,9 @@
         "DefensiveIQ": 72,
         "Intangibles": 78,
         "Potential": 75
-      }
+      },
+      "ContractSalary": 8307692,
+      "ContractYears": 2
     },
     {
       "PlayerId": "kasparas_jakucionis",
@@ -12766,7 +14178,9 @@
         "DefensiveIQ": 70,
         "Intangibles": 82,
         "Potential": 90
-      }
+      },
+      "ContractSalary": 3658800,
+      "ContractYears": 5
     },
     {
       "PlayerId": "pelle_larsson",
@@ -12814,7 +14228,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 82,
         "Potential": 80
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 2,
+      "DraftPick": 44,
+      "DraftedByTeamId": "HOU",
+      "College": "Arizona",
+      "ContractSalary": 1955377,
+      "ContractYears": 2
     },
     {
       "PlayerId": "vladislav_goldin",
@@ -12910,7 +14331,9 @@
         "DefensiveIQ": 75,
         "Intangibles": 80,
         "Potential": 78
-      }
+      },
+      "ContractSalary": 1955377,
+      "ContractYears": 2
     },
     {
       "PlayerId": "myron_gardner",
@@ -12958,7 +14381,9 @@
         "DefensiveIQ": 75,
         "Intangibles": 80,
         "Potential": 78
-      }
+      },
+      "ContractSalary": 395029,
+      "ContractYears": 4
     },
     {
       "PlayerId": "dru_smith",
@@ -13006,7 +14431,9 @@
         "DefensiveIQ": 82,
         "Intangibles": 82,
         "Potential": 75
-      }
+      },
+      "ContractSalary": 2378870,
+      "ContractYears": 4
     },
     {
       "PlayerId": "jahmir_young",
@@ -13102,7 +14529,14 @@
         "DefensiveIQ": 88,
         "Intangibles": 98,
         "Potential": 98
-      }
+      },
+      "DraftYear": 2013,
+      "DraftRound": 1,
+      "DraftPick": 15,
+      "DraftedByTeamId": "MIL",
+      "College": "Basket Zaragoza 2002 (Spain)",
+      "ContractSalary": 54126450,
+      "ContractYears": 4
     },
     {
       "PlayerId": "myles_turner",
@@ -13150,7 +14584,14 @@
         "DefensiveIQ": 88,
         "Intangibles": 82,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2015,
+      "DraftRound": 1,
+      "DraftPick": 11,
+      "DraftedByTeamId": "IND",
+      "College": "Texas",
+      "ContractSalary": 25318251,
+      "ContractYears": 5
     },
     {
       "PlayerId": "gary_trent_jr",
@@ -13198,7 +14639,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 80,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2018,
+      "DraftRound": 2,
+      "DraftPick": 37,
+      "DraftedByTeamId": "SAC",
+      "College": "Duke",
+      "ContractSalary": 3697105,
+      "ContractYears": 3
     },
     {
       "PlayerId": "kyle_kuzma",
@@ -13246,7 +14694,14 @@
         "DefensiveIQ": 68,
         "Intangibles": 78,
         "Potential": 80
-      }
+      },
+      "DraftYear": 2017,
+      "DraftRound": 1,
+      "DraftPick": 27,
+      "DraftedByTeamId": "BKN",
+      "College": "Utah",
+      "ContractSalary": 22410605,
+      "ContractYears": 3
     },
     {
       "PlayerId": "bobby_portis",
@@ -13294,7 +14749,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 92,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2015,
+      "DraftRound": 1,
+      "DraftPick": 22,
+      "DraftedByTeamId": "CHI",
+      "College": "Arkansas",
+      "ContractSalary": 13445754,
+      "ContractYears": 4
     },
     {
       "PlayerId": "cole_anthony",
@@ -13342,7 +14804,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 80,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2020,
+      "DraftRound": 1,
+      "DraftPick": 15,
+      "DraftedByTeamId": "ORL",
+      "College": "North Carolina",
+      "ContractSalary": 2296274,
+      "ContractYears": 2
     },
     {
       "PlayerId": "taurean_prince",
@@ -13390,7 +14859,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 78,
         "Potential": 75
-      }
+      },
+      "DraftYear": 2016,
+      "DraftRound": 1,
+      "DraftPick": 12,
+      "DraftedByTeamId": "UTA",
+      "College": "Baylor",
+      "ContractSalary": 3303774,
+      "ContractYears": 3
     },
     {
       "PlayerId": "gary_harris",
@@ -13438,7 +14914,14 @@
         "DefensiveIQ": 82,
         "Intangibles": 82,
         "Potential": 72
-      }
+      },
+      "DraftYear": 2014,
+      "DraftRound": 1,
+      "DraftPick": 19,
+      "DraftedByTeamId": "CHI",
+      "College": "Michigan State",
+      "ContractSalary": 3634153,
+      "ContractYears": 3
     },
     {
       "PlayerId": "andre_jackson_jr",
@@ -13486,7 +14969,14 @@
         "DefensiveIQ": 80,
         "Intangibles": 82,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 2,
+      "DraftPick": 36,
+      "DraftedByTeamId": "ORL",
+      "College": "Connecticut",
+      "ContractSalary": 2221677,
+      "ContractYears": 2
     },
     {
       "PlayerId": "aj_green",
@@ -13534,7 +15024,9 @@
         "DefensiveIQ": 70,
         "Intangibles": 78,
         "Potential": 78
-      }
+      },
+      "ContractSalary": 2301587,
+      "ContractYears": 6
     },
     {
       "PlayerId": "ryan_rollins",
@@ -13582,7 +15074,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 78,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2022,
+      "DraftRound": 2,
+      "DraftPick": 44,
+      "DraftedByTeamId": "ATL",
+      "College": "Toledo",
+      "ContractSalary": 4000000,
+      "ContractYears": 4
     },
     {
       "PlayerId": "amir_coffey",
@@ -13630,7 +15129,9 @@
         "DefensiveIQ": 72,
         "Intangibles": 78,
         "Potential": 75
-      }
+      },
+      "ContractSalary": 2296274,
+      "ContractYears": 2
     },
     {
       "PlayerId": "pete_nance",
@@ -13726,7 +15227,14 @@
         "DefensiveIQ": 65,
         "Intangibles": 65,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2019,
+      "DraftRound": 1,
+      "DraftPick": 30,
+      "DraftedByTeamId": "MIL",
+      "College": "Southern California",
+      "ContractSalary": 5134000,
+      "ContractYears": 3
     },
     {
       "PlayerId": "jericho_sims",
@@ -13774,7 +15282,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 78,
         "Potential": 75
-      }
+      },
+      "DraftYear": 2021,
+      "DraftRound": 2,
+      "DraftPick": 58,
+      "DraftedByTeamId": "NYK",
+      "College": "Texas",
+      "ContractSalary": 2461463,
+      "ContractYears": 3
     },
     {
       "PlayerId": "mark_sears",
@@ -13918,7 +15433,14 @@
         "DefensiveIQ": 75,
         "Intangibles": 92,
         "Potential": 68
-      }
+      },
+      "DraftYear": 2014,
+      "DraftRound": 2,
+      "DraftPick": 51,
+      "DraftedByTeamId": "NYK",
+      "College": "Delaware 87ers (D-League)",
+      "ContractSalary": 2296274,
+      "ContractYears": 2
     },
     {
       "PlayerId": "anthony_edwards",
@@ -13966,7 +15488,14 @@
         "DefensiveIQ": 80,
         "Intangibles": 95,
         "Potential": 98
-      }
+      },
+      "DraftYear": 2020,
+      "DraftRound": 1,
+      "DraftPick": 1,
+      "DraftedByTeamId": "MIN",
+      "College": "Georgia",
+      "ContractSalary": 45550512,
+      "ContractYears": 5
     },
     {
       "PlayerId": "julius_randle",
@@ -14014,7 +15543,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 85,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2014,
+      "DraftRound": 1,
+      "DraftPick": 7,
+      "DraftedByTeamId": "LAL",
+      "College": "Kentucky",
+      "ContractSalary": 30864198,
+      "ContractYears": 4
     },
     {
       "PlayerId": "rudy_gobert",
@@ -14062,7 +15598,14 @@
         "DefensiveIQ": 95,
         "Intangibles": 92,
         "Potential": 88
-      }
+      },
+      "DraftYear": 2013,
+      "DraftRound": 1,
+      "DraftPick": 27,
+      "DraftedByTeamId": "DEN",
+      "College": "Cholet Basket (France)",
+      "ContractSalary": 35000000,
+      "ContractYears": 4
     },
     {
       "PlayerId": "jaden_mcdaniels",
@@ -14110,7 +15653,14 @@
         "DefensiveIQ": 88,
         "Intangibles": 85,
         "Potential": 90
-      }
+      },
+      "DraftYear": 2020,
+      "DraftRound": 1,
+      "DraftPick": 28,
+      "DraftedByTeamId": "LAL",
+      "College": "Washington",
+      "ContractSalary": 24393104,
+      "ContractYears": 5
     },
     {
       "PlayerId": "mike_conley",
@@ -14158,7 +15708,14 @@
         "DefensiveIQ": 85,
         "Intangibles": 95,
         "Potential": 75
-      }
+      },
+      "DraftYear": 2007,
+      "DraftRound": 1,
+      "DraftPick": 4,
+      "DraftedByTeamId": "MEM",
+      "College": "Ohio State",
+      "ContractSalary": 725834,
+      "ContractYears": 2
     },
     {
       "PlayerId": "naz_reid",
@@ -14206,7 +15763,9 @@
         "DefensiveIQ": 78,
         "Intangibles": 88,
         "Potential": 82
-      }
+      },
+      "ContractSalary": 21551724,
+      "ContractYears": 6
     },
     {
       "PlayerId": "donte_divincenzo",
@@ -14254,7 +15813,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 88,
         "Potential": 80
-      }
+      },
+      "DraftYear": 2018,
+      "DraftRound": 1,
+      "DraftPick": 17,
+      "DraftedByTeamId": "MIL",
+      "College": "Villanova",
+      "ContractSalary": 11990000,
+      "ContractYears": 3
     },
     {
       "PlayerId": "rob_dillingham",
@@ -14302,7 +15868,14 @@
         "DefensiveIQ": 62,
         "Intangibles": 82,
         "Potential": 92
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 1,
+      "DraftPick": 8,
+      "DraftedByTeamId": "SAS",
+      "College": "Kentucky",
+      "ContractSalary": 6576120,
+      "ContractYears": 4
     },
     {
       "PlayerId": "terrence_shannon_jr",
@@ -14350,7 +15923,14 @@
         "DefensiveIQ": 75,
         "Intangibles": 82,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 1,
+      "DraftPick": 27,
+      "DraftedByTeamId": "MIN",
+      "College": "Illinois",
+      "ContractSalary": 2674080,
+      "ContractYears": 4
     },
     {
       "PlayerId": "joe_ingles",
@@ -14398,7 +15978,9 @@
         "DefensiveIQ": 78,
         "Intangibles": 90,
         "Potential": 68
-      }
+      },
+      "ContractSalary": 2296274,
+      "ContractYears": 2
     },
     {
       "PlayerId": "bones_hyland",
@@ -14446,7 +16028,14 @@
         "DefensiveIQ": 62,
         "Intangibles": 78,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2021,
+      "DraftRound": 1,
+      "DraftPick": 26,
+      "DraftedByTeamId": "DEN",
+      "College": "Virginia Commonwealth",
+      "ContractSalary": 2296274,
+      "ContractYears": 2
     },
     {
       "PlayerId": "leonard_miller",
@@ -14494,7 +16083,14 @@
         "DefensiveIQ": 75,
         "Intangibles": 78,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 2,
+      "DraftPick": 33,
+      "DraftedByTeamId": "SAS",
+      "College": "Ignite (G League)",
+      "ContractSalary": 2221677,
+      "ContractYears": 2
     },
     {
       "PlayerId": "jaylen_clark",
@@ -14542,7 +16138,14 @@
         "DefensiveIQ": 85,
         "Intangibles": 85,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 2,
+      "DraftPick": 53,
+      "DraftedByTeamId": "MIN",
+      "College": "California-Los Angeles",
+      "ContractSalary": 2191897,
+      "ContractYears": 2
     },
     {
       "PlayerId": "johnny_juzang",
@@ -14590,7 +16193,8 @@
         "DefensiveIQ": 68,
         "Intangibles": 78,
         "Potential": 78
-      }
+      },
+      "College": "UCLA"
     },
     {
       "PlayerId": "enrique_freeman",
@@ -14638,7 +16242,12 @@
         "DefensiveIQ": 72,
         "Intangibles": 82,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 2,
+      "DraftPick": 50,
+      "DraftedByTeamId": "IND",
+      "College": "Akron"
     },
     {
       "PlayerId": "rocco_zikarsky",
@@ -14734,7 +16343,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 88,
         "Potential": 98
-      }
+      },
+      "DraftYear": 2019,
+      "DraftRound": 1,
+      "DraftPick": 1,
+      "DraftedByTeamId": "NOP",
+      "College": "Duke",
+      "ContractSalary": 39446090,
+      "ContractYears": 4
     },
     {
       "PlayerId": "dejounte_murray",
@@ -14782,7 +16398,14 @@
         "DefensiveIQ": 88,
         "Intangibles": 92,
         "Potential": 88
-      }
+      },
+      "DraftYear": 2016,
+      "DraftRound": 1,
+      "DraftPick": 29,
+      "DraftedByTeamId": "SAS",
+      "College": "Washington",
+      "ContractSalary": 30801103,
+      "ContractYears": 4
     },
     {
       "PlayerId": "jordan_poole",
@@ -14830,7 +16453,14 @@
         "DefensiveIQ": 62,
         "Intangibles": 75,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2019,
+      "DraftRound": 1,
+      "DraftPick": 28,
+      "DraftedByTeamId": "GSW",
+      "College": "Michigan",
+      "ContractSalary": 31848215,
+      "ContractYears": 3
     },
     {
       "PlayerId": "trey_murphy_iii",
@@ -14878,7 +16508,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 82,
         "Potential": 88
-      }
+      },
+      "DraftYear": 2021,
+      "DraftRound": 1,
+      "DraftPick": 17,
+      "DraftedByTeamId": "MEM",
+      "College": "Virginia",
+      "ContractSalary": 25000000,
+      "ContractYears": 5
     },
     {
       "PlayerId": "herbert_jones",
@@ -14926,7 +16563,14 @@
         "DefensiveIQ": 92,
         "Intangibles": 95,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2021,
+      "DraftRound": 2,
+      "DraftPick": 35,
+      "DraftedByTeamId": "NOP",
+      "College": "Alabama",
+      "ContractSalary": 13937574,
+      "ContractYears": 6
     },
     {
       "PlayerId": "hunter_dickinson",
@@ -15022,7 +16666,14 @@
         "DefensiveIQ": 68,
         "Intangibles": 78,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 1,
+      "DraftPick": 14,
+      "DraftedByTeamId": "NOP",
+      "College": "Connecticut",
+      "ContractSalary": 4741320,
+      "ContractYears": 3
     },
     {
       "PlayerId": "jose_alvarado",
@@ -15070,7 +16721,9 @@
         "DefensiveIQ": 88,
         "Intangibles": 95,
         "Potential": 78
-      }
+      },
+      "ContractSalary": 4500000,
+      "ContractYears": 3
     },
     {
       "PlayerId": "yves_missi",
@@ -15118,7 +16771,14 @@
         "DefensiveIQ": 75,
         "Intangibles": 82,
         "Potential": 90
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 1,
+      "DraftPick": 21,
+      "DraftedByTeamId": "NOP",
+      "College": "Baylor",
+      "ContractSalary": 3353040,
+      "ContractYears": 4
     },
     {
       "PlayerId": "saddiq_bey",
@@ -15166,7 +16826,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 78,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2020,
+      "DraftRound": 1,
+      "DraftPick": 19,
+      "DraftedByTeamId": "BKN",
+      "College": "Villanova",
+      "ContractSalary": 6118644,
+      "ContractYears": 3
     },
     {
       "PlayerId": "trey_alexander",
@@ -15262,7 +16929,9 @@
         "DefensiveIQ": 62,
         "Intangibles": 78,
         "Potential": 90
-      }
+      },
+      "ContractSalary": 7520040,
+      "ContractYears": 5
     },
     {
       "PlayerId": "kevon_looney",
@@ -15310,7 +16979,14 @@
         "DefensiveIQ": 82,
         "Intangibles": 92,
         "Potential": 75
-      }
+      },
+      "DraftYear": 2015,
+      "DraftRound": 1,
+      "DraftPick": 30,
+      "DraftedByTeamId": "GSW",
+      "College": "California-Los Angeles",
+      "ContractSalary": 8000000,
+      "ContractYears": 3
     },
     {
       "PlayerId": "bryce_mcgowens",
@@ -15358,7 +17034,14 @@
         "DefensiveIQ": 68,
         "Intangibles": 75,
         "Potential": 80
-      }
+      },
+      "DraftYear": 2022,
+      "DraftRound": 2,
+      "DraftPick": 40,
+      "DraftedByTeamId": "MIN",
+      "College": "Nebraska",
+      "ContractSalary": 724598,
+      "ContractYears": 4
     },
     {
       "PlayerId": "deandre_jordan",
@@ -15406,7 +17089,14 @@
         "DefensiveIQ": 65,
         "Intangibles": 75,
         "Potential": 62
-      }
+      },
+      "DraftYear": 2008,
+      "DraftRound": 2,
+      "DraftPick": 35,
+      "DraftedByTeamId": "LAC",
+      "College": "Texas A&M",
+      "ContractSalary": 2269880,
+      "ContractYears": 2
     },
     {
       "PlayerId": "karlo_matkovic",
@@ -15454,7 +17144,14 @@
         "DefensiveIQ": 68,
         "Intangibles": 75,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2022,
+      "DraftRound": 2,
+      "DraftPick": 52,
+      "DraftedByTeamId": "NOP",
+      "College": "Mega Mozzart (Serbia)",
+      "ContractSalary": 1955377,
+      "ContractYears": 3
     },
     {
       "PlayerId": "micah_peavy",
@@ -15502,7 +17199,9 @@
         "DefensiveIQ": 72,
         "Intangibles": 78,
         "Potential": 75
-      }
+      },
+      "ContractSalary": 1272870,
+      "ContractYears": 5
     },
     {
       "PlayerId": "derik_queen",
@@ -15550,7 +17249,9 @@
         "DefensiveIQ": 70,
         "Intangibles": 78,
         "Potential": 88
-      }
+      },
+      "ContractSalary": 5157960,
+      "ContractYears": 5
     },
     {
       "PlayerId": "jalen_brunson",
@@ -15598,7 +17299,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 95,
         "Potential": 92
-      }
+      },
+      "DraftYear": 2018,
+      "DraftRound": 2,
+      "DraftPick": 33,
+      "DraftedByTeamId": "DAL",
+      "College": "Villanova",
+      "ContractSalary": 34944001,
+      "ContractYears": 5
     },
     {
       "PlayerId": "karl_anthony_towns",
@@ -15646,7 +17354,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 85,
         "Potential": 88
-      }
+      },
+      "DraftYear": 2015,
+      "DraftRound": 1,
+      "DraftPick": 1,
+      "DraftedByTeamId": "MIN",
+      "College": "Kentucky",
+      "ContractSalary": 53142264,
+      "ContractYears": 4
     },
     {
       "PlayerId": "og_anunoby",
@@ -15694,7 +17409,14 @@
         "DefensiveIQ": 92,
         "Intangibles": 92,
         "Potential": 88
-      }
+      },
+      "DraftYear": 2017,
+      "DraftRound": 1,
+      "DraftPick": 23,
+      "DraftedByTeamId": "TOR",
+      "College": "Indiana",
+      "ContractSalary": 39568966,
+      "ContractYears": 5
     },
     {
       "PlayerId": "mikal_bridges",
@@ -15742,7 +17464,14 @@
         "DefensiveIQ": 88,
         "Intangibles": 92,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2018,
+      "DraftRound": 1,
+      "DraftPick": 10,
+      "DraftedByTeamId": "PHI",
+      "College": "Villanova",
+      "ContractSalary": 24900000,
+      "ContractYears": 6
     },
     {
       "PlayerId": "josh_hart",
@@ -15790,7 +17519,14 @@
         "DefensiveIQ": 85,
         "Intangibles": 98,
         "Potential": 80
-      }
+      },
+      "DraftYear": 2017,
+      "DraftRound": 1,
+      "DraftPick": 30,
+      "DraftedByTeamId": "UTA",
+      "College": "Villanova",
+      "ContractSalary": 19472240,
+      "ContractYears": 4
     },
     {
       "PlayerId": "mitchell_robinson",
@@ -15838,7 +17574,13 @@
         "DefensiveIQ": 85,
         "Intangibles": 88,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2018,
+      "DraftRound": 2,
+      "DraftPick": 36,
+      "DraftedByTeamId": "NYK",
+      "ContractSalary": 12954546,
+      "ContractYears": 2
     },
     {
       "PlayerId": "jordan_clarkson",
@@ -15886,7 +17628,14 @@
         "DefensiveIQ": 62,
         "Intangibles": 82,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2014,
+      "DraftRound": 2,
+      "DraftPick": 46,
+      "DraftedByTeamId": "WAS",
+      "College": "Missouri",
+      "ContractSalary": 10651561,
+      "ContractYears": 2
     },
     {
       "PlayerId": "miles_mcbride",
@@ -15934,7 +17683,14 @@
         "DefensiveIQ": 85,
         "Intangibles": 88,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2021,
+      "DraftRound": 2,
+      "DraftPick": 36,
+      "DraftedByTeamId": "OKC",
+      "College": "West Virginia",
+      "ContractSalary": 4333333,
+      "ContractYears": 3
     },
     {
       "PlayerId": "tyler_kolek",
@@ -15982,7 +17738,14 @@
         "DefensiveIQ": 75,
         "Intangibles": 88,
         "Potential": 88
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 2,
+      "DraftPick": 34,
+      "DraftedByTeamId": "POR",
+      "College": "Marquette",
+      "ContractSalary": 2191897,
+      "ContractYears": 4
     },
     {
       "PlayerId": "landry_shamet",
@@ -16030,7 +17793,14 @@
         "DefensiveIQ": 68,
         "Intangibles": 78,
         "Potential": 75
-      }
+      },
+      "DraftYear": 2018,
+      "DraftRound": 1,
+      "DraftPick": 26,
+      "DraftedByTeamId": "PHI",
+      "College": "Wichita State",
+      "ContractSalary": 2296274,
+      "ContractYears": 2
     },
     {
       "PlayerId": "guerschon_yabusele",
@@ -16078,7 +17848,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 85,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2016,
+      "DraftRound": 1,
+      "DraftPick": 16,
+      "DraftedByTeamId": "BOS",
+      "College": "SPO Rouen Basket",
+      "ContractSalary": 5500000,
+      "ContractYears": 2
     },
     {
       "PlayerId": "pacome_dadiet",
@@ -16126,7 +17903,14 @@
         "DefensiveIQ": 70,
         "Intangibles": 78,
         "Potential": 88
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 1,
+      "DraftPick": 25,
+      "DraftedByTeamId": "NYK",
+      "College": "Ratiopharm Ulm (Germany)",
+      "ContractSalary": 2847600,
+      "ContractYears": 4
     },
     {
       "PlayerId": "kevin_mccullar_jr",
@@ -16174,7 +17958,12 @@
         "DefensiveIQ": 82,
         "Intangibles": 85,
         "Potential": 80
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 2,
+      "DraftPick": 56,
+      "DraftedByTeamId": "PHX",
+      "College": "Kansas"
     },
     {
       "PlayerId": "ariel_hukporti",
@@ -16222,7 +18011,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 78,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 2,
+      "DraftPick": 58,
+      "DraftedByTeamId": "DAL",
+      "College": "MHP Riesen (Germany)",
+      "ContractSalary": 1955377,
+      "ContractYears": 2
     },
     {
       "PlayerId": "trey_jemison_iii",
@@ -16318,7 +18114,9 @@
         "DefensiveIQ": 68,
         "Intangibles": 75,
         "Potential": 85
-      }
+      },
+      "ContractSalary": 1272870,
+      "ContractYears": 2
     },
     {
       "PlayerId": "tosan_evbuomwan",
@@ -16414,7 +18212,14 @@
         "DefensiveIQ": 88,
         "Intangibles": 98,
         "Potential": 98
-      }
+      },
+      "DraftYear": 2018,
+      "DraftRound": 1,
+      "DraftPick": 11,
+      "DraftedByTeamId": "CHA",
+      "College": "Kentucky",
+      "ContractSalary": 38333050,
+      "ContractYears": 7
     },
     {
       "PlayerId": "chet_holmgren",
@@ -16462,7 +18267,14 @@
         "DefensiveIQ": 92,
         "Intangibles": 90,
         "Potential": 98
-      }
+      },
+      "DraftYear": 2022,
+      "DraftRound": 1,
+      "DraftPick": 2,
+      "DraftedByTeamId": "OKC",
+      "College": "Gonzaga",
+      "ContractSalary": 13731368,
+      "ContractYears": 7
     },
     {
       "PlayerId": "jalen_williams_2001",
@@ -16510,7 +18322,14 @@
         "DefensiveIQ": 88,
         "Intangibles": 95,
         "Potential": 95
-      }
+      },
+      "DraftYear": 2022,
+      "DraftRound": 1,
+      "DraftPick": 12,
+      "DraftedByTeamId": "OKC",
+      "College": "Santa Clara",
+      "ContractSalary": 6580997,
+      "ContractYears": 7
     },
     {
       "PlayerId": "isaiah_hartenstein",
@@ -16558,7 +18377,14 @@
         "DefensiveIQ": 85,
         "Intangibles": 92,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2017,
+      "DraftRound": 2,
+      "DraftPick": 43,
+      "DraftedByTeamId": "HOU",
+      "College": "BC Zalgiris (Lithuania)",
+      "ContractSalary": 28500000,
+      "ContractYears": 3
     },
     {
       "PlayerId": "luguentz_dort",
@@ -16606,7 +18432,9 @@
         "DefensiveIQ": 92,
         "Intangibles": 95,
         "Potential": 82
-      }
+      },
+      "ContractSalary": 18222222,
+      "ContractYears": 3
     },
     {
       "PlayerId": "alex_caruso",
@@ -16654,7 +18482,9 @@
         "DefensiveIQ": 98,
         "Intangibles": 98,
         "Potential": 78
-      }
+      },
+      "ContractSalary": 18102000,
+      "ContractYears": 5
     },
     {
       "PlayerId": "cason_wallace",
@@ -16702,7 +18532,14 @@
         "DefensiveIQ": 88,
         "Intangibles": 90,
         "Potential": 92
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 1,
+      "DraftPick": 10,
+      "DraftedByTeamId": "DAL",
+      "College": "Kentucky",
+      "ContractSalary": 5820240,
+      "ContractYears": 3
     },
     {
       "PlayerId": "isaiah_joe",
@@ -16750,7 +18587,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 78,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2020,
+      "DraftRound": 2,
+      "DraftPick": 49,
+      "DraftedByTeamId": "PHI",
+      "College": "Arkansas",
+      "ContractSalary": 12362338,
+      "ContractYears": 4
     },
     {
       "PlayerId": "aaron_wiggins",
@@ -16798,7 +18642,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 82,
         "Potential": 80
-      }
+      },
+      "DraftYear": 2021,
+      "DraftRound": 2,
+      "DraftPick": 55,
+      "DraftedByTeamId": "OKC",
+      "College": "Maryland",
+      "ContractSalary": 10102803,
+      "ContractYears": 5
     },
     {
       "PlayerId": "jaylin_williams_2002",
@@ -16846,7 +18697,14 @@
         "DefensiveIQ": 82,
         "Intangibles": 88,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2022,
+      "DraftRound": 2,
+      "DraftPick": 34,
+      "DraftedByTeamId": "OKC",
+      "College": "Arkansas",
+      "ContractSalary": 8450704,
+      "ContractYears": 4
     },
     {
       "PlayerId": "kenrich_williams",
@@ -16894,7 +18752,9 @@
         "DefensiveIQ": 85,
         "Intangibles": 92,
         "Potential": 75
-      }
+      },
+      "ContractSalary": 7163000,
+      "ContractYears": 3
     },
     {
       "PlayerId": "ousmane_dieng",
@@ -16942,7 +18802,14 @@
         "DefensiveIQ": 70,
         "Intangibles": 75,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2022,
+      "DraftRound": 1,
+      "DraftPick": 11,
+      "DraftedByTeamId": "NYK",
+      "College": "Breakers (New Zealand)",
+      "ContractSalary": 6670882,
+      "ContractYears": 2
     },
     {
       "PlayerId": "nikola_topic",
@@ -16990,7 +18857,14 @@
         "DefensiveIQ": 70,
         "Intangibles": 85,
         "Potential": 95
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 1,
+      "DraftPick": 12,
+      "DraftedByTeamId": "OKC",
+      "College": "KK Crvena zvezda (Serbia)",
+      "ContractSalary": 5182920,
+      "ContractYears": 4
     },
     {
       "PlayerId": "ajay_mitchell",
@@ -17038,7 +18912,14 @@
         "DefensiveIQ": 75,
         "Intangibles": 82,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 2,
+      "DraftPick": 38,
+      "DraftedByTeamId": "NYK",
+      "College": "California-Santa Barbara",
+      "ContractSalary": 3000000,
+      "ContractYears": 4
     },
     {
       "PlayerId": "branden_carlson",
@@ -17230,7 +19111,9 @@
         "DefensiveIQ": 70,
         "Intangibles": 78,
         "Potential": 85
-      }
+      },
+      "ContractSalary": 4655040,
+      "ContractYears": 5
     },
     {
       "PlayerId": "paolo_banchero",
@@ -17278,7 +19161,14 @@
         "DefensiveIQ": 75,
         "Intangibles": 92,
         "Potential": 98
-      }
+      },
+      "DraftYear": 2022,
+      "DraftRound": 1,
+      "DraftPick": 1,
+      "DraftedByTeamId": "ORL",
+      "College": "Duke",
+      "ContractSalary": 15334769,
+      "ContractYears": 7
     },
     {
       "PlayerId": "franz_wagner",
@@ -17326,7 +19216,14 @@
         "DefensiveIQ": 82,
         "Intangibles": 92,
         "Potential": 95
-      }
+      },
+      "DraftYear": 2021,
+      "DraftRound": 1,
+      "DraftPick": 8,
+      "DraftedByTeamId": "ORL",
+      "College": "Michigan",
+      "ContractSalary": 38661750,
+      "ContractYears": 6
     },
     {
       "PlayerId": "jalen_suggs",
@@ -17374,7 +19271,14 @@
         "DefensiveIQ": 90,
         "Intangibles": 95,
         "Potential": 90
-      }
+      },
+      "DraftYear": 2021,
+      "DraftRound": 1,
+      "DraftPick": 5,
+      "DraftedByTeamId": "ORL",
+      "College": "Gonzaga",
+      "ContractSalary": 35000000,
+      "ContractYears": 6
     },
     {
       "PlayerId": "wendell_carter_jr",
@@ -17422,7 +19326,14 @@
         "DefensiveIQ": 82,
         "Intangibles": 85,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2018,
+      "DraftRound": 1,
+      "DraftPick": 7,
+      "DraftedByTeamId": "CHI",
+      "College": "Duke",
+      "ContractSalary": 10850000,
+      "ContractYears": 5
     },
     {
       "PlayerId": "desmond_bane",
@@ -17470,7 +19381,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 90,
         "Potential": 88
-      }
+      },
+      "DraftYear": 2020,
+      "DraftRound": 1,
+      "DraftPick": 30,
+      "DraftedByTeamId": "BOS",
+      "College": "Texas Christian",
+      "ContractSalary": 36725670,
+      "ContractYears": 5
     },
     {
       "PlayerId": "tyus_jones",
@@ -17518,7 +19436,14 @@
         "DefensiveIQ": 82,
         "Intangibles": 95,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2015,
+      "DraftRound": 1,
+      "DraftPick": 24,
+      "DraftedByTeamId": "CLE",
+      "College": "Duke",
+      "ContractSalary": 7000000,
+      "ContractYears": 2
     },
     {
       "PlayerId": "goga_bitadze",
@@ -17566,7 +19491,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 82,
         "Potential": 80
-      }
+      },
+      "DraftYear": 2019,
+      "DraftRound": 1,
+      "DraftPick": 18,
+      "DraftedByTeamId": "IND",
+      "College": "KK Mega Leks (Serbia)",
+      "ContractSalary": 8333333,
+      "ContractYears": 3
     },
     {
       "PlayerId": "anthony_black",
@@ -17614,7 +19546,14 @@
         "DefensiveIQ": 85,
         "Intangibles": 88,
         "Potential": 92
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 1,
+      "DraftPick": 6,
+      "DraftedByTeamId": "ORL",
+      "College": "Arkansas",
+      "ContractSalary": 7970280,
+      "ContractYears": 3
     },
     {
       "PlayerId": "tristan_da_silva",
@@ -17662,7 +19601,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 85,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 1,
+      "DraftPick": 18,
+      "DraftedByTeamId": "ORL",
+      "College": "Colorado",
+      "ContractSalary": 3809520,
+      "ContractYears": 4
     },
     {
       "PlayerId": "moritz_wagner",
@@ -17710,7 +19656,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 92,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2018,
+      "DraftRound": 1,
+      "DraftPick": 25,
+      "DraftedByTeamId": "LAL",
+      "College": "Michigan",
+      "ContractSalary": 5000000,
+      "ContractYears": 2
     },
     {
       "PlayerId": "jonathan_isaac",
@@ -17758,7 +19711,14 @@
         "DefensiveIQ": 92,
         "Intangibles": 85,
         "Potential": 88
-      }
+      },
+      "DraftYear": 2017,
+      "DraftRound": 1,
+      "DraftPick": 6,
+      "DraftedByTeamId": "ORL",
+      "College": "Florida State",
+      "ContractSalary": 15000000,
+      "ContractYears": 5
     },
     {
       "PlayerId": "jett_howard",
@@ -17806,7 +19766,14 @@
         "DefensiveIQ": 68,
         "Intangibles": 78,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 1,
+      "DraftPick": 11,
+      "DraftedByTeamId": "ORL",
+      "College": "Michigan",
+      "ContractSalary": 5529720,
+      "ContractYears": 3
     },
     {
       "PlayerId": "jase_richardson",
@@ -17854,7 +19821,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 85,
         "Potential": 92
-      }
+      },
+      "DraftYear": 2001,
+      "DraftRound": 1,
+      "DraftPick": 5,
+      "DraftedByTeamId": "GSW",
+      "College": "Michigan State",
+      "ContractSalary": 2983320,
+      "ContractYears": 5
     },
     {
       "PlayerId": "jamal_cain",
@@ -18046,7 +20020,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 98,
         "Potential": 95
-      }
+      },
+      "DraftYear": 2020,
+      "DraftRound": 1,
+      "DraftPick": 21,
+      "DraftedByTeamId": "PHI",
+      "College": "Kentucky",
+      "ContractSalary": 37958760,
+      "ContractYears": 5
     },
     {
       "PlayerId": "joel_embiid",
@@ -18094,7 +20075,14 @@
         "DefensiveIQ": 88,
         "Intangibles": 92,
         "Potential": 95
-      }
+      },
+      "DraftYear": 2014,
+      "DraftRound": 1,
+      "DraftPick": 3,
+      "DraftedByTeamId": "PHI",
+      "College": "Kansas",
+      "ContractSalary": 55224526,
+      "ContractYears": 5
     },
     {
       "PlayerId": "paul_george",
@@ -18142,7 +20130,14 @@
         "DefensiveIQ": 88,
         "Intangibles": 88,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2010,
+      "DraftRound": 1,
+      "DraftPick": 10,
+      "DraftedByTeamId": "IND",
+      "College": "Fresno State",
+      "ContractSalary": 51666090,
+      "ContractYears": 4
     },
     {
       "PlayerId": "jared_mccain",
@@ -18190,7 +20185,14 @@
         "DefensiveIQ": 70,
         "Intangibles": 92,
         "Potential": 95
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 1,
+      "DraftPick": 16,
+      "DraftedByTeamId": "PHI",
+      "College": "Duke",
+      "ContractSalary": 4221360,
+      "ContractYears": 4
     },
     {
       "PlayerId": "kyle_lowry",
@@ -18238,7 +20240,14 @@
         "DefensiveIQ": 88,
         "Intangibles": 98,
         "Potential": 72
-      }
+      },
+      "DraftYear": 2006,
+      "DraftRound": 1,
+      "DraftPick": 24,
+      "DraftedByTeamId": "MEM",
+      "College": "Villanova",
+      "ContractSalary": 2296274,
+      "ContractYears": 2
     },
     {
       "PlayerId": "andre_drummond",
@@ -18286,7 +20295,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 85,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2012,
+      "DraftRound": 1,
+      "DraftPick": 9,
+      "DraftedByTeamId": "DET",
+      "College": "Connecticut",
+      "ContractSalary": 5000000,
+      "ContractYears": 2
     },
     {
       "PlayerId": "kelly_oubre_jr",
@@ -18334,7 +20350,14 @@
         "DefensiveIQ": 75,
         "Intangibles": 80,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2015,
+      "DraftRound": 1,
+      "DraftPick": 15,
+      "DraftedByTeamId": "ATL",
+      "College": "Kansas",
+      "ContractSalary": 8382150,
+      "ContractYears": 2
     },
     {
       "PlayerId": "eric_gordon",
@@ -18382,7 +20405,14 @@
         "DefensiveIQ": 68,
         "Intangibles": 80,
         "Potential": 72
-      }
+      },
+      "DraftYear": 2008,
+      "DraftRound": 1,
+      "DraftPick": 7,
+      "DraftedByTeamId": "LAC",
+      "College": "Indiana",
+      "ContractSalary": 2296274,
+      "ContractYears": 2
     },
     {
       "PlayerId": "quentin_grimes",
@@ -18430,7 +20460,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 82,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2021,
+      "DraftRound": 1,
+      "DraftPick": 25,
+      "DraftedByTeamId": "LAC",
+      "College": "Houston",
+      "ContractSalary": 8741209,
+      "ContractYears": 2
     },
     {
       "PlayerId": "adem_bona",
@@ -18478,7 +20515,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 85,
         "Potential": 88
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 2,
+      "DraftPick": 41,
+      "DraftedByTeamId": "PHI",
+      "College": "California-Los Angeles",
+      "ContractSalary": 1955377,
+      "ContractYears": 3
     },
     {
       "PlayerId": "vj_edgecombe",
@@ -18526,7 +20570,9 @@
         "DefensiveIQ": 68,
         "Intangibles": 85,
         "Potential": 95
-      }
+      },
+      "ContractSalary": 11108880,
+      "ContractYears": 5
     },
     {
       "PlayerId": "johni_broome",
@@ -18574,7 +20620,9 @@
         "DefensiveIQ": 82,
         "Intangibles": 92,
         "Potential": 88
-      }
+      },
+      "ContractSalary": 1272870,
+      "ContractYears": 5
     },
     {
       "PlayerId": "justin_edwards",
@@ -18622,7 +20670,9 @@
         "DefensiveIQ": 75,
         "Intangibles": 80,
         "Potential": 88
-      }
+      },
+      "ContractSalary": 2048494,
+      "ContractYears": 4
     },
     {
       "PlayerId": "hunter_sallis",
@@ -18718,7 +20768,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 78,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2022,
+      "DraftRound": 2,
+      "DraftPick": 57,
+      "DraftedByTeamId": "POR",
+      "College": "Colorado",
+      "ContractSalary": 724598,
+      "ContractYears": 3
     },
     {
       "PlayerId": "trendon_watford",
@@ -18766,7 +20823,9 @@
         "DefensiveIQ": 72,
         "Intangibles": 80,
         "Potential": 78
-      }
+      },
+      "ContractSalary": 2461463,
+      "ContractYears": 3
     },
     {
       "PlayerId": "devin_booker",
@@ -18814,7 +20873,14 @@
         "DefensiveIQ": 75,
         "Intangibles": 95,
         "Potential": 95
-      }
+      },
+      "DraftYear": 2015,
+      "DraftRound": 1,
+      "DraftPick": 13,
+      "DraftedByTeamId": "PHX",
+      "College": "Kentucky",
+      "ContractSalary": 53142264,
+      "ContractYears": 6
     },
     {
       "PlayerId": "jalen_green",
@@ -18862,7 +20928,14 @@
         "DefensiveIQ": 65,
         "Intangibles": 82,
         "Potential": 92
-      }
+      },
+      "DraftYear": 2021,
+      "DraftRound": 1,
+      "DraftPick": 2,
+      "DraftedByTeamId": "HOU",
+      "College": "Ignite (G League)",
+      "ContractSalary": 33584499,
+      "ContractYears": 4
     },
     {
       "PlayerId": "mark_williams",
@@ -18910,7 +20983,14 @@
         "DefensiveIQ": 82,
         "Intangibles": 85,
         "Potential": 88
-      }
+      },
+      "DraftYear": 2022,
+      "DraftRound": 1,
+      "DraftPick": 15,
+      "DraftedByTeamId": "CHA",
+      "College": "Duke",
+      "ContractSalary": 6276531,
+      "ContractYears": 2
     },
     {
       "PlayerId": "nick_richards",
@@ -18958,7 +21038,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 80,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2020,
+      "DraftRound": 2,
+      "DraftPick": 42,
+      "DraftedByTeamId": "NOP",
+      "College": "Kentucky",
+      "ContractSalary": 5000000,
+      "ContractYears": 1
     },
     {
       "PlayerId": "khaman_maluach",
@@ -19006,7 +21093,9 @@
         "DefensiveIQ": 78,
         "Intangibles": 85,
         "Potential": 95
-      }
+      },
+      "ContractSalary": 6016080,
+      "ContractYears": 5
     },
     {
       "PlayerId": "grayson_allen",
@@ -19054,7 +21143,14 @@
         "DefensiveIQ": 75,
         "Intangibles": 85,
         "Potential": 80
-      }
+      },
+      "DraftYear": 2018,
+      "DraftRound": 1,
+      "DraftPick": 21,
+      "DraftedByTeamId": "UTA",
+      "College": "Duke",
+      "ContractSalary": 16875000,
+      "ContractYears": 4
     },
     {
       "PlayerId": "dillon_brooks",
@@ -19102,7 +21198,14 @@
         "DefensiveIQ": 88,
         "Intangibles": 92,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2017,
+      "DraftRound": 2,
+      "DraftPick": 45,
+      "DraftedByTeamId": "HOU",
+      "College": "Oregon",
+      "ContractSalary": 21124110,
+      "ContractYears": 3
     },
     {
       "PlayerId": "royce_oneale",
@@ -19150,7 +21253,9 @@
         "DefensiveIQ": 88,
         "Intangibles": 90,
         "Potential": 75
-      }
+      },
+      "ContractSalary": 10125000,
+      "ContractYears": 4
     },
     {
       "PlayerId": "ryan_dunn",
@@ -19198,7 +21303,14 @@
         "DefensiveIQ": 85,
         "Intangibles": 88,
         "Potential": 88
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 1,
+      "DraftPick": 28,
+      "DraftedByTeamId": "DEN",
+      "College": "Virginia",
+      "ContractSalary": 2657760,
+      "ContractYears": 4
     },
     {
       "PlayerId": "oso_ighodaro",
@@ -19246,7 +21358,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 85,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 2,
+      "DraftPick": 40,
+      "DraftedByTeamId": "POR",
+      "College": "Marquette",
+      "ContractSalary": 1955377,
+      "ContractYears": 4
     },
     {
       "PlayerId": "koby_brea",
@@ -19342,7 +21461,9 @@
         "DefensiveIQ": 78,
         "Intangibles": 92,
         "Potential": 75
-      }
+      },
+      "ContractSalary": 2296274,
+      "ContractYears": 2
     },
     {
       "PlayerId": "jordan_goodwin",
@@ -19390,7 +21511,9 @@
         "DefensiveIQ": 80,
         "Intangibles": 88,
         "Potential": 78
-      }
+      },
+      "ContractSalary": 2349578,
+      "ContractYears": 2
     },
     {
       "PlayerId": "rasheer_fleming",
@@ -19438,7 +21561,9 @@
         "DefensiveIQ": 72,
         "Intangibles": 78,
         "Potential": 78
-      }
+      },
+      "ContractSalary": 1272870,
+      "ContractYears": 5
     },
     {
       "PlayerId": "jamaree_bouyea",
@@ -19534,7 +21659,12 @@
         "DefensiveIQ": 78,
         "Intangibles": 82,
         "Potential": 75
-      }
+      },
+      "DraftYear": 2021,
+      "DraftRound": 2,
+      "DraftPick": 42,
+      "DraftedByTeamId": "DET",
+      "College": "Michigan"
     },
     {
       "PlayerId": "nigel_hayes_davis",
@@ -19582,7 +21712,9 @@
         "DefensiveIQ": 72,
         "Intangibles": 82,
         "Potential": 72
-      }
+      },
+      "ContractSalary": 2048494,
+      "ContractYears": 2
     },
     {
       "PlayerId": "damian_lillard",
@@ -19630,7 +21762,14 @@
         "DefensiveIQ": 75,
         "Intangibles": 98,
         "Potential": 92
-      }
+      },
+      "DraftYear": 2012,
+      "DraftRound": 1,
+      "DraftPick": 6,
+      "DraftedByTeamId": "POR",
+      "College": "Weber State",
+      "ContractSalary": 14104000,
+      "ContractYears": 4
     },
     {
       "PlayerId": "jrue_holiday",
@@ -19678,7 +21817,14 @@
         "DefensiveIQ": 98,
         "Intangibles": 98,
         "Potential": 88
-      }
+      },
+      "DraftYear": 2009,
+      "DraftRound": 1,
+      "DraftPick": 17,
+      "DraftedByTeamId": "PHI",
+      "College": "California-Los Angeles",
+      "ContractSalary": 32400000,
+      "ContractYears": 4
     },
     {
       "PlayerId": "scoot_henderson",
@@ -19726,7 +21872,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 88,
         "Potential": 95
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 1,
+      "DraftPick": 3,
+      "DraftedByTeamId": "POR",
+      "College": "Ignite (G League)",
+      "ContractSalary": 10748040,
+      "ContractYears": 3
     },
     {
       "PlayerId": "shaedon_sharpe",
@@ -19774,7 +21927,14 @@
         "DefensiveIQ": 68,
         "Intangibles": 82,
         "Potential": 95
-      }
+      },
+      "DraftYear": 2022,
+      "DraftRound": 1,
+      "DraftPick": 7,
+      "DraftedByTeamId": "POR",
+      "College": "Kentucky",
+      "ContractSalary": 8399983,
+      "ContractYears": 6
     },
     {
       "PlayerId": "donovan_clingan",
@@ -19822,7 +21982,14 @@
         "DefensiveIQ": 85,
         "Intangibles": 88,
         "Potential": 92
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 1,
+      "DraftPick": 7,
+      "DraftedByTeamId": "POR",
+      "College": "Connecticut",
+      "ContractSalary": 7178400,
+      "ContractYears": 4
     },
     {
       "PlayerId": "jerami_grant",
@@ -19870,7 +22037,14 @@
         "DefensiveIQ": 80,
         "Intangibles": 85,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2014,
+      "DraftRound": 2,
+      "DraftPick": 39,
+      "DraftedByTeamId": "PHI",
+      "College": "Syracuse",
+      "ContractSalary": 32000001,
+      "ContractYears": 4
     },
     {
       "PlayerId": "deni_avdija",
@@ -19918,7 +22092,14 @@
         "DefensiveIQ": 82,
         "Intangibles": 88,
         "Potential": 88
-      }
+      },
+      "DraftYear": 2020,
+      "DraftRound": 1,
+      "DraftPick": 9,
+      "DraftedByTeamId": "WAS",
+      "College": "Maccabi Tel Aviv B.C. (Israel)",
+      "ContractSalary": 14375000,
+      "ContractYears": 4
     },
     {
       "PlayerId": "robert_williams_iii",
@@ -19966,7 +22147,14 @@
         "DefensiveIQ": 90,
         "Intangibles": 90,
         "Potential": 88
-      }
+      },
+      "DraftYear": 2018,
+      "DraftRound": 1,
+      "DraftPick": 27,
+      "DraftedByTeamId": "BOS",
+      "College": "Texas A&M",
+      "ContractSalary": 13285713,
+      "ContractYears": 2
     },
     {
       "PlayerId": "toumani_camara",
@@ -20014,7 +22202,14 @@
         "DefensiveIQ": 85,
         "Intangibles": 90,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 2,
+      "DraftPick": 52,
+      "DraftedByTeamId": "PHX",
+      "College": "Dayton",
+      "ContractSalary": 2221677,
+      "ContractYears": 6
     },
     {
       "PlayerId": "kris_murray",
@@ -20062,7 +22257,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 78,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 1,
+      "DraftPick": 23,
+      "DraftedByTeamId": "POR",
+      "College": "Iowa",
+      "ContractSalary": 3132000,
+      "ContractYears": 3
     },
     {
       "PlayerId": "matisse_thybulle",
@@ -20110,7 +22312,14 @@
         "DefensiveIQ": 98,
         "Intangibles": 90,
         "Potential": 80
-      }
+      },
+      "DraftYear": 2019,
+      "DraftRound": 1,
+      "DraftPick": 20,
+      "DraftedByTeamId": "BOS",
+      "College": "Washington",
+      "ContractSalary": 11550000,
+      "ContractYears": 2
     },
     {
       "PlayerId": "caleb_love",
@@ -20206,7 +22415,14 @@
         "DefensiveIQ": 80,
         "Intangibles": 82,
         "Potential": 88
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 2,
+      "DraftPick": 43,
+      "DraftedByTeamId": "POR",
+      "College": "Breakers (New Zealand)",
+      "ContractSalary": 2221677,
+      "ContractYears": 2
     },
     {
       "PlayerId": "duop_reath",
@@ -20254,7 +22470,10 @@
         "DefensiveIQ": 75,
         "Intangibles": 78,
         "Potential": 75
-      }
+      },
+      "College": "Louisiana State",
+      "ContractSalary": 2221677,
+      "ContractYears": 1
     },
     {
       "PlayerId": "blake_wesley",
@@ -20302,7 +22521,14 @@
         "DefensiveIQ": 68,
         "Intangibles": 75,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2022,
+      "DraftRound": 1,
+      "DraftPick": 25,
+      "DraftedByTeamId": "SAS",
+      "College": "Notre Dame",
+      "ContractSalary": 3347458,
+      "ContractYears": 2
     },
     {
       "PlayerId": "sidy_cissoko",
@@ -20350,7 +22576,14 @@
         "DefensiveIQ": 75,
         "Intangibles": 80,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 2,
+      "DraftPick": 44,
+      "DraftedByTeamId": "SAS",
+      "College": "Ignite (G League)",
+      "ContractSalary": 686243,
+      "ContractYears": 3
     },
     {
       "PlayerId": "javonte_cooke",
@@ -20446,7 +22679,9 @@
         "DefensiveIQ": 72,
         "Intangibles": 78,
         "Potential": 88
-      }
+      },
+      "ContractSalary": 4422360,
+      "ContractYears": 5
     },
     {
       "PlayerId": "domantas_sabonis",
@@ -20494,7 +22729,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 98,
         "Potential": 92
-      }
+      },
+      "DraftYear": 2016,
+      "DraftRound": 1,
+      "DraftPick": 11,
+      "DraftedByTeamId": "OKC",
+      "College": "Gonzaga",
+      "ContractSalary": 42336000,
+      "ContractYears": 4
     },
     {
       "PlayerId": "demar_derozan",
@@ -20542,7 +22784,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 98,
         "Potential": 88
-      }
+      },
+      "DraftYear": 2009,
+      "DraftRound": 1,
+      "DraftPick": 9,
+      "DraftedByTeamId": "TOR",
+      "College": "Southern California",
+      "ContractSalary": 24570000,
+      "ContractYears": 3
     },
     {
       "PlayerId": "zach_lavine",
@@ -20590,7 +22839,14 @@
         "DefensiveIQ": 65,
         "Intangibles": 82,
         "Potential": 88
-      }
+      },
+      "DraftYear": 2014,
+      "DraftRound": 1,
+      "DraftPick": 13,
+      "DraftedByTeamId": "MIN",
+      "College": "California-Los Angeles",
+      "ContractSalary": 47499660,
+      "ContractYears": 3
     },
     {
       "PlayerId": "malik_monk",
@@ -20638,7 +22894,14 @@
         "DefensiveIQ": 68,
         "Intangibles": 88,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2017,
+      "DraftRound": 1,
+      "DraftPick": 11,
+      "DraftedByTeamId": "CHA",
+      "College": "Kentucky",
+      "ContractSalary": 18797619,
+      "ContractYears": 4
     },
     {
       "PlayerId": "keegan_murray",
@@ -20686,7 +22949,14 @@
         "DefensiveIQ": 80,
         "Intangibles": 90,
         "Potential": 90
-      }
+      },
+      "DraftYear": 2022,
+      "DraftRound": 1,
+      "DraftPick": 4,
+      "DraftedByTeamId": "SAC",
+      "College": "Iowa",
+      "ContractSalary": 11144093,
+      "ContractYears": 7
     },
     {
       "PlayerId": "dennis_schroder",
@@ -20734,7 +23004,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 92,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2013,
+      "DraftRound": 1,
+      "DraftPick": 17,
+      "DraftedByTeamId": "ATL",
+      "College": "Basketball Lowen Braunschweig (Germany)",
+      "ContractSalary": 14104000,
+      "ContractYears": 4
     },
     {
       "PlayerId": "devin_carter",
@@ -20782,7 +23059,14 @@
         "DefensiveIQ": 85,
         "Intangibles": 90,
         "Potential": 90
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 1,
+      "DraftPick": 13,
+      "DraftedByTeamId": "SAC",
+      "College": "Providence",
+      "ContractSalary": 4923720,
+      "ContractYears": 4
     },
     {
       "PlayerId": "russell_westbrook",
@@ -20830,7 +23114,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 98,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2008,
+      "DraftRound": 1,
+      "DraftPick": 4,
+      "DraftedByTeamId": "OKC",
+      "College": "California-Los Angeles",
+      "ContractSalary": 2296274,
+      "ContractYears": 2
     },
     {
       "PlayerId": "precious_achiuwa",
@@ -20878,7 +23169,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 85,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2020,
+      "DraftRound": 1,
+      "DraftPick": 20,
+      "DraftedByTeamId": "MIA",
+      "College": "Memphis",
+      "ContractSalary": 2111516,
+      "ContractYears": 2
     },
     {
       "PlayerId": "maxime_raynaud",
@@ -20926,7 +23224,9 @@
         "DefensiveIQ": 75,
         "Intangibles": 82,
         "Potential": 88
-      }
+      },
+      "ContractSalary": 1272870,
+      "ContractYears": 4
     },
     {
       "PlayerId": "dario_saric",
@@ -20974,7 +23274,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 88,
         "Potential": 75
-      }
+      },
+      "DraftYear": 2014,
+      "DraftRound": 1,
+      "DraftPick": 12,
+      "DraftedByTeamId": "ORL",
+      "College": "Anadolu Efes",
+      "ContractSalary": 5426400,
+      "ContractYears": 2
     },
     {
       "PlayerId": "keon_ellis",
@@ -21022,7 +23329,9 @@
         "DefensiveIQ": 88,
         "Intangibles": 90,
         "Potential": 82
-      }
+      },
+      "ContractSalary": 2301587,
+      "ContractYears": 2
     },
     {
       "PlayerId": "doug_mcdermott",
@@ -21070,7 +23379,14 @@
         "DefensiveIQ": 65,
         "Intangibles": 85,
         "Potential": 75
-      }
+      },
+      "DraftYear": 2014,
+      "DraftRound": 1,
+      "DraftPick": 11,
+      "DraftedByTeamId": "DEN",
+      "College": "Creighton",
+      "ContractSalary": 2296274,
+      "ContractYears": 2
     },
     {
       "PlayerId": "drew_eubanks",
@@ -21118,7 +23434,9 @@
         "DefensiveIQ": 75,
         "Intangibles": 82,
         "Potential": 75
-      }
+      },
+      "ContractSalary": 2296274,
+      "ContractYears": 2
     },
     {
       "PlayerId": "dylan_cardwell",
@@ -21214,7 +23532,9 @@
         "DefensiveIQ": 82,
         "Intangibles": 85,
         "Potential": 85
-      }
+      },
+      "ContractSalary": 3108120,
+      "ContractYears": 5
     },
     {
       "PlayerId": "daeqwon_plowden",
@@ -21358,7 +23678,14 @@
         "DefensiveIQ": 95,
         "Intangibles": 95,
         "Potential": 99
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 1,
+      "DraftPick": 1,
+      "DraftedByTeamId": "SAS",
+      "College": "Metropolitans 92 (France)",
+      "ContractSalary": 13376880,
+      "ContractYears": 3
     },
     {
       "PlayerId": "deaaron_fox",
@@ -21406,7 +23733,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 95,
         "Potential": 92
-      }
+      },
+      "DraftYear": 2017,
+      "DraftRound": 1,
+      "DraftPick": 5,
+      "DraftedByTeamId": "SAC",
+      "College": "Kentucky",
+      "ContractSalary": 37096620,
+      "ContractYears": 6
     },
     {
       "PlayerId": "stephon_castle",
@@ -21454,7 +23788,14 @@
         "DefensiveIQ": 88,
         "Intangibles": 92,
         "Potential": 95
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 1,
+      "DraftPick": 4,
+      "DraftedByTeamId": "SAS",
+      "College": "Connecticut",
+      "ContractSalary": 9560520,
+      "ContractYears": 4
     },
     {
       "PlayerId": "dylan_harper",
@@ -21502,7 +23843,9 @@
         "DefensiveIQ": 72,
         "Intangibles": 90,
         "Potential": 95
-      }
+      },
+      "ContractSalary": 12370320,
+      "ContractYears": 5
     },
     {
       "PlayerId": "devin_vassell",
@@ -21550,7 +23893,14 @@
         "DefensiveIQ": 88,
         "Intangibles": 88,
         "Potential": 88
-      }
+      },
+      "DraftYear": 2020,
+      "DraftRound": 1,
+      "DraftPick": 11,
+      "DraftedByTeamId": "SAS",
+      "College": "Florida State",
+      "ContractSalary": 27000000,
+      "ContractYears": 5
     },
     {
       "PlayerId": "jeremy_sochan",
@@ -21598,7 +23948,14 @@
         "DefensiveIQ": 90,
         "Intangibles": 95,
         "Potential": 92
-      }
+      },
+      "DraftYear": 2022,
+      "DraftRound": 1,
+      "DraftPick": 9,
+      "DraftedByTeamId": "SAS",
+      "College": "Baylor",
+      "ContractSalary": 7096231,
+      "ContractYears": 2
     },
     {
       "PlayerId": "keldon_johnson",
@@ -21646,7 +24003,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 95,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2019,
+      "DraftRound": 1,
+      "DraftPick": 29,
+      "DraftedByTeamId": "SAS",
+      "College": "Kentucky",
+      "ContractSalary": 17500000,
+      "ContractYears": 3
     },
     {
       "PlayerId": "harrison_barnes",
@@ -21694,7 +24058,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 92,
         "Potential": 80
-      }
+      },
+      "DraftYear": 2012,
+      "DraftRound": 1,
+      "DraftPick": 7,
+      "DraftedByTeamId": "GSW",
+      "College": "North Carolina",
+      "ContractSalary": 19000000,
+      "ContractYears": 2
     },
     {
       "PlayerId": "kelly_olynyk",
@@ -21742,7 +24113,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 90,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2013,
+      "DraftRound": 1,
+      "DraftPick": 13,
+      "DraftedByTeamId": "DAL",
+      "College": "Gonzaga",
+      "ContractSalary": 13445122,
+      "ContractYears": 2
     },
     {
       "PlayerId": "julian_champagnie",
@@ -21790,7 +24168,9 @@
         "DefensiveIQ": 72,
         "Intangibles": 82,
         "Potential": 80
-      }
+      },
+      "ContractSalary": 3000000,
+      "ContractYears": 2
     },
     {
       "PlayerId": "luke_kornet",
@@ -21838,7 +24218,9 @@
         "DefensiveIQ": 78,
         "Intangibles": 82,
         "Potential": 75
-      }
+      },
+      "ContractSalary": 11000000,
+      "ContractYears": 5
     },
     {
       "PlayerId": "harrison_ingram",
@@ -21886,7 +24268,12 @@
         "DefensiveIQ": 78,
         "Intangibles": 85,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 2,
+      "DraftPick": 48,
+      "DraftedByTeamId": "SAS",
+      "College": "North Carolina"
     },
     {
       "PlayerId": "jordan_mclaughlin",
@@ -21934,7 +24321,9 @@
         "DefensiveIQ": 75,
         "Intangibles": 88,
         "Potential": 75
-      }
+      },
+      "ContractSalary": 2296274,
+      "ContractYears": 2
     },
     {
       "PlayerId": "bismack_biyombo",
@@ -21982,7 +24371,14 @@
         "DefensiveIQ": 82,
         "Intangibles": 95,
         "Potential": 72
-      }
+      },
+      "DraftYear": 2011,
+      "DraftRound": 1,
+      "DraftPick": 7,
+      "DraftedByTeamId": "SAC",
+      "College": "Baloncesto Fuenlabrada (Spain)",
+      "ContractSalary": 2296274,
+      "ContractYears": 2
     },
     {
       "PlayerId": "scottie_barnes",
@@ -22030,7 +24426,14 @@
         "DefensiveIQ": 90,
         "Intangibles": 98,
         "Potential": 98
-      }
+      },
+      "DraftYear": 2021,
+      "DraftRound": 1,
+      "DraftPick": 4,
+      "DraftedByTeamId": "TOR",
+      "College": "Florida State",
+      "ContractSalary": 38661750,
+      "ContractYears": 6
     },
     {
       "PlayerId": "rj_barrett",
@@ -22078,7 +24481,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 90,
         "Potential": 90
-      }
+      },
+      "DraftYear": 2019,
+      "DraftRound": 1,
+      "DraftPick": 3,
+      "DraftedByTeamId": "NYK",
+      "College": "Duke",
+      "ContractSalary": 27705357,
+      "ContractYears": 3
     },
     {
       "PlayerId": "brandon_ingram",
@@ -22126,7 +24536,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 88,
         "Potential": 90
-      }
+      },
+      "DraftYear": 2016,
+      "DraftRound": 1,
+      "DraftPick": 2,
+      "DraftedByTeamId": "LAL",
+      "College": "Duke",
+      "ContractSalary": 38095238,
+      "ContractYears": 4
     },
     {
       "PlayerId": "immanuel_quickley",
@@ -22174,7 +24591,14 @@
         "DefensiveIQ": 75,
         "Intangibles": 88,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2020,
+      "DraftRound": 1,
+      "DraftPick": 25,
+      "DraftedByTeamId": "OKC",
+      "College": "Kentucky",
+      "ContractSalary": 32500000,
+      "ContractYears": 5
     },
     {
       "PlayerId": "jakob_poeltl",
@@ -22222,7 +24646,14 @@
         "DefensiveIQ": 88,
         "Intangibles": 92,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2016,
+      "DraftRound": 1,
+      "DraftPick": 9,
+      "DraftedByTeamId": "TOR",
+      "College": "Utah",
+      "ContractSalary": 19500000,
+      "ContractYears": 6
     },
     {
       "PlayerId": "gradey_dick",
@@ -22270,7 +24701,14 @@
         "DefensiveIQ": 70,
         "Intangibles": 85,
         "Potential": 90
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 1,
+      "DraftPick": 13,
+      "DraftedByTeamId": "TOR",
+      "College": "Kansas",
+      "ContractSalary": 4990560,
+      "ContractYears": 3
     },
     {
       "PlayerId": "jamal_shead",
@@ -22318,7 +24756,14 @@
         "DefensiveIQ": 92,
         "Intangibles": 98,
         "Potential": 90
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 2,
+      "DraftPick": 45,
+      "DraftedByTeamId": "SAC",
+      "College": "Houston",
+      "ContractSalary": 1955377,
+      "ContractYears": 3
     },
     {
       "PlayerId": "ochai_agbaji",
@@ -22366,7 +24811,14 @@
         "DefensiveIQ": 82,
         "Intangibles": 85,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2022,
+      "DraftRound": 1,
+      "DraftPick": 14,
+      "DraftedByTeamId": "CLE",
+      "College": "Kansas",
+      "ContractSalary": 6383525,
+      "ContractYears": 2
     },
     {
       "PlayerId": "jakobe_walter",
@@ -22414,7 +24866,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 82,
         "Potential": 88
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 1,
+      "DraftPick": 19,
+      "DraftedByTeamId": "TOR",
+      "College": "Baylor",
+      "ContractSalary": 3638160,
+      "ContractYears": 4
     },
     {
       "PlayerId": "collin_murray_boyles",
@@ -22462,7 +24921,9 @@
         "DefensiveIQ": 80,
         "Intangibles": 88,
         "Potential": 88
-      }
+      },
+      "ContractSalary": 6332520,
+      "ContractYears": 5
     },
     {
       "PlayerId": "jonathan_mogbo",
@@ -22510,7 +24971,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 85,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 2,
+      "DraftPick": 31,
+      "DraftedByTeamId": "TOR",
+      "College": "San Francisco",
+      "ContractSalary": 1955377,
+      "ContractYears": 3
     },
     {
       "PlayerId": "jamison_battle",
@@ -22558,7 +25026,9 @@
         "DefensiveIQ": 68,
         "Intangibles": 78,
         "Potential": 78
-      }
+      },
+      "ContractSalary": 1955377,
+      "ContractYears": 2
     },
     {
       "PlayerId": "garrett_temple",
@@ -22606,7 +25076,9 @@
         "DefensiveIQ": 88,
         "Intangibles": 98,
         "Potential": 68
-      }
+      },
+      "ContractSalary": 2296274,
+      "ContractYears": 2
     },
     {
       "PlayerId": "chucky_hepburn",
@@ -22750,7 +25222,14 @@
         "DefensiveIQ": 68,
         "Intangibles": 75,
         "Potential": 75
-      }
+      },
+      "DraftYear": 2021,
+      "DraftRound": 2,
+      "DraftPick": 54,
+      "DraftedByTeamId": "IND",
+      "College": "Seton Hall",
+      "ContractSalary": 2461463,
+      "ContractYears": 3
     },
     {
       "PlayerId": "alijah_martin",
@@ -22846,7 +25325,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 92,
         "Potential": 92
-      }
+      },
+      "DraftYear": 2017,
+      "DraftRound": 1,
+      "DraftPick": 7,
+      "DraftedByTeamId": "MIN",
+      "College": "Arizona",
+      "ContractSalary": 46394100,
+      "ContractYears": 5
     },
     {
       "PlayerId": "walker_kessler",
@@ -22894,7 +25380,14 @@
         "DefensiveIQ": 90,
         "Intangibles": 90,
         "Potential": 90
-      }
+      },
+      "DraftYear": 2022,
+      "DraftRound": 1,
+      "DraftPick": 22,
+      "DraftedByTeamId": "MEM",
+      "College": "Auburn",
+      "ContractSalary": 4878938,
+      "ContractYears": 2
     },
     {
       "PlayerId": "keyonte_george",
@@ -22942,7 +25435,14 @@
         "DefensiveIQ": 68,
         "Intangibles": 88,
         "Potential": 92
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 1,
+      "DraftPick": 16,
+      "DraftedByTeamId": "UTA",
+      "College": "Baylor",
+      "ContractSalary": 4278960,
+      "ContractYears": 3
     },
     {
       "PlayerId": "ace_bailey",
@@ -22990,7 +25490,9 @@
         "DefensiveIQ": 72,
         "Intangibles": 85,
         "Potential": 95
-      }
+      },
+      "ContractSalary": 9069840,
+      "ContractYears": 5
     },
     {
       "PlayerId": "kyle_filipowski",
@@ -23038,7 +25540,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 90,
         "Potential": 88
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 2,
+      "DraftPick": 32,
+      "DraftedByTeamId": "UTA",
+      "College": "Duke",
+      "ContractSalary": 3000000,
+      "ContractYears": 4
     },
     {
       "PlayerId": "isaiah_collier",
@@ -23086,7 +25595,14 @@
         "DefensiveIQ": 70,
         "Intangibles": 85,
         "Potential": 92
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 1,
+      "DraftPick": 29,
+      "DraftedByTeamId": "UTA",
+      "College": "Southern California",
+      "ContractSalary": 2638200,
+      "ContractYears": 4
     },
     {
       "PlayerId": "taylor_hendricks",
@@ -23134,7 +25650,14 @@
         "DefensiveIQ": 82,
         "Intangibles": 85,
         "Potential": 92
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 1,
+      "DraftPick": 9,
+      "DraftedByTeamId": "UTA",
+      "College": "Central Florida",
+      "ContractSalary": 6127080,
+      "ContractYears": 3
     },
     {
       "PlayerId": "kyle_anderson",
@@ -23182,7 +25705,14 @@
         "DefensiveIQ": 90,
         "Intangibles": 98,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2014,
+      "DraftRound": 1,
+      "DraftPick": 30,
+      "DraftedByTeamId": "SAS",
+      "College": "California-Los Angeles",
+      "ContractSalary": 9219512,
+      "ContractYears": 2
     },
     {
       "PlayerId": "jusuf_nurkic",
@@ -23230,7 +25760,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 88,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2014,
+      "DraftRound": 1,
+      "DraftPick": 16,
+      "DraftedByTeamId": "CHI",
+      "College": "KK Cedevita (Croatia)",
+      "ContractSalary": 19375000,
+      "ContractYears": 2
     },
     {
       "PlayerId": "kevin_love",
@@ -23278,7 +25815,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 98,
         "Potential": 75
-      }
+      },
+      "DraftYear": 2008,
+      "DraftRound": 1,
+      "DraftPick": 5,
+      "DraftedByTeamId": "MEM",
+      "College": "California-Los Angeles",
+      "ContractSalary": 4150000,
+      "ContractYears": 2
     },
     {
       "PlayerId": "brice_sensabaugh",
@@ -23326,7 +25870,14 @@
         "DefensiveIQ": 62,
         "Intangibles": 78,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 1,
+      "DraftPick": 28,
+      "DraftedByTeamId": "UTA",
+      "College": "Ohio State",
+      "ContractSalary": 2693760,
+      "ContractYears": 3
     },
     {
       "PlayerId": "georges_niang",
@@ -23374,7 +25925,14 @@
         "DefensiveIQ": 68,
         "Intangibles": 92,
         "Potential": 78
-      }
+      },
+      "DraftYear": 2016,
+      "DraftRound": 2,
+      "DraftPick": 50,
+      "DraftedByTeamId": "IND",
+      "College": "Iowa State",
+      "ContractSalary": 8200000,
+      "ContractYears": 2
     },
     {
       "PlayerId": "cody_williams",
@@ -23422,7 +25980,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 85,
         "Potential": 92
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 1,
+      "DraftPick": 10,
+      "DraftedByTeamId": "UTA",
+      "College": "Colorado",
+      "ContractSalary": 5742480,
+      "ContractYears": 4
     },
     {
       "PlayerId": "svi_mykhailiuk",
@@ -23470,7 +26035,14 @@
         "DefensiveIQ": 68,
         "Intangibles": 78,
         "Potential": 75
-      }
+      },
+      "DraftYear": 2018,
+      "DraftRound": 2,
+      "DraftPick": 47,
+      "DraftedByTeamId": "LAL",
+      "College": "Kansas",
+      "ContractSalary": 3675000,
+      "ContractYears": 3
     },
     {
       "PlayerId": "alex_sarr",
@@ -23518,7 +26090,14 @@
         "DefensiveIQ": 88,
         "Intangibles": 90,
         "Potential": 98
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 1,
+      "DraftPick": 2,
+      "DraftedByTeamId": "WAS",
+      "College": "Perth Wildcats (Australia)",
+      "ContractSalary": 11808240,
+      "ContractYears": 4
     },
     {
       "PlayerId": "tre_johnson",
@@ -23566,7 +26145,9 @@
         "DefensiveIQ": 68,
         "Intangibles": 88,
         "Potential": 98
-      }
+      },
+      "ContractSalary": 8237640,
+      "ContractYears": 5
     },
     {
       "PlayerId": "bilal_coulibaly",
@@ -23614,7 +26195,14 @@
         "DefensiveIQ": 92,
         "Intangibles": 95,
         "Potential": 95
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 1,
+      "DraftPick": 7,
+      "DraftedByTeamId": "IND",
+      "College": "Metropolitans 92 (France)",
+      "ContractSalary": 7275600,
+      "ContractYears": 3
     },
     {
       "PlayerId": "cj_mccollum",
@@ -23662,7 +26250,14 @@
         "DefensiveIQ": 72,
         "Intangibles": 92,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2013,
+      "DraftRound": 1,
+      "DraftPick": 10,
+      "DraftedByTeamId": "POR",
+      "College": "Lehigh",
+      "ContractSalary": 30666666,
+      "ContractYears": 2
     },
     {
       "PlayerId": "khris_middleton",
@@ -23710,7 +26305,14 @@
         "DefensiveIQ": 82,
         "Intangibles": 98,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2012,
+      "DraftRound": 2,
+      "DraftPick": 39,
+      "DraftedByTeamId": "DET",
+      "College": "Texas A&M",
+      "ContractSalary": 33296296,
+      "ContractYears": 2
     },
     {
       "PlayerId": "corey_kispert",
@@ -23758,7 +26360,14 @@
         "DefensiveIQ": 75,
         "Intangibles": 88,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2021,
+      "DraftRound": 1,
+      "DraftPick": 15,
+      "DraftedByTeamId": "WAS",
+      "College": "Gonzaga",
+      "ContractSalary": 13975000,
+      "ContractYears": 5
     },
     {
       "PlayerId": "bub_carrington",
@@ -23806,7 +26415,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 88,
         "Potential": 92
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 1,
+      "DraftPick": 14,
+      "DraftedByTeamId": "POR",
+      "College": "Pittsburgh",
+      "ContractSalary": 4677600,
+      "ContractYears": 4
     },
     {
       "PlayerId": "kyshawn_george",
@@ -23854,7 +26470,14 @@
         "DefensiveIQ": 78,
         "Intangibles": 85,
         "Potential": 90
-      }
+      },
+      "DraftYear": 2024,
+      "DraftRound": 1,
+      "DraftPick": 24,
+      "DraftedByTeamId": "NYK",
+      "College": "Miami (FL)",
+      "ContractSalary": 2966760,
+      "ContractYears": 4
     },
     {
       "PlayerId": "malaki_branham",
@@ -23902,7 +26525,14 @@
         "DefensiveIQ": 68,
         "Intangibles": 80,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2022,
+      "DraftRound": 1,
+      "DraftPick": 20,
+      "DraftedByTeamId": "SAS",
+      "College": "Ohio State",
+      "ContractSalary": 4962033,
+      "ContractYears": 2
     },
     {
       "PlayerId": "marvin_bagley_iii",
@@ -23950,7 +26580,14 @@
         "DefensiveIQ": 65,
         "Intangibles": 75,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2018,
+      "DraftRound": 1,
+      "DraftPick": 2,
+      "DraftedByTeamId": "SAC",
+      "College": "Arizona State",
+      "ContractSalary": 2296274,
+      "ContractYears": 2
     },
     {
       "PlayerId": "will_riley",
@@ -23998,7 +26635,9 @@
         "DefensiveIQ": 72,
         "Intangibles": 85,
         "Potential": 95
-      }
+      },
+      "ContractSalary": 3512520,
+      "ContractYears": 5
     },
     {
       "PlayerId": "cam_whitmore",
@@ -24046,7 +26685,14 @@
         "DefensiveIQ": 75,
         "Intangibles": 88,
         "Potential": 92
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 1,
+      "DraftPick": 20,
+      "DraftedByTeamId": "HOU",
+      "College": "Villanova",
+      "ContractSalary": 3539760,
+      "ContractYears": 3
     },
     {
       "PlayerId": "tristan_vukcevic",
@@ -24094,7 +26740,12 @@
         "DefensiveIQ": 75,
         "Intangibles": 82,
         "Potential": 85
-      }
+      },
+      "DraftYear": 2023,
+      "DraftRound": 2,
+      "DraftPick": 42,
+      "DraftedByTeamId": "WAS",
+      "College": "Real Madrid Baloncesto (Spain)"
     },
     {
       "PlayerId": "justin_champagnie",
@@ -24142,7 +26793,9 @@
         "DefensiveIQ": 78,
         "Intangibles": 92,
         "Potential": 80
-      }
+      },
+      "ContractSalary": 2349578,
+      "ContractYears": 4
     },
     {
       "PlayerId": "anthony_gill",
@@ -24190,7 +26843,9 @@
         "DefensiveIQ": 75,
         "Intangibles": 88,
         "Potential": 72
-      }
+      },
+      "ContractSalary": 2296274,
+      "ContractYears": 2
     },
     {
       "PlayerId": "sharife_cooper",
@@ -24238,7 +26893,12 @@
         "DefensiveIQ": 68,
         "Intangibles": 88,
         "Potential": 82
-      }
+      },
+      "DraftYear": 2021,
+      "DraftRound": 2,
+      "DraftPick": 48,
+      "DraftedByTeamId": "ATL",
+      "College": "Auburn"
     }
   ]
 }

@@ -123,7 +123,7 @@ namespace NBAHeadCoach.UI.Components
                 _dotImage.color = teamColor;
 
             if (_jerseyNumberText != null)
-                _jerseyNumberText.text = jerseyNumber > 0 ? jerseyNumber.ToString() : "";
+                _jerseyNumberText.text = jerseyNumber >= 0 ? jerseyNumber.ToString() : "";
 
             if (_highlightRing != null)
                 _highlightRing.gameObject.SetActive(false);
@@ -322,7 +322,7 @@ namespace NBAHeadCoach.UI.Components
             textRT.sizeDelta = new Vector2(dotSize, dotSize);
             textRT.anchoredPosition = Vector2.zero;
             var text = textGO.AddComponent<Text>();
-            text.text = jerseyNumber > 0 ? jerseyNumber.ToString() : "";
+            text.text = jerseyNumber >= 0 ? jerseyNumber.ToString() : "";
             text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             text.fontSize = Mathf.RoundToInt(dotSize * 0.45f);
             text.fontStyle = FontStyle.Bold;

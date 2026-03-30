@@ -44,6 +44,10 @@ namespace NBAHeadCoach.Core.Data
         public int DraftPick;   // Overall pick number, 0 if undrafted
         public string DraftedByTeamId;
 
+        // JSON-only fields for initial contract data (not used at runtime)
+        public long ContractSalary;
+        public int ContractYears;
+
         // Flag for players generated during gameplay (drafted rookies, etc.)
         // Used to distinguish from base database players for save/load
         public bool IsGenerated;

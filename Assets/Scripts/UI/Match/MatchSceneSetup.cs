@@ -110,9 +110,15 @@ namespace NBAHeadCoach.UI.Match
             // Pick visible, contrasting team colors
             Color homeColor = PickVisibleColor(_homeTeam);
             Color awayColor = PickVisibleColor(_awayTeam);
-            // If too similar, force away to white
+            // If too similar, pick a contrasting color for away (never white — invisible on court)
             float colorDist = Mathf.Abs(homeColor.r - awayColor.r) + Mathf.Abs(homeColor.g - awayColor.g) + Mathf.Abs(homeColor.b - awayColor.b);
-            if (colorDist < 0.6f) awayColor = Color.white;
+            if (colorDist < 0.6f)
+            {
+                // Rotate hue by ~180° for maximum contrast
+                Color.RGBToHSV(homeColor, out float h, out float s, out float v);
+                awayColor = Color.HSVToRGB((h + 0.5f) % 1f, Mathf.Max(s, 0.5f), Mathf.Max(v, 0.5f));
+            }
+            Debug.Log($"[MatchSceneSetup] Team colors: home={homeColor} away={awayColor} dist={colorDist:F2}");
             _courtView.Setup(courtBgImg, fullCourtSprite, homeColor, awayColor);
 
             // Initialize with starting lineups
@@ -141,7 +147,7 @@ namespace NBAHeadCoach.UI.Match
 
             // ── COURT VIEW (middle, 45%) ──
             _courtArea = CreateRT(_root, "Court");
-            _courtArea.anchorMin = new Vector2(0, 0.35f); _courtArea.anchorMax = new Vector2(1, 0.85f); _courtArea.sizeDelta = Vector2.zero;
+            _courtArea.anchorMin = new Vector2(0, 0.25f); _courtArea.anchorMax = new Vector2(1, 0.85f); _courtArea.sizeDelta = Vector2.zero;
             // Court background image (full court sprite, stretched to fill)
             var courtBgImg = _courtArea.gameObject.AddComponent<Image>();
             courtBgImg.color = Color.white;
@@ -152,7 +158,7 @@ namespace NBAHeadCoach.UI.Match
 
             // ── PLAY-BY-PLAY (bottom 35%) ──
             var pbpArea = CreateRT(_root, "PBP");
-            pbpArea.anchorMin = Vector2.zero; pbpArea.anchorMax = new Vector2(1, 0.35f); pbpArea.sizeDelta = Vector2.zero;
+            pbpArea.anchorMin = Vector2.zero; pbpArea.anchorMax = new Vector2(1, 0.25f); pbpArea.sizeDelta = Vector2.zero;
             pbpArea.gameObject.AddComponent<Image>().color = UITheme.CardBackground;
             BuildPlayByPlay(pbpArea);
 
@@ -298,8 +304,9 @@ namespace NBAHeadCoach.UI.Match
             var content = CreateRT(vp, "Content");
             content.anchorMin = new Vector2(0, 1); content.anchorMax = Vector2.one; content.pivot = new Vector2(0.5f, 1);
             var vlg = content.gameObject.AddComponent<VerticalLayoutGroup>();
-            vlg.spacing = 1; vlg.childControlWidth = true; vlg.childControlHeight = false; vlg.childForceExpandWidth = true;
-            vlg.padding = new RectOffset(8, 8, 4, 4);
+            vlg.spacing = 1; vlg.childControlWidth = true; vlg.childControlHeight = true; vlg.childForceExpandWidth = true;
+            vlg.childForceExpandHeight = false;
+            vlg.padding = new RectOffset(0, 0, 2, 2);
             content.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
             scroll.content = content; scroll.viewport = vp;
 
@@ -367,7 +374,10 @@ namespace NBAHeadCoach.UI.Match
             if (_playByPlayContent == null) return;
 
             var row = CreateRT(_playByPlayContent, "PBP");
-            row.gameObject.AddComponent<LayoutElement>().preferredHeight = 15;
+            var rowLE = row.gameObject.AddComponent<LayoutElement>();
+            rowLE.preferredHeight = 16;
+            rowLE.minHeight = 16;
+            rowLE.flexibleHeight = 0;
             row.gameObject.AddComponent<Image>().color = _pbpCount % 2 == 0 ? UITheme.PanelSurface : UITheme.CardBackground;
 
             Color textColor = entry.Type switch
@@ -385,7 +395,9 @@ namespace NBAHeadCoach.UI.Match
             if (entry.IsHighlight) text = $"<b>{text}</b>";
 
             var t = MkText(row, text, 9, FontStyle.Normal, textColor, TextAnchor.MiddleLeft);
-            t.supportRichText = true; t.horizontalOverflow = HorizontalWrapMode.Overflow;
+            t.supportRichText = true; t.horizontalOverflow = HorizontalWrapMode.Wrap;
+            t.verticalOverflow = VerticalWrapMode.Truncate;
+            // Ensure text has left padding so it doesn't clip
             var trt = t.GetComponent<RectTransform>();
             trt.offsetMin = new Vector2(10, 0); trt.offsetMax = new Vector2(-10, 0);
 

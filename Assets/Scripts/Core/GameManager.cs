@@ -575,6 +575,9 @@ namespace NBAHeadCoach.Core
 
         private void InitializeManagersForNewGame()
         {
+            // Create contracts from JSON data for all players
+            InitializePlayerContracts();
+
             // Initialize managers that need setup for new game
             if (_career != null)
                 _jobSecurityManager?.InitializeForNewSeason(_career, _playerTeamId);
@@ -625,6 +628,42 @@ namespace NBAHeadCoach.Core
             }
 
             Debug.Log($"[GameManager] Trade systems configured for team: {teamId}");
+        }
+
+        /// <summary>
+        /// Creates Contract objects from JSON ContractSalary/ContractYears fields for all players.
+        /// </summary>
+        private void InitializePlayerContracts()
+        {
+            if (_salaryCapManager == null) return;
+
+            int created = 0;
+            foreach (var player in PlayerDatabase.GetAllPlayers())
+            {
+                // Skip if already has a contract (e.g., from save data)
+                if (_salaryCapManager.GetContract(player.PlayerId) != null) continue;
+
+                if (player.ContractSalary > 0 && player.ContractYears > 0)
+                {
+                    var contract = Data.Contract.Create(
+                        player.PlayerId,
+                        player.TeamId,
+                        player.ContractSalary,
+                        player.ContractYears
+                    );
+                    _salaryCapManager.RegisterContract(contract);
+                    created++;
+                }
+                else if (!string.IsNullOrEmpty(player.TeamId))
+                {
+                    // Player has a team but no contract data — create a minimum contract
+                    int yrsExp = Math.Max(0, player.Age - 22); // approximate years of experience
+                    var contract = Data.Contract.CreateMinimum(player.PlayerId, player.TeamId, yrsExp);
+                    _salaryCapManager.RegisterContract(contract);
+                    created++;
+                }
+            }
+            Debug.Log($"[GameManager] Initialized {created} player contracts");
         }
 
         #endregion
@@ -733,6 +772,9 @@ namespace NBAHeadCoach.Core
             {
                 _tradeOfferGenerator?.RestoreFromSave(data.IncomingOffersData);
             }
+
+            // Initialize contracts (from JSON data for players without saved contracts)
+            InitializePlayerContracts();
 
             // Set up trade systems with loaded player team
             SetupTradeSystemsForTeam(_playerTeamId);

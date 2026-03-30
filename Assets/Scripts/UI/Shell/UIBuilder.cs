@@ -161,7 +161,8 @@ namespace NBAHeadCoach.UI.Shell
             vlg.childControlHeight = true;
             vlg.childForceExpandWidth = true;
             vlg.childForceExpandHeight = false; // rows opt-in via flexibleHeight=1 (TableRow with height=0)
-            content.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            // No ContentSizeFitter — stretch anchors + VLG handle layout,
+            // flexibleHeight=1 rows expand to fill remaining space
             return contentRect;
         }
 

@@ -31,7 +31,7 @@ namespace NBAHeadCoach.UI.Components
 
         [Header("Ball")]
         [SerializeField] private BallAnimator _ballAnimator;
-        [SerializeField] private float _ballSize = 20f;
+        [SerializeField] private float _ballSize = 40f;
 
         [Header("Shot Markers")]
         [SerializeField] private GameObject _shotMarkerPrefab;
@@ -464,9 +464,19 @@ namespace NBAHeadCoach.UI.Components
 
             // Get player info
             var player = GameManager.Instance?.PlayerDatabase?.GetPlayer(playerId);
-            int jerseyNumber = int.TryParse(player?.JerseyNumber, out var jn) ? jn : 0;
+            int jerseyNumber = int.TryParse(player?.JerseyNumber, out var jn) ? jn : -1;
             string playerName = player?.DisplayName ?? playerId;
             Color teamColor = isHome ? _homeTeamColor : _awayTeamColor;
+
+            // Prevent invisible dots: if color is too close to white or too bright, darken it
+            float lum = teamColor.r * 0.299f + teamColor.g * 0.587f + teamColor.b * 0.114f;
+            if (lum > 0.85f)
+            {
+                // Force a visible contrasting color for away team
+                teamColor = isHome ? new Color(0.2f, 0.4f, 0.9f) : new Color(0.9f, 0.2f, 0.2f);
+            }
+
+            Debug.Log($"[CourtView] CreateDot: {playerId} jersey={player?.JerseyNumber ?? "null"}→{jerseyNumber} home={isHome} color={teamColor}");
 
             AnimatedPlayerDot dot;
 
