@@ -335,6 +335,8 @@ namespace NBAHeadCoach.Core
                     break;
 
                 case GameState.Match:
+                    // MatchSceneSetup auto-attaches when scene loads
+                    StartCoroutine(AttachMatchSceneSetup());
                     break;
 
                 case GameState.PostGame:
@@ -931,6 +933,17 @@ namespace NBAHeadCoach.Core
             }
 
             Debug.Log($"[GameManager] Scene loaded: {sceneName}");
+        }
+
+        private IEnumerator AttachMatchSceneSetup()
+        {
+            // Wait for Match scene to load
+            yield return new WaitForSeconds(0.3f);
+            if (FindAnyObjectByType<UI.Match.MatchSceneSetup>() == null)
+            {
+                var go = new GameObject("MatchSceneSetup");
+                go.AddComponent<UI.Match.MatchSceneSetup>();
+            }
         }
 
         /// <summary>

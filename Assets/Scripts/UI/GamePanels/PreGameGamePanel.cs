@@ -72,7 +72,10 @@ namespace NBAHeadCoach.UI.GamePanels
             var playBtn = playGo.AddComponent<Button>();
             var playText = UIBuilder.Text(playGo.GetComponent<RectTransform>(), "PT", "PLAY GAME", 14, FontStyle.Bold, Color.white);
             playText.alignment = TextAnchor.MiddleCenter; UIBuilder.Stretch(playText.gameObject);
-            playBtn.onClick.AddListener(() => SimulateAndShowResult(gm, playerTeam, oppTeam, isHome, capturedEvent));
+            playBtn.onClick.AddListener(() => {
+                gm.MatchController?.PrepareMatch(capturedEvent);
+                gm.MatchController?.StartInteractiveMatch();
+            });
         }
 
         private void SimulateAndShowResult(GameManager gm, Team playerTeam, Team oppTeam, bool isHome, CalendarEvent gameEvent)

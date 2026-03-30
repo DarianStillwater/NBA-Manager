@@ -496,22 +496,35 @@ namespace NBAHeadCoach.UI.Shell
             int safety = 0;
             while (safety++ < 400)
             {
-                // Check BEFORE advancing: does tomorrow have a game for our team?
+                // Check BEFORE advancing: is the next game tomorrow?
+                // If so, advance to that day and show PreGame.
                 var nextGame = sc.GetNextGame();
-                DateTime tomorrow = gm.CurrentDate.AddDays(1);
-                if (nextGame != null && nextGame.Date.Date == tomorrow.Date)
+                if (nextGame != null)
                 {
-                    // Advance to game day but DON'T simulate the player's game
-                    gm.AdvanceDay();
-                    RefreshLiveData(_currentTeam);
-                    Debug.Log($"[Continue] Stopped — game day: {nextGame.HomeTeamId} vs {nextGame.AwayTeamId} on {gm.CurrentDate:MMM dd}");
-                    ShowPanel("Dashboard");
-                    break;
+                    DateTime tomorrow = gm.CurrentDate.AddDays(1);
+                    if (nextGame.Date.Date == tomorrow.Date)
+                    {
+                        gm.AdvanceDay();
+                        RefreshLiveData(_currentTeam);
+                        Debug.Log($"[Continue] Stopped — game day: {nextGame.HomeTeamId} vs {nextGame.AwayTeamId} on {gm.CurrentDate:MMM dd}");
+                        // Re-fetch since AdvanceDay may have changed state
+                        var todaysGame = sc.GetTodaysGame();
+                        if (todaysGame != null)
+                            ShowPreGame(todaysGame);
+                        else
+                            ShowPanel("Dashboard");
+                        break;
+                    }
+                    // Also check: is there a game TODAY that hasn't been played?
+                    if (nextGame.Date.Date == gm.CurrentDate.Date)
+                    {
+                        Debug.Log($"[Continue] Stopped — game today: {nextGame.HomeTeamId} vs {nextGame.AwayTeamId}");
+                        ShowPreGame(nextGame);
+                        break;
+                    }
                 }
 
                 gm.AdvanceDay();
-
-                // Update header date display
                 RefreshLiveData(_currentTeam);
                 yield return new WaitForSeconds(0.08f);
 
@@ -537,7 +550,9 @@ namespace NBAHeadCoach.UI.Shell
             if (injMgr != null) injMgr.OnPlayerInjured -= onInjury;
 
             _continueRunning = false;
-            EnableActionButtons();
+            // Don't re-enable if we entered game day flow (PreGame disables them)
+            if (!_isGameDayFlow)
+                EnableActionButtons();
         }
 
         // ═══════════════════════════════════════════════════════

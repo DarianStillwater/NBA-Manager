@@ -109,6 +109,20 @@ namespace NBAHeadCoach.UI.Components
         #region Public API
 
         /// <summary>
+        /// Programmatic setup — call before Initialize when creating at runtime.
+        /// Sets court background, sprite, and team colors.
+        /// </summary>
+        public void Setup(Image courtBackground, Sprite courtSprite, Color homeColor, Color awayColor)
+        {
+            _courtBackground = courtBackground;
+            _halfCourtSprite = courtSprite;
+            _homeTeamColor = homeColor;
+            _awayTeamColor = awayColor;
+            if (_courtBackground != null && _halfCourtSprite != null)
+                _courtBackground.sprite = _halfCourtSprite;
+        }
+
+        /// <summary>
         /// Initialize the court view with teams and lineups.
         /// </summary>
         public void Initialize(Team homeTeam, Team awayTeam,
