@@ -13,7 +13,7 @@ namespace NBAHeadCoach.UI.GamePanels
         {
             var scroll = B.FixedArea(parent);
             var title = B.Text(scroll, "Title", "COACHING STAFF", 18, FontStyle.Bold, UITheme.AccentPrimary);
-            title.gameObject.AddComponent<LayoutElement>().preferredHeight = 28;
+            var titleLE = title.gameObject.AddComponent<LayoutElement>(); titleLE.preferredHeight = 24; titleLE.flexibleHeight = 0;
 
             string coachName = GameManager.Instance?.Career?.PersonName ?? "Player";
 

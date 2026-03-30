@@ -73,10 +73,10 @@ namespace NBAHeadCoach.UI.GamePanels
             var lr = left.GetComponent<RectTransform>();
             lr.anchorMin = Vector2.zero; lr.anchorMax = new Vector2(0.55f, 1); lr.sizeDelta = Vector2.zero;
 
-            var leftArea = B.FixedArea(lr, spacing: 0, padding: 2);
+            var leftArea = B.FixedArea(lr, spacing: 0, padding: 2, expandRows: false);
 
             // Header row
-            var headerRow = B.TableRow(leftArea, 20, UITheme.FMCardHeaderBg);
+            var headerRow = B.TableRow(leftArea, 18, UITheme.FMCardHeaderBg);
             B.TableCell(headerRow, "Date", 60, FontStyle.Bold, UITheme.AccentPrimary);
             B.TableCell(headerRow, "", 18);
             B.TableCell(headerRow, "Opponent", 120, FontStyle.Bold, UITheme.AccentPrimary);
@@ -98,7 +98,7 @@ namespace NBAHeadCoach.UI.GamePanels
                 if (isToday) bgColor = UITheme.TeamTintedCard(teamColor, 0.2f);
                 if (game.IsCompleted) bgColor = UITheme.CardHeaderFrosted;
 
-                var row = B.TableRow(leftArea, 20, bgColor);
+                var row = B.TableRow(leftArea, 22, bgColor);
                 var btn = row.gameObject.AddComponent<Button>();
                 var bc = btn.colors; bc.highlightedColor = UITheme.FMNavHover; btn.colors = bc;
 

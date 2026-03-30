@@ -16,7 +16,7 @@ namespace NBAHeadCoach.UI.GamePanels
         {
             var scroll = B.FixedArea(parent);
             var title = B.Text(scroll, "Title", "INBOX", 18, FontStyle.Bold, UITheme.AccentPrimary);
-            title.gameObject.AddComponent<LayoutElement>().preferredHeight = 28;
+            var titleLE = title.gameObject.AddComponent<LayoutElement>(); titleLE.preferredHeight = 24; titleLE.flexibleHeight = 0;
 
             var messages = GenerateMessages(team);
             foreach (var msg in messages)

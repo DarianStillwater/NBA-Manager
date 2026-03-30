@@ -298,10 +298,11 @@ namespace NBAHeadCoach.UI.Components
             var rt = dotGO.AddComponent<RectTransform>();
             rt.sizeDelta = new Vector2(dotSize, dotSize);
 
-            // Add dot image (circle)
+            // Add dot image (circle sprite)
             var dotImage = dotGO.AddComponent<Image>();
             dotImage.color = teamColor;
-            // Note: You'd assign a circle sprite here in the editor
+            var circleSprite = NBAHeadCoach.Core.Util.ArtManager.GetCircleDot();
+            if (circleSprite != null) dotImage.sprite = circleSprite;
 
             // Add highlight ring
             var ringGO = new GameObject("HighlightRing");
@@ -311,6 +312,7 @@ namespace NBAHeadCoach.UI.Components
             ringRT.anchoredPosition = Vector2.zero;
             var ringImage = ringGO.AddComponent<Image>();
             ringImage.color = new Color(1f, 0.8f, 0.2f, 0.8f); // Gold highlight
+            if (circleSprite != null) ringImage.sprite = circleSprite;
             ringGO.SetActive(false);
 
             // Add jersey number text
@@ -322,9 +324,12 @@ namespace NBAHeadCoach.UI.Components
             var text = textGO.AddComponent<Text>();
             text.text = jerseyNumber > 0 ? jerseyNumber.ToString() : "";
             text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            text.fontSize = Mathf.RoundToInt(dotSize * 0.4f);
+            text.fontSize = Mathf.RoundToInt(dotSize * 0.45f);
+            text.fontStyle = FontStyle.Bold;
             text.alignment = TextAnchor.MiddleCenter;
-            text.color = Color.white;
+            // Contrast text: black on bright dots, white on dark dots
+            float lum = teamColor.r * 0.299f + teamColor.g * 0.587f + teamColor.b * 0.114f;
+            text.color = lum > 0.5f ? Color.black : Color.white;
 
             // Add tooltip
             var tooltipGO = new GameObject("Tooltip");

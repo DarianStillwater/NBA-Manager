@@ -31,6 +31,10 @@ namespace NBAHeadCoach.Core.Util
         public static Sprite GetPanelBackground() => Load("Art/Backgrounds/panel_bg_dark");
         public static Sprite GetMatchBackground() => Load("Art/Backgrounds/match_bg");
 
+        // ── Match Sprites ──────────────────────────────────────────
+        public static Sprite GetCircleDot() => Load("Art/UI/circle_dot");
+        public static Sprite GetBasketball() => Load("Art/UI/basketball");
+
         // ── UI Elements ─────────────────────────────────────────
         public static Sprite GetButtonPrimary() => Load("Art/UI/btn_primary");
         public static Sprite GetButtonSecondary() => Load("Art/UI/btn_secondary");

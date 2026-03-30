@@ -27,7 +27,7 @@ namespace NBAHeadCoach.UI.GamePanels
 
             string title = _isLoadMode ? "LOAD GAME" : "SAVE GAME";
             var titleText = UIBuilder.Text(scrollContent, "Title", title, 18, FontStyle.Bold, UITheme.AccentPrimary);
-            titleText.gameObject.AddComponent<LayoutElement>().preferredHeight = 28;
+            var titleLE = titleText.gameObject.AddComponent<LayoutElement>(); titleLE.preferredHeight = 24; titleLE.flexibleHeight = 0;
 
             // Action bar at top
             var actionBar = UIBuilder.Child(scrollContent, "ActionBar");
@@ -126,7 +126,7 @@ namespace NBAHeadCoach.UI.GamePanels
             });
 
             // Header row
-            var headerRow = UIBuilder.TableRow(scrollContent, 28, UITheme.FMCardHeaderBg);
+            var headerRow = UIBuilder.TableRow(scrollContent, 16, UITheme.FMCardHeaderBg);
             UIBuilder.TableCell(headerRow, "Save Name", 200, FontStyle.Bold, UITheme.AccentPrimary);
             UIBuilder.TableCell(headerRow, "Team", 50, FontStyle.Bold, UITheme.AccentPrimary);
             UIBuilder.TableCell(headerRow, "W-L", 45, FontStyle.Bold, UITheme.AccentPrimary);
@@ -141,7 +141,7 @@ namespace NBAHeadCoach.UI.GamePanels
             {
                 var save = saves[i];
                 var bgColor = i % 2 == 0 ? UITheme.CardBackground : UITheme.FMCardHeaderBg;
-                var row = UIBuilder.TableRow(scrollContent, 32, bgColor);
+                var row = UIBuilder.TableRow(scrollContent, 0, bgColor);
                 var rowImg = row.gameObject.GetComponent<Image>();
                 _rowHighlights.Add(rowImg);
 
@@ -161,7 +161,7 @@ namespace NBAHeadCoach.UI.GamePanels
 
             if (saves.Count == 0)
             {
-                var emptyRow = UIBuilder.TableRow(scrollContent, 40, UITheme.CardBackground);
+                var emptyRow = UIBuilder.TableRow(scrollContent, 0, UITheme.CardBackground);
                 UIBuilder.TableCell(emptyRow, "No saves found", 400, FontStyle.Italic, UITheme.TextSecondary);
             }
         }

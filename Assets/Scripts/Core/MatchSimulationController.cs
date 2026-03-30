@@ -401,11 +401,15 @@ namespace NBAHeadCoach.Core
                     yield return HandleQuarterEnd();
                 }
 
-                // Wait based on speed
+                // Wait based on speed — always yield at least once per possession to prevent freezing
                 float delay = GetDelayForSpeed();
                 if (delay > 0)
                 {
                     yield return new WaitForSeconds(delay);
+                }
+                else
+                {
+                    yield return null; // Prevent Unity freeze at Instant speed
                 }
             }
 

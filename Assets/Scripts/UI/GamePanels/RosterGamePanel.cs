@@ -22,9 +22,9 @@ namespace NBAHeadCoach.UI.GamePanels
         {
             var scroll = B.FixedArea(parent, spacing: 1, padding: 4);
             var title = B.Text(scroll, "Title", "SQUAD", 18, FontStyle.Bold, UITheme.AccentPrimary);
-            title.gameObject.AddComponent<LayoutElement>().preferredHeight = 28;
+            var titleLE = title.gameObject.AddComponent<LayoutElement>(); titleLE.preferredHeight = 20; titleLE.flexibleHeight = 0;
 
-            var headerRow = B.TableRow(scroll, 28, UITheme.FMCardHeaderBg);
+            var headerRow = B.TableRow(scroll, 18, UITheme.FMCardHeaderBg);
             B.TableCell(headerRow, "Name", 180, FontStyle.Bold, UITheme.AccentPrimary);
             B.TableCell(headerRow, "Ht", 55, FontStyle.Bold, UITheme.AccentPrimary);
             B.TableCell(headerRow, "Wt", 55, FontStyle.Bold, UITheme.AccentPrimary);
@@ -42,7 +42,7 @@ namespace NBAHeadCoach.UI.GamePanels
             {
                 var p = roster[i];
                 var bgColor = i % 2 == 0 ? UITheme.CardBackground : UITheme.FMCardHeaderBg;
-                var row = B.TableRow(scroll, 30, bgColor);
+                var row = B.TableRow(scroll, 0, bgColor);
 
                 B.TableCell(row, $"{p.FirstName[0]}. {p.LastName}", 180, FontStyle.Normal, Color.white);
                 B.TableCell(row, p.HeightFormatted, 55, FontStyle.Normal, UITheme.TextSecondary);
@@ -228,7 +228,7 @@ namespace NBAHeadCoach.UI.GamePanels
             var badges = GenerateScoutingBadges(p);
             foreach (var badge in badges)
             {
-                var badgeRow = B.TableRow(rightScroll, 22, Color.clear);
+                var badgeRow = B.TableRow(rightScroll, 0, Color.clear);
                 var badgeGo = B.Child(badgeRow, "Badge");
                 badgeGo.AddComponent<LayoutElement>().preferredWidth = 16;
                 badgeGo.AddComponent<Image>().color = badge.color;
@@ -238,7 +238,7 @@ namespace NBAHeadCoach.UI.GamePanels
             if (badges.Count == 0)
             {
                 var noBadges = B.Text(rightScroll, "NoBadges", "No scouting data available yet.", 12, FontStyle.Italic, UITheme.TextSecondary);
-                noBadges.gameObject.AddComponent<LayoutElement>().preferredHeight = 24;
+                noBadges.gameObject.AddComponent<LayoutElement>().preferredHeight = 16;
             }
 
             // Tendencies section
@@ -257,7 +257,7 @@ namespace NBAHeadCoach.UI.GamePanels
             else
             {
                 var noTend = B.Text(rightScroll, "NoTend", "No tendency data.", 12, FontStyle.Italic, UITheme.TextSecondary);
-                noTend.gameObject.AddComponent<LayoutElement>().preferredHeight = 24;
+                noTend.gameObject.AddComponent<LayoutElement>().preferredHeight = 16;
             }
         }
 
@@ -276,7 +276,7 @@ namespace NBAHeadCoach.UI.GamePanels
 
             if (s != null && s.GamesPlayed > 0)
             {
-                var hdr1 = B.TableRow(scroll, 20, UITheme.CardHeaderFrosted);
+                var hdr1 = B.TableRow(scroll, 16, UITheme.CardHeaderFrosted);
                 B.TableCell(hdr1, "GP", 30, FontStyle.Bold, UITheme.AccentPrimary);
                 B.TableCell(hdr1, "GS", 30, FontStyle.Bold, UITheme.AccentPrimary);
                 B.TableCell(hdr1, "MPG", 35, FontStyle.Bold, UITheme.AccentPrimary);
@@ -289,7 +289,7 @@ namespace NBAHeadCoach.UI.GamePanels
                 B.TableCell(hdr1, "3P%", 40, FontStyle.Bold, UITheme.AccentPrimary);
                 B.TableCell(hdr1, "FT%", 40, FontStyle.Bold, UITheme.AccentPrimary);
 
-                var row1 = B.TableRow(scroll, 22, UITheme.CardFrosted);
+                var row1 = B.TableRow(scroll, 0, UITheme.CardFrosted);
                 B.TableCell(row1, s.GamesPlayed.ToString(), 30, FontStyle.Bold, Color.white);
                 B.TableCell(row1, s.GamesStarted.ToString(), 30);
                 B.TableCell(row1, s.MPG.ToString("0.0"), 35);
@@ -305,7 +305,7 @@ namespace NBAHeadCoach.UI.GamePanels
             else
             {
                 var noStats = B.Text(scroll, "No", "No games played this season.", 12, FontStyle.Italic, UITheme.TextSecondary);
-                noStats.gameObject.AddComponent<LayoutElement>().preferredHeight = 24;
+                noStats.gameObject.AddComponent<LayoutElement>().preferredHeight = 16;
             }
 
             AddSpacer(scroll, 10);
@@ -333,7 +333,7 @@ namespace NBAHeadCoach.UI.GamePanels
                     int cFTM = p.CareerStats.Sum(cs => cs.FT_Made);
                     int cFTA = p.CareerStats.Sum(cs => cs.FT_Attempts);
 
-                    var crow = B.TableRow(scroll, 22, UITheme.CardFrosted);
+                    var crow = B.TableRow(scroll, 0, UITheme.CardFrosted);
                     B.TableCell(crow, totalGP.ToString(), 30, FontStyle.Bold, Color.white);
                     B.TableCell(crow, "", 30);
                     B.TableCell(crow, "", 35);
@@ -356,7 +356,7 @@ namespace NBAHeadCoach.UI.GamePanels
 
             if (s != null && s.GamesPlayed > 0)
             {
-                var ahdr = B.TableRow(scroll, 20, UITheme.CardHeaderFrosted);
+                var ahdr = B.TableRow(scroll, 16, UITheme.CardHeaderFrosted);
                 B.TableCell(ahdr, "PER", 40, FontStyle.Bold, UITheme.AccentPrimary);
                 B.TableCell(ahdr, "TS%", 40, FontStyle.Bold, UITheme.AccentPrimary);
                 B.TableCell(ahdr, "eFG%", 40, FontStyle.Bold, UITheme.AccentPrimary);
@@ -365,7 +365,7 @@ namespace NBAHeadCoach.UI.GamePanels
                 B.TableCell(ahdr, "BPM", 40, FontStyle.Bold, UITheme.AccentPrimary);
                 B.TableCell(ahdr, "VORP", 40, FontStyle.Bold, UITheme.AccentPrimary);
 
-                var arow = B.TableRow(scroll, 22, UITheme.CardFrosted);
+                var arow = B.TableRow(scroll, 0, UITheme.CardFrosted);
                 B.TableCell(arow, s.PER.ToString("0.0"), 40);
                 B.TableCell(arow, $"{s.TrueShootingPct * 100:0.0}", 40);
                 B.TableCell(arow, $"{s.EffectiveFGPct * 100:0.0}", 40);
@@ -377,7 +377,7 @@ namespace NBAHeadCoach.UI.GamePanels
             else
             {
                 var noAdv = B.Text(scroll, "NoAdv", "Play games to generate advanced metrics.", 12, FontStyle.Italic, UITheme.TextSecondary);
-                noAdv.gameObject.AddComponent<LayoutElement>().preferredHeight = 24;
+                noAdv.gameObject.AddComponent<LayoutElement>().preferredHeight = 16;
             }
         }
 
@@ -387,7 +387,7 @@ namespace NBAHeadCoach.UI.GamePanels
 
         private void AddInfoRow(RectTransform parent, string label, string value, Color? valueColor = null)
         {
-            var row = B.TableRow(parent, 20, Color.clear);
+            var row = B.TableRow(parent, 0, Color.clear);
             B.TableCell(row, label, 90, FontStyle.Normal, UITheme.TextSecondary);
             B.TableCell(row, value, 160, FontStyle.Bold, valueColor ?? Color.white);
         }
@@ -401,7 +401,7 @@ namespace NBAHeadCoach.UI.GamePanels
         private void AddTendencyRow(RectTransform parent, string label, float value, string lowLabel, string highLabel)
         {
             // value is -100 to +100. Show as text description
-            var row = B.TableRow(parent, 20, Color.clear);
+            var row = B.TableRow(parent, 0, Color.clear);
             string desc;
             Color col;
             if (value > 50) { desc = highLabel; col = UITheme.Success; }

@@ -21,7 +21,7 @@ namespace NBAHeadCoach.UI.GamePanels
             vlg.childControlWidth = true; vlg.childControlHeight = false; vlg.childForceExpandWidth = true;
 
             var title = B.Text(cr, "Title", "DASHBOARD", 18, FontStyle.Bold, UITheme.AccentPrimary);
-            title.gameObject.AddComponent<LayoutElement>().preferredHeight = 28;
+            var titleLE = title.gameObject.AddComponent<LayoutElement>(); titleLE.preferredHeight = 24; titleLE.flexibleHeight = 0;
 
             var row1 = CreateRow(cr, "Row1", 140); BuildNextGameCard(row1, team, teamColor); BuildSeasonOverviewCard(row1, team, teamColor);
             var row2 = CreateRow(cr, "Row2", 140); BuildRecentResultsCard(row2, teamColor); BuildRosterSummaryCard(row2, team, teamColor);
@@ -32,7 +32,7 @@ namespace NBAHeadCoach.UI.GamePanels
         private RectTransform CreateRow(RectTransform parent, string name, float height)
         {
             var row = B.Child(parent, name);
-            row.AddComponent<LayoutElement>().preferredHeight = height;
+            var le = row.AddComponent<LayoutElement>(); le.flexibleHeight = 1;
             var hlg = row.AddComponent<HorizontalLayoutGroup>();
             hlg.spacing = 12; hlg.childControlWidth = true; hlg.childControlHeight = true;
             hlg.childForceExpandWidth = true; hlg.childForceExpandHeight = true;

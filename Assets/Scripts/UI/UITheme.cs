@@ -47,6 +47,9 @@ namespace NBAHeadCoach.UI
         public const float FMTeamLogoSize = 64f;
         public const float FMCardHeaderHeight = 32f;
         public const float FMCardContentPadding = 12f;
+        public const float RowHeight = 15f;         // Compact data row (tables, lists, PBP)
+        public const float RowHeightMedium = 20f;    // Medium row (preferences, lineup picks)
+        public const float RowSpacing = 1f;          // Spacing between compact rows
         public static readonly Color FMSidebarBg = new Color32(18, 22, 32, 255);
         public static readonly Color FMNavHover = new Color32(30, 35, 50, 255);
         public static readonly Color FMNavActive = new Color32(35, 42, 60, 255);

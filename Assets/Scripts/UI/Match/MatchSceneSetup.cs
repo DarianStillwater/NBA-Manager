@@ -1,4 +1,6 @@
+using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using UnityEngine.UI;
@@ -39,6 +41,9 @@ namespace NBAHeadCoach.UI.Match
         private Button _pauseBtn, _playBtn;
         private Button[] _speedBtns;
         private Text _speedLabel;
+
+        // Coaching overlays
+        private GameObject _coachingOverlay;
 
         // State
         private Team _homeTeam, _awayTeam, _playerTeam;
@@ -102,8 +107,12 @@ namespace NBAHeadCoach.UI.Match
             // Setup court view with full court sprite and actual team colors
             var courtBgImg = _courtArea.GetComponent<Image>();
             var fullCourtSprite = ArtManager.GetFullCourt();
-            Color homeColor = UITheme.ParseTeamColor(_homeTeam.PrimaryColor, new Color(0.2f, 0.4f, 0.8f));
-            Color awayColor = UITheme.ParseTeamColor(_awayTeam.PrimaryColor, new Color(0.8f, 0.2f, 0.2f));
+            // Pick visible, contrasting team colors
+            Color homeColor = PickVisibleColor(_homeTeam);
+            Color awayColor = PickVisibleColor(_awayTeam);
+            // If too similar, force away to white
+            float colorDist = Mathf.Abs(homeColor.r - awayColor.r) + Mathf.Abs(homeColor.g - awayColor.g) + Mathf.Abs(homeColor.b - awayColor.b);
+            if (colorDist < 0.6f) awayColor = Color.white;
             _courtView.Setup(courtBgImg, fullCourtSprite, homeColor, awayColor);
 
             // Initialize with starting lineups
@@ -133,10 +142,11 @@ namespace NBAHeadCoach.UI.Match
             // ── COURT VIEW (middle, 45%) ──
             _courtArea = CreateRT(_root, "Court");
             _courtArea.anchorMin = new Vector2(0, 0.35f); _courtArea.anchorMax = new Vector2(1, 0.85f); _courtArea.sizeDelta = Vector2.zero;
-            // Court background image (full court sprite)
+            // Court background image (full court sprite, stretched to fill)
             var courtBgImg = _courtArea.gameObject.AddComponent<Image>();
-            courtBgImg.color = Color.white; // white so sprite renders at natural colors
-            courtBgImg.preserveAspect = true;
+            courtBgImg.color = Color.white;
+            courtBgImg.type = Image.Type.Simple;
+            courtBgImg.preserveAspect = false;
 
             _courtView = _courtArea.gameObject.AddComponent<AnimatedCourtView>();
 
@@ -251,6 +261,8 @@ namespace NBAHeadCoach.UI.Match
 
             // Coaching buttons
             MkCtrlBtn(parent, "TIMEOUT", 80, () => _simController?.CallTimeout());
+            MkCtrlBtn(parent, "SUBS", 60, ShowSubstitutionOverlay);
+            MkCtrlBtn(parent, "STRATEGY", 80, ShowStrategyOverlay);
             _speedLabel = MkText(CreateRT(parent, "SpLbl"), "2x", 11, FontStyle.Normal, UITheme.TextSecondary, TextAnchor.MiddleCenter);
             _speedLabel.gameObject.AddComponent<LayoutElement>().preferredWidth = 40;
         }
@@ -286,7 +298,7 @@ namespace NBAHeadCoach.UI.Match
             var content = CreateRT(vp, "Content");
             content.anchorMin = new Vector2(0, 1); content.anchorMax = Vector2.one; content.pivot = new Vector2(0.5f, 1);
             var vlg = content.gameObject.AddComponent<VerticalLayoutGroup>();
-            vlg.spacing = 2; vlg.childControlWidth = true; vlg.childControlHeight = false; vlg.childForceExpandWidth = true;
+            vlg.spacing = 1; vlg.childControlWidth = true; vlg.childControlHeight = false; vlg.childForceExpandWidth = true;
             vlg.padding = new RectOffset(8, 8, 4, 4);
             content.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
             scroll.content = content; scroll.viewport = vp;
@@ -355,7 +367,7 @@ namespace NBAHeadCoach.UI.Match
             if (_playByPlayContent == null) return;
 
             var row = CreateRT(_playByPlayContent, "PBP");
-            row.gameObject.AddComponent<LayoutElement>().preferredHeight = 20;
+            row.gameObject.AddComponent<LayoutElement>().preferredHeight = 15;
             row.gameObject.AddComponent<Image>().color = _pbpCount % 2 == 0 ? UITheme.PanelSurface : UITheme.CardBackground;
 
             Color textColor = entry.Type switch
@@ -372,7 +384,7 @@ namespace NBAHeadCoach.UI.Match
             string text = $"<color=#{ColorUtility.ToHtmlStringRGB(UITheme.TextSecondary)}>{clock}</color>  {entry.Description}";
             if (entry.IsHighlight) text = $"<b>{text}</b>";
 
-            var t = MkText(row, text, 11, FontStyle.Normal, textColor, TextAnchor.MiddleLeft);
+            var t = MkText(row, text, 9, FontStyle.Normal, textColor, TextAnchor.MiddleLeft);
             t.supportRichText = true; t.horizontalOverflow = HorizontalWrapMode.Overflow;
             var trt = t.GetComponent<RectTransform>();
             trt.offsetMin = new Vector2(10, 0); trt.offsetMax = new Vector2(-10, 0);
@@ -430,6 +442,177 @@ namespace NBAHeadCoach.UI.Match
             gm?.MatchController?.ContinueFromPostGame();
         }
 
+        // ── COACHING OVERLAYS ──
+
+        private void DismissOverlay()
+        {
+            if (_coachingOverlay != null) Destroy(_coachingOverlay);
+            _coachingOverlay = null;
+            _simController?.StartSimulation();
+        }
+
+        private RectTransform CreateOverlay(string title)
+        {
+            _simController?.PauseSimulation();
+            if (_coachingOverlay != null) Destroy(_coachingOverlay);
+
+            _coachingOverlay = CreateRT(_root, "CoachOverlay").gameObject;
+            Stretch(_coachingOverlay.GetComponent<RectTransform>());
+            _coachingOverlay.AddComponent<Image>().color = new Color(0, 0, 0, 0.75f);
+
+            var panel = CreateRT(_coachingOverlay.GetComponent<RectTransform>(), "Panel");
+            panel.anchorMin = new Vector2(0.15f, 0.1f); panel.anchorMax = new Vector2(0.85f, 0.9f); panel.sizeDelta = Vector2.zero;
+            panel.gameObject.AddComponent<Image>().color = UITheme.CardBackground;
+            UIBuilder.ApplyOutline(panel.gameObject, UITheme.AccentPrimary, 1f);
+
+            var vlg = panel.gameObject.AddComponent<VerticalLayoutGroup>();
+            vlg.childControlWidth = true; vlg.childControlHeight = true;
+            vlg.childForceExpandWidth = true; vlg.childForceExpandHeight = false;
+            vlg.spacing = 4; vlg.padding = new RectOffset(16, 16, 8, 8);
+
+            // Title bar
+            var hdr = CreateRT(panel, "Hdr"); hdr.gameObject.AddComponent<LayoutElement>().preferredHeight = 30;
+            hdr.gameObject.AddComponent<Image>().color = UITheme.FMCardHeaderBg;
+            var ht = MkText(hdr, title, 12, FontStyle.Bold, UITheme.AccentPrimary, TextAnchor.MiddleLeft);
+            ht.GetComponent<RectTransform>().offsetMin = new Vector2(12, 0);
+
+            // Close button in header
+            var closeGo = CreateRT(hdr, "Close");
+            var clrt = closeGo.GetComponent<RectTransform>();
+            clrt.anchorMin = new Vector2(1, 0); clrt.anchorMax = Vector2.one;
+            clrt.sizeDelta = new Vector2(60, 0); clrt.anchoredPosition = new Vector2(-30, 0);
+            closeGo.gameObject.AddComponent<Image>().color = UITheme.PanelSurface;
+            closeGo.gameObject.AddComponent<Button>().onClick.AddListener(DismissOverlay);
+            var ct = MkText(closeGo, "CLOSE", 10, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
+
+            return panel;
+        }
+
+        private void ShowSubstitutionOverlay()
+        {
+            var panel = CreateOverlay("SUBSTITUTIONS");
+            var gm = GameManager.Instance;
+            var db = gm?.PlayerDatabase;
+            if (_playerTeam == null || db == null) return;
+
+            // Current lineup
+            var lblOn = CreateRT(panel, "LblOn"); lblOn.gameObject.AddComponent<LayoutElement>().preferredHeight = 20;
+            lblOn.gameObject.AddComponent<Image>().color = Color.clear;
+            MkText(lblOn, "ON COURT", 10, FontStyle.Bold, UITheme.AccentPrimary, TextAnchor.MiddleLeft);
+
+            var currentIds = _playerTeam.StartingLineupIds;
+            string[] posLabels = { "PG", "SG", "SF", "PF", "C" };
+            string selectedOut = null;
+            var onCourtBgs = new List<Image>();
+
+            for (int i = 0; i < 5 && i < currentIds.Length; i++)
+            {
+                int posIdx = i;
+                string pid = currentIds[i];
+                var p = db.GetPlayer(pid);
+                var row = CreateRT(panel, "On_" + i);
+                row.gameObject.AddComponent<LayoutElement>().preferredHeight = 26;
+                var bg = row.gameObject.AddComponent<Image>(); bg.color = UITheme.PanelSurface;
+                onCourtBgs.Add(bg);
+                var rhlg = row.gameObject.AddComponent<HorizontalLayoutGroup>();
+                rhlg.childControlWidth = true; rhlg.childControlHeight = true; rhlg.spacing = 6;
+                rhlg.childForceExpandHeight = true; rhlg.padding = new RectOffset(8, 8, 0, 0);
+
+                var posGo = CreateRT(row, "Pos"); posGo.gameObject.AddComponent<LayoutElement>().preferredWidth = 28;
+                posGo.gameObject.AddComponent<Image>().color = UITheme.AccentPrimary;
+                MkText(posGo, posLabels[i], 9, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
+
+                var nameGo = CreateRT(row, "Name"); nameGo.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1;
+                nameGo.gameObject.AddComponent<Image>().color = UITheme.CardBackground;
+                string name = p != null ? $"{p.FirstName[0]}. {p.LastName}" : pid;
+                MkText(nameGo, name, 11, FontStyle.Normal, Color.white, TextAnchor.MiddleLeft).GetComponent<RectTransform>().offsetMin = new Vector2(6, 0);
+
+                row.gameObject.AddComponent<Button>().onClick.AddListener(() => {
+                    selectedOut = pid;
+                    for (int j = 0; j < onCourtBgs.Count; j++) onCourtBgs[j].color = j == posIdx ? UITheme.FMNavActive : UITheme.PanelSurface;
+                });
+            }
+
+            // Bench
+            var lblBench = CreateRT(panel, "LblBench"); lblBench.gameObject.AddComponent<LayoutElement>().preferredHeight = 20;
+            lblBench.gameObject.AddComponent<Image>().color = Color.clear;
+            MkText(lblBench, "BENCH — tap player above, then bench player to swap", 9, FontStyle.Normal, UITheme.TextSecondary, TextAnchor.MiddleLeft);
+
+            var benchIds = _playerTeam.RosterPlayerIds?.Where(id => !currentIds.Contains(id)).ToList() ?? new List<string>();
+            foreach (var bid in benchIds)
+            {
+                var bp = db.GetPlayer(bid);
+                if (bp == null) continue;
+                var brow = CreateRT(panel, "B_" + bid);
+                brow.gameObject.AddComponent<LayoutElement>().preferredHeight = 24;
+                brow.gameObject.AddComponent<Image>().color = UITheme.CardBackground;
+                string bname = $"{bp.FirstName[0]}. {bp.LastName}  ({bp.Position})";
+                var bt = MkText(brow, bname, 10, FontStyle.Normal, UITheme.TextSecondary, TextAnchor.MiddleLeft);
+                bt.GetComponent<RectTransform>().offsetMin = new Vector2(10, 0);
+
+                string capturedBid = bid;
+                brow.gameObject.AddComponent<Button>().onClick.AddListener(() => {
+                    if (selectedOut == null) return;
+                    _simController?.MakeSubstitution(selectedOut, capturedBid);
+                    DismissOverlay();
+                });
+            }
+        }
+
+        private void ShowStrategyOverlay()
+        {
+            var panel = CreateOverlay("STRATEGY");
+            if (_playerTeam?.Strategy == null) return;
+
+            var strat = _playerTeam.Strategy;
+
+            // Offense
+            string[] offNames = Enum.GetNames(typeof(OffensiveSystemType));
+            int offIdx = (int)(strat.OffensiveSystem?.PrimarySystem ?? OffensiveSystemType.MotionOffense);
+            MkOverlayCycle(panel, "Offense", offNames, offIdx, v => { if (strat.OffensiveSystem != null) strat.OffensiveSystem.PrimarySystem = (OffensiveSystemType)v; });
+
+            // Defense
+            string[] defNames = Enum.GetNames(typeof(DefensiveSchemeType));
+            int defIdx = (int)(strat.DefensiveSystem?.PrimaryScheme ?? DefensiveSchemeType.ManToManStandard);
+            MkOverlayCycle(panel, "Defense", defNames, defIdx, v => { if (strat.DefensiveSystem != null) strat.DefensiveSystem.PrimaryScheme = (DefensiveSchemeType)v; });
+
+            // Pace
+            string[] paceNames = Enum.GetNames(typeof(PacePreference));
+            int paceIdx = (int)strat.PacePreference;
+            MkOverlayCycle(panel, "Pace", paceNames, paceIdx, v => strat.PacePreference = (PacePreference)v);
+        }
+
+        private void MkOverlayCycle(RectTransform parent, string label, string[] options, int currentIndex, Action<int> onChange)
+        {
+            var row = CreateRT(parent, "Pref_" + label);
+            row.gameObject.AddComponent<LayoutElement>().preferredHeight = 32;
+            row.gameObject.AddComponent<Image>().color = UITheme.PanelSurface;
+            var hlg = row.gameObject.AddComponent<HorizontalLayoutGroup>();
+            hlg.childControlWidth = true; hlg.childControlHeight = true; hlg.childForceExpandHeight = true;
+            hlg.padding = new RectOffset(12, 8, 0, 0);
+
+            var lblGo = CreateRT(row, "Lbl"); lblGo.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1;
+            lblGo.gameObject.AddComponent<Image>().color = Color.clear;
+            MkText(lblGo, label, 12, FontStyle.Bold, UITheme.TextSecondary, TextAnchor.MiddleLeft);
+
+            int idx = Mathf.Clamp(currentIndex, 0, options.Length - 1);
+
+            var leftGo = CreateRT(row, "L"); leftGo.gameObject.AddComponent<LayoutElement>().preferredWidth = 30;
+            leftGo.gameObject.AddComponent<Image>().color = UITheme.CardBackground;
+            MkText(leftGo, "<", 14, FontStyle.Bold, UITheme.AccentPrimary, TextAnchor.MiddleCenter);
+
+            var valGo = CreateRT(row, "V"); valGo.gameObject.AddComponent<LayoutElement>().preferredWidth = 160;
+            valGo.gameObject.AddComponent<Image>().color = UITheme.CardBackground;
+            var val = MkText(valGo, options[idx], 11, FontStyle.Normal, Color.white, TextAnchor.MiddleCenter);
+
+            var rightGo = CreateRT(row, "R"); rightGo.gameObject.AddComponent<LayoutElement>().preferredWidth = 30;
+            rightGo.gameObject.AddComponent<Image>().color = UITheme.CardBackground;
+            MkText(rightGo, ">", 14, FontStyle.Bold, UITheme.AccentPrimary, TextAnchor.MiddleCenter);
+
+            leftGo.gameObject.AddComponent<Button>().onClick.AddListener(() => { idx = (idx - 1 + options.Length) % options.Length; val.text = options[idx]; onChange(idx); });
+            rightGo.gameObject.AddComponent<Button>().onClick.AddListener(() => { idx = (idx + 1) % options.Length; val.text = options[idx]; onChange(idx); });
+        }
+
         private void OnDestroy()
         {
             if (_simController != null)
@@ -444,6 +627,31 @@ namespace NBAHeadCoach.UI.Match
         }
 
         // ── HELPERS ──
+
+        private static Color PickVisibleColor(Team team)
+        {
+            // Try primary first, fall back to secondary, then lighten if still too dark
+            Color primary = UITheme.ParseTeamColor(team.PrimaryColor, Color.gray);
+            Color secondary = UITheme.ParseTeamColor(team.SecondaryColor, Color.gray);
+
+            // Use luminance to check brightness (0.3 threshold — wood court is ~0.4-0.5)
+            float primLum = primary.r * 0.299f + primary.g * 0.587f + primary.b * 0.114f;
+            float secLum = secondary.r * 0.299f + secondary.g * 0.587f + secondary.b * 0.114f;
+
+            Color best = secLum > primLum ? secondary : primary; // pick brighter one
+            float bestLum = Mathf.Max(primLum, secLum);
+
+            // If still too dark, boost brightness
+            if (bestLum < 0.35f)
+            {
+                float boost = 0.35f / Mathf.Max(bestLum, 0.05f);
+                best = new Color(
+                    Mathf.Min(best.r * boost + 0.15f, 1f),
+                    Mathf.Min(best.g * boost + 0.15f, 1f),
+                    Mathf.Min(best.b * boost + 0.15f, 1f));
+            }
+            return best;
+        }
 
         private static RectTransform CreateRT(Transform parent, string name)
         {

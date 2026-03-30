@@ -373,11 +373,15 @@ namespace NBAHeadCoach.UI.Components
             shadowRT.anchoredPosition = new Vector2(2, -5);
             var shadowImage = shadowGO.AddComponent<Image>();
             shadowImage.color = new Color(0, 0, 0, 0.3f);
-            // Note: Assign oval/ellipse sprite in editor
+            var circleSprite = NBAHeadCoach.Core.Util.ArtManager.GetCircleDot();
+            if (circleSprite != null) shadowImage.sprite = circleSprite;
 
-            // Ball image
+            // Ball image with basketball sprite
             var ballImage = ballGO.AddComponent<Image>();
-            ballImage.color = new Color(0.9f, 0.5f, 0.1f); // Basketball orange
+            ballImage.color = Color.white; // White so sprite renders at natural colors
+            var basketballSprite = NBAHeadCoach.Core.Util.ArtManager.GetBasketball();
+            if (basketballSprite != null) ballImage.sprite = basketballSprite;
+            else ballImage.color = new Color(0.9f, 0.5f, 0.1f); // Fallback orange
 
             // Add the BallAnimator component
             var component = ballGO.AddComponent<BallAnimator>();

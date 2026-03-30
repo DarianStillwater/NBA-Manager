@@ -146,22 +146,21 @@ namespace NBAHeadCoach.UI.Shell
         /// <summary>
         /// Creates a fixed VLG content area (no scroll). Use instead of ScrollArea for no-scroll panels.
         /// </summary>
-        public static RectTransform FixedArea(RectTransform parent, int spacing = 2, int padding = 8)
+        public static RectTransform FixedArea(RectTransform parent, int spacing = 2, int padding = 8, bool expandRows = false)
         {
             var content = Child(parent, "Content");
             var contentRect = content.GetComponent<RectTransform>();
-            // Anchor to top, stretch horizontally, auto-size vertically
-            contentRect.anchorMin = new Vector2(0, 1);
+            // Stretch to fill parent completely
+            contentRect.anchorMin = Vector2.zero;
             contentRect.anchorMax = Vector2.one;
-            contentRect.pivot = new Vector2(0.5f, 1);
             contentRect.sizeDelta = Vector2.zero;
             var vlg = content.AddComponent<VerticalLayoutGroup>();
             vlg.spacing = spacing;
             vlg.padding = new RectOffset(padding, padding, padding, padding);
             vlg.childControlWidth = true;
-            vlg.childControlHeight = false;
+            vlg.childControlHeight = true;
             vlg.childForceExpandWidth = true;
-            vlg.childForceExpandHeight = false;
+            vlg.childForceExpandHeight = false; // rows opt-in via flexibleHeight=1 (TableRow with height=0)
             content.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
             return contentRect;
         }
@@ -171,9 +170,16 @@ namespace NBAHeadCoach.UI.Shell
             var row = new GameObject("Row", typeof(RectTransform));
             row.transform.SetParent(parent, false);
             var le = row.AddComponent<LayoutElement>();
-            le.preferredHeight = height;
-            le.minHeight = height;
-            le.flexibleHeight = 0;
+            if (height > 0)
+            {
+                le.preferredHeight = height;
+                le.minHeight = height;
+                le.flexibleHeight = 0;
+            }
+            else
+            {
+                le.flexibleHeight = 1; // expand to fill available space
+            }
             row.AddComponent<Image>().color = bgColor;
 
             var hlg = row.AddComponent<HorizontalLayoutGroup>();
@@ -189,9 +195,9 @@ namespace NBAHeadCoach.UI.Shell
         }
 
         public static void TableCell(RectTransform row, string content, float width,
-            FontStyle style = FontStyle.Normal, Color? color = null)
+            FontStyle style = FontStyle.Normal, Color? color = null, int fontSize = 12)
         {
-            var cell = Text(row, "Cell", content, 12, style, color ?? UITheme.TextSecondary);
+            var cell = Text(row, "Cell", content, fontSize, style, color ?? UITheme.TextSecondary);
             cell.gameObject.AddComponent<LayoutElement>().preferredWidth = width;
             cell.alignment = TextAnchor.MiddleLeft;
             cell.horizontalOverflow = HorizontalWrapMode.Wrap;

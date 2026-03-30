@@ -124,7 +124,7 @@ namespace NBAHeadCoach.UI.GamePanels
         {
             Color titleColor = isPlayerTeam ? UITheme.AccentPrimary : UITheme.AccentSecondary;
 
-            var hr = UIBuilder.TableRow(scroll, 18, UITheme.CardHeaderFrosted);
+            var hr = UIBuilder.TableRow(scroll, 0, UITheme.CardHeaderFrosted);
             UIBuilder.TableCell(hr, "Player", 120, FontStyle.Bold, titleColor);
             UIBuilder.TableCell(hr, "MIN", 30, FontStyle.Bold, titleColor);
             UIBuilder.TableCell(hr, "PTS", 30, FontStyle.Bold, titleColor);
@@ -149,7 +149,7 @@ namespace NBAHeadCoach.UI.GamePanels
                 var s = bs.GetPlayerStats(player.PlayerId);
                 if (s == null || s.Minutes == 0) continue;
                 var bgColor = rowIdx % 2 == 0 ? UITheme.CardFrosted : UITheme.CardHeaderFrosted;
-                var row = UIBuilder.TableRow(scroll, 18, bgColor);
+                var row = UIBuilder.TableRow(scroll, 0, bgColor);
 
                 UIBuilder.TableCell(row, $"{player.FirstName[0]}. {player.LastName}", 120, FontStyle.Normal, Color.white);
                 UIBuilder.TableCell(row, s.Minutes.ToString(), 30, FontStyle.Normal, UITheme.TextSecondary);
@@ -177,7 +177,7 @@ namespace NBAHeadCoach.UI.GamePanels
             }
 
             // Totals row
-            var totalsRow = UIBuilder.TableRow(scroll, 20, UITheme.DarkenColor(titleColor, 0.2f));
+            var totalsRow = UIBuilder.TableRow(scroll, 0, UITheme.DarkenColor(titleColor, 0.2f));
             UIBuilder.TableCell(totalsRow, "TOTALS", 120, FontStyle.Bold, titleColor);
             UIBuilder.TableCell(totalsRow, "", 30);
             UIBuilder.TableCell(totalsRow, tPts.ToString(), 30, FontStyle.Bold, Color.white);
@@ -196,7 +196,7 @@ namespace NBAHeadCoach.UI.GamePanels
             string fgPct = tFga > 0 ? $"{(float)tFgm/tFga*100:0.0}%" : "—";
             string tpPct = t3a > 0 ? $"{(float)t3m/t3a*100:0.0}%" : "—";
             string ftPct = tFta > 0 ? $"{(float)tFtm/tFta*100:0.0}%" : "—";
-            var pctRow = UIBuilder.TableRow(scroll, 18, UITheme.CardHeaderFrosted);
+            var pctRow = UIBuilder.TableRow(scroll, 0, UITheme.CardHeaderFrosted);
             UIBuilder.TableCell(pctRow, "Shooting %", 120, FontStyle.Italic, UITheme.TextSecondary);
             UIBuilder.TableCell(pctRow, "", 30);
             UIBuilder.TableCell(pctRow, "", 30);

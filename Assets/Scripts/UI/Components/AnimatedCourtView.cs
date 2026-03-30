@@ -118,6 +118,7 @@ namespace NBAHeadCoach.UI.Components
             _halfCourtSprite = courtSprite;
             _homeTeamColor = homeColor;
             _awayTeamColor = awayColor;
+            _interpolationSpeed = 1.8f; // Smooth over ~0.55s to match 0.5s state intervals
             if (_courtBackground != null && _halfCourtSprite != null)
                 _courtBackground.sprite = _halfCourtSprite;
         }
@@ -137,10 +138,12 @@ namespace NBAHeadCoach.UI.Components
             ClearAll();
 
             // Create player dots
+            Debug.Log($"[AnimatedCourtView] Creating dots: home={homeLineup.Count} ids=[{string.Join(",", homeLineup)}] color={_homeTeamColor}");
             CreatePlayerDots(homeLineup, homeTeam, true);
+            Debug.Log($"[AnimatedCourtView] Creating dots: away={awayLineup.Count} ids=[{string.Join(",", awayLineup)}] color={_awayTeamColor}");
             CreatePlayerDots(awayLineup, awayTeam, false);
 
-            Debug.Log($"[AnimatedCourtView] Initialized with {_playerDots.Count} players");
+            Debug.Log($"[AnimatedCourtView] Initialized with {_playerDots.Count} players total");
         }
 
         /// <summary>
@@ -345,9 +348,23 @@ namespace NBAHeadCoach.UI.Components
             UpdateBallFromState(to);
         }
 
+        private bool _loggedFirstState;
         private void ApplyStateImmediate(SpatialState state)
         {
             if (state == null) return;
+
+            if (!_loggedFirstState)
+            {
+                _loggedFirstState = true;
+                var dotKeys = string.Join(", ", _playerDots.Keys);
+                Debug.Log($"[CourtView] Dot keys ({_playerDots.Count}): {dotKeys}");
+                for (int d = 0; d < state.Players.Length; d++)
+                {
+                    var sp = state.Players[d];
+                    bool found = _playerDots.ContainsKey(sp.PlayerId ?? "");
+                    Debug.Log($"[CourtView] State player[{d}]: id={sp.PlayerId} x={sp.X:F1} y={sp.Y:F1} dotFound={found}");
+                }
+            }
 
             // Apply player positions
             for (int i = 0; i < state.Players.Length; i++)
@@ -370,6 +387,7 @@ namespace NBAHeadCoach.UI.Components
         private void UpdateBallFromState(SpatialState state)
         {
             if (_ballAnimator == null || state == null) return;
+            _ballAnimator.Show();
 
             var ball = state.Ball;
 
@@ -386,8 +404,9 @@ namespace NBAHeadCoach.UI.Components
 
                     if (ball.Status == BallStatus.InAir_Shot)
                     {
-                        // Find shot target (basket)
-                        _ballAnimator.AnimateShot(fromPos, _basketUIPosition, true, () =>
+                        // Determine basket position based on which half the ball is on
+                        Vector2 basketPos = ball.X >= 0 ? CourtToUIPosition(44f, 0f) : CourtToUIPosition(-44f, 0f);
+                        _ballAnimator.AnimateShot(fromPos, basketPos, true, () =>
                         {
                             _ballInFlight = false;
                         });
@@ -494,12 +513,11 @@ namespace NBAHeadCoach.UI.Components
         {
             if (_courtRect == null) return Vector2.zero;
 
-            // Normalize to 0-1 range
-            // Half court offense attacking right: X: 0 to 47, Y: -25 to +25
-            float normalizedX = Mathf.Clamp01(courtX / 47f);
+            // Full court: X: -47 to +47 (94ft), Y: -25 to +25 (50ft)
+            float normalizedX = (courtX + 47f) / 94f;
             float normalizedY = (courtY + 25f) / 50f;
 
-            // Convert to UI coordinates (centered)
+            // Convert to UI coordinates (centered on RectTransform)
             float uiX = normalizedX * _courtRect.rect.width - _courtRect.rect.width / 2f;
             float uiY = normalizedY * _courtRect.rect.height - _courtRect.rect.height / 2f;
 
@@ -516,7 +534,7 @@ namespace NBAHeadCoach.UI.Components
             float normalizedX = (uiPos.x + _courtRect.rect.width / 2f) / _courtRect.rect.width;
             float normalizedY = (uiPos.y + _courtRect.rect.height / 2f) / _courtRect.rect.height;
 
-            float courtX = normalizedX * 47f;
+            float courtX = normalizedX * 94f - 47f;
             float courtY = normalizedY * 50f - 25f;
 
             return new Vector2(courtX, courtY);
