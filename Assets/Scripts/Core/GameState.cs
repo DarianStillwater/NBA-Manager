@@ -1,4 +1,5 @@
 using System;
+using NBAHeadCoach.Core.Data;
 
 namespace NBAHeadCoach.Core
 {

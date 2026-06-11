@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 
-namespace NBAHeadCoach.Core
+namespace NBAHeadCoach.Core.Manager
 {
     /// <summary>
     /// Type of major league event

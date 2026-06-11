@@ -4,7 +4,7 @@ using System.Linq;
 using UnityEngine;
 using NBAHeadCoach.Core.Data;
 
-namespace NBAHeadCoach.Core
+namespace NBAHeadCoach.Core.Manager
 {
     /// <summary>
     /// Player legacy tier based on career achievements

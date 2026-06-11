@@ -2,7 +2,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using NBAHeadCoach.Core.Data;
 
-namespace NBAHeadCoach.UI.Components
+namespace NBAHeadCoach.UI.Components.Widgets
 {
     public class NextMatchWidget : DashboardWidget
     {

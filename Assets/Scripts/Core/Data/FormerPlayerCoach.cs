@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using NBAHeadCoach.Core.Manager; // For LegacyTier, PlayerCareerData
 
 namespace NBAHeadCoach.Core.Data
 {

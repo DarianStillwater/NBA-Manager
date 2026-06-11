@@ -4,7 +4,7 @@ using System.Linq;
 using UnityEngine;
 using NBAHeadCoach.Core.Manager;
 
-namespace NBAHeadCoach.Core
+namespace NBAHeadCoach.Core.Manager
 {
     /// <summary>
     /// Voting source breakdown for All-Star selection

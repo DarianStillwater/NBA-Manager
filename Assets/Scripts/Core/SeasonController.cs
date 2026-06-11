@@ -4,7 +4,7 @@ using System.Linq;
 using UnityEngine;
 using NBAHeadCoach.Core.Data;
 using NBAHeadCoach.Core.Manager;
-using GameResult = NBAHeadCoach.Core.SavedGameResult;
+using GameResult = NBAHeadCoach.Core.Data.SavedGameResult;
 
 namespace NBAHeadCoach.Core
 {

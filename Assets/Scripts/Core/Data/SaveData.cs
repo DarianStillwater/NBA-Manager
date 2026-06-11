@@ -5,7 +5,7 @@ using UnityEngine;
 using NBAHeadCoach.Core.Data;
 using NBAHeadCoach.Core.Manager;
 
-namespace NBAHeadCoach.Core
+namespace NBAHeadCoach.Core.Data
 {
     /// <summary>
     /// Complete save file structure for game persistence
