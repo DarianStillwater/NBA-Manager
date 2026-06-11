@@ -273,6 +273,57 @@ namespace NBAHeadCoach.UI.GamePanels
                 MkInfoRow(parent, "Weaknesses", string.Join(", ", report.Weaknesses));
             if (report.RecentForm != null)
                 MkInfoRow(parent, "Recent Form", report.RecentForm);
+
+            BuildGamePlanSection(parent, gm, oppTeam);
+        }
+
+        /// <summary>
+        /// Coaching staff's auto-generated game plan (display only — no sim impact yet).
+        /// </summary>
+        private void BuildGamePlanSection(RectTransform parent, GameManager gm, Team oppTeam)
+        {
+            var builder = gm?.GamePlanBuilder;
+            var playerTeam = gm?.GetPlayerTeam();
+            if (builder == null || playerTeam == null || oppTeam == null) return;
+
+            NBAHeadCoach.Core.Manager.GamePlan plan;
+            try
+            {
+                var profile = OpponentTendencyProfile.CreateBasic(oppTeam.TeamId, oppTeam.FullName);
+                plan = builder.CreateGamePlan(
+                    playerTeam.TeamId, profile,
+                    playerTeam.Roster?.ToList(), oppTeam.Roster?.ToList(),
+                    scoutingQuality: 0.5f, practicePrep: 0.5f);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[PreGame] Game plan generation failed: {ex.Message}");
+                return;
+            }
+            if (plan == null) return;
+
+            var title = UIBuilder.Text(parent, "PlanTitle", "COACH'S GAME PLAN", 12, FontStyle.Bold, UITheme.AccentPrimary);
+            title.gameObject.AddComponent<LayoutElement>().preferredHeight = 22;
+
+            if (plan.OffensiveApproach != null)
+                MkInfoRow(parent, "Offense", plan.OffensiveApproach.Style ?? "Standard");
+            if (plan.DefensiveApproach != null)
+                MkInfoRow(parent, "Defense", FormatEnumName(plan.DefensiveApproach.Scheme.ToString()));
+
+            // Priority defensive matchups
+            var priority = plan.MatchupAssignments?.Where(m => m.IsPriority).Take(3).ToList();
+            if (priority != null && priority.Count > 0)
+            {
+                foreach (var m in priority)
+                    MkInfoRow(parent, $"Stop {m.OpponentName}", $"{m.DefenderName} ({m.Strategy})");
+            }
+
+            // Key focus points
+            if (plan.KeyFocusPoints != null)
+            {
+                foreach (var focus in plan.KeyFocusPoints.Take(3))
+                    MkInfoRow(parent, focus.Area, focus.Description);
+            }
         }
 
         // ── HELPERS ──
