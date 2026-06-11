@@ -394,7 +394,7 @@ namespace NBAHeadCoach.Core
 
             // Initialize season
             _currentSeason = DateTime.Now.Year;
-            _currentDate = new DateTime(_currentSeason, 10, 1); // Season starts October
+            _currentDate = new DateTime(_currentSeason, 10, 21); // Eve of regular season (first games Oct 22)
 
             // Create user role configuration
             _userRoleConfig = new UserRoleConfiguration
@@ -706,7 +706,7 @@ namespace NBAHeadCoach.Core
             else if (data.CurrentDate.Year > 1)
                 _currentDate = data.CurrentDate;
             else
-                _currentDate = new DateTime(_currentSeason, 10, 1);
+                _currentDate = new DateTime(_currentSeason, 10, 21);
 
             // Restore team states
             foreach (var teamState in data.TeamStates)
@@ -924,20 +924,12 @@ namespace NBAHeadCoach.Core
         }
 
         /// <summary>
-        /// Advance to the next scheduled event (usually next game)
-        /// </summary>
-        public void AdvanceToNextEvent()
-        {
-            SeasonController.AdvanceToNextEvent();
-        }
-
-        /// <summary>
         /// Start a new season
         /// </summary>
         public void StartNewSeason()
         {
             _currentSeason++;
-            _currentDate = new DateTime(_currentSeason, 10, 1);
+            _currentDate = new DateTime(_currentSeason, 10, 21);
             
             if (_career != null)
             {

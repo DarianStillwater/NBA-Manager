@@ -53,6 +53,8 @@ namespace NBAHeadCoach.Core.Data
         // ==================== SEASON STATS ====================
         public int Wins;
         public int Losses;
+        public int PlayoffWins;
+        public int PlayoffLosses;
         public float PointsPerGame;
         public float PointsAllowedPerGame;
 

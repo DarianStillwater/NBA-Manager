@@ -157,6 +157,8 @@ namespace NBAHeadCoach.Core.Data
                 TeamId = team.TeamId,
                 Wins = team.Wins,
                 Losses = team.Losses,
+                PlayoffWins = team.PlayoffWins,
+                PlayoffLosses = team.PlayoffLosses,
                 RosterPlayerIds = new List<string>(),
                 StartingLineupIndices = new List<int>(team.StartingLineup ?? new int[5])
             };
@@ -178,6 +180,8 @@ namespace NBAHeadCoach.Core.Data
 
             team.Wins = Wins;
             team.Losses = Losses;
+            team.PlayoffWins = PlayoffWins;
+            team.PlayoffLosses = PlayoffLosses;
             // Roster restoration would need PlayerDatabase lookup
         }
     }
