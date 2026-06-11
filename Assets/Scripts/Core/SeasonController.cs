@@ -394,6 +394,13 @@ namespace NBAHeadCoach.Core
                 OnPhaseChanged?.Invoke(_currentPhase);
 
                 Debug.Log($"[SeasonController] Phase changed: {oldPhase} → {_currentPhase}");
+
+                // Entering the playoffs: seed and initialize the bracket from final standings
+                if (newPhase == SeasonPhase.Playoffs &&
+                    PlayoffManager.Instance != null && !PlayoffManager.Instance.IsPlayoffsActive)
+                {
+                    BeginPlayoffs();
+                }
             }
         }
 
@@ -527,7 +534,7 @@ namespace NBAHeadCoach.Core
                 (e.HomeTeamId == teamId || e.AwayTeamId == teamId));
         }
 
-        private void HandleSeasonEnd()
+        private void BeginPlayoffs()
         {
             var playerTeam = _gameManager.GetPlayerTeam();
             var playerStandings = GetTeamStandings(_gameManager.PlayerTeamId);
