@@ -35,12 +35,15 @@ namespace NBAHeadCoach.UI.Match
         private Text _gameEndTitle, _gameEndScore, _gameEndResult;
         private GameObject _gameEndOverlay;
         private RectTransform _courtArea;
-        private AnimatedCourtView _courtView;
+        private MatchCourtView _courtView;
+        private MatchPlaybackDirector _director;
+        private Text _ffTickerLabel;
 
         // Speed buttons
         private Button _pauseBtn, _playBtn;
         private Button[] _speedBtns;
         private Text _speedLabel;
+        private Button[] _modeBtns;
 
         // Coaching overlays
         private GameObject _coachingOverlay;
@@ -102,6 +105,15 @@ namespace NBAHeadCoach.UI.Match
                 null, null);
 
             _simController.InitializeMatch(_homeTeam, _awayTeam, _playerTeam, playerCoach);
+
+            // FM-style playback director: decides play-vs-skip per viewing mode,
+            // paces the court view, re-times ticker/scoreboard events
+            _director = gameObject.AddComponent<MatchPlaybackDirector>();
+            _director.Bind(_simController, _courtView);
+            _director.OnTickerEntry += OnPlayByPlay;
+            _director.OnScoreboard += OnScoreboardUpdate;
+            _director.OnFastForwardChanged += OnFastForwardChanged;
+
             SubscribeToEvents();
 
             // Setup court view with full court sprite and actual team colors
@@ -154,7 +166,7 @@ namespace NBAHeadCoach.UI.Match
             courtBgImg.type = Image.Type.Simple;
             courtBgImg.preserveAspect = false;
 
-            _courtView = _courtArea.gameObject.AddComponent<AnimatedCourtView>();
+            _courtView = _courtArea.gameObject.AddComponent<MatchCourtView>();
 
             // ── PLAY-BY-PLAY (bottom 35%) ──
             var pbpArea = CreateRT(_root, "PBP");
@@ -263,6 +275,23 @@ namespace NBAHeadCoach.UI.Match
             UpdateSpeedHighlight(1); // default Normal/2x
 
             // Spacer
+            CreateRT(parent, "SpModes").gameObject.AddComponent<LayoutElement>().preferredWidth = 14;
+
+            // FM-style viewing modes: which possessions play out visually
+            string[] modeLabels = { "KEY", "EXT", "FULL" };
+            var modes = new[] { Playback.ViewingMode.KeyHighlights, Playback.ViewingMode.ExtendedHighlights, Playback.ViewingMode.FullMatch };
+            _modeBtns = new Button[modeLabels.Length];
+            for (int i = 0; i < modeLabels.Length; i++)
+            {
+                int idx = i;
+                _modeBtns[i] = MkCtrlBtn(parent, modeLabels[i], 52, () => {
+                    _director?.SetMode(modes[idx]);
+                    UpdateModeHighlight(idx);
+                });
+            }
+            UpdateModeHighlight(1); // default Extended highlights
+
+            // Spacer
             CreateRT(parent, "Sp2").gameObject.AddComponent<LayoutElement>().flexibleWidth = 1;
 
             // Coaching buttons
@@ -284,6 +313,16 @@ namespace NBAHeadCoach.UI.Match
             if (_speedLabel != null) _speedLabel.text = names[activeIdx];
         }
 
+        private void UpdateModeHighlight(int activeIdx)
+        {
+            if (_modeBtns == null) return;
+            for (int i = 0; i < _modeBtns.Length; i++)
+            {
+                var img = _modeBtns[i].GetComponent<Image>();
+                img.color = i == activeIdx ? UITheme.AccentSecondary : UITheme.CardBackground;
+            }
+        }
+
         private void BuildPlayByPlay(RectTransform parent)
         {
             // Header
@@ -293,6 +332,11 @@ namespace NBAHeadCoach.UI.Match
             hdr.gameObject.AddComponent<Image>().color = UITheme.FMCardHeaderBg;
             var ht = MkText(hdr, "PLAY-BY-PLAY", 10, FontStyle.Bold, UITheme.AccentPrimary, TextAnchor.MiddleLeft);
             ht.GetComponent<RectTransform>().offsetMin = new Vector2(12, 0);
+
+            // Fast-forward indicator (shown while highlight modes skip possessions)
+            _ffTickerLabel = MkText(hdr, ">> FAST FORWARD", 10, FontStyle.Bold, UITheme.AccentPrimary, TextAnchor.MiddleRight);
+            _ffTickerLabel.GetComponent<RectTransform>().offsetMax = new Vector2(-12, 0);
+            _ffTickerLabel.enabled = false;
 
             // Scroll area
             var scrollGo = CreateRT(parent, "Scroll");
@@ -351,22 +395,54 @@ namespace NBAHeadCoach.UI.Match
 
         private void SubscribeToEvents()
         {
+            // Out-of-possession events still fire directly from the controller
+            // (tip-off, quarter breaks, timeouts, foul-outs, manual subs).
+            // In-possession presentation arrives re-timed via the director.
             _simController.OnScoreboardUpdate += OnScoreboardUpdate;
             _simController.OnPlayByPlay += OnPlayByPlay;
             _simController.OnPossessionChange += OnPossessionChange;
             _simController.OnGameComplete += OnGameComplete;
-            _simController.OnSpatialStateUpdate += OnSpatialStateUpdate;
-            _simController.OnShotAttempt += OnShotAttempt;
         }
+
+        private void OnFastForwardChanged(bool on)
+        {
+            if (_ffTickerLabel != null) _ffTickerLabel.enabled = on;
+        }
+
+        private int _lastHomeScore, _lastAwayScore;
 
         private void OnScoreboardUpdate(ScoreboardUpdate update)
         {
+            // Punch the scoring side's text on a score change
+            if (update.HomeScore > _lastHomeScore) StartCoroutine(PulseText(_homeScoreText));
+            if (update.AwayScore > _lastAwayScore) StartCoroutine(PulseText(_awayScoreText));
+            _lastHomeScore = update.HomeScore;
+            _lastAwayScore = update.AwayScore;
+
             _homeScoreText.text = update.HomeScore.ToString();
             _awayScoreText.text = update.AwayScore.ToString();
             _quarterText.text = $"Q{update.Quarter}";
             int mins = (int)(update.Clock / 60);
             int secs = (int)(update.Clock % 60);
             _clockText.text = $"{mins}:{secs:D2}";
+        }
+
+        private IEnumerator PulseText(Text text)
+        {
+            if (text == null) yield break;
+            var baseColor = Color.white;
+            float t = 0f;
+            while (t < 0.35f)
+            {
+                t += Time.deltaTime;
+                float u = Mathf.Clamp01(t / 0.35f);
+                float scale = 1f + 0.3f * Mathf.Sin(u * Mathf.PI);
+                text.transform.localScale = Vector3.one * scale;
+                text.color = Color.Lerp(UITheme.AccentPrimary, baseColor, u);
+                yield return null;
+            }
+            text.transform.localScale = Vector3.one;
+            text.color = baseColor;
         }
 
         private void OnPlayByPlay(PlayByPlayEntry entry)
@@ -416,17 +492,6 @@ namespace NBAHeadCoach.UI.Match
         {
             _homePossessionDot.SetActive(homeHasBall);
             _awayPossessionDot.SetActive(!homeHasBall);
-            _courtView?.SetOffense(homeHasBall);
-        }
-
-        private void OnSpatialStateUpdate(SpatialState state)
-        {
-            _courtView?.EnqueueState(state);
-        }
-
-        private void OnShotAttempt(ShotMarkerData data)
-        {
-            _courtView?.AddShotMarker(data);
         }
 
         private void OnGameComplete(BoxScore boxScore)
@@ -633,8 +698,12 @@ namespace NBAHeadCoach.UI.Match
                 _simController.OnPlayByPlay -= OnPlayByPlay;
                 _simController.OnPossessionChange -= OnPossessionChange;
                 _simController.OnGameComplete -= OnGameComplete;
-                _simController.OnSpatialStateUpdate -= OnSpatialStateUpdate;
-                _simController.OnShotAttempt -= OnShotAttempt;
+            }
+            if (_director != null)
+            {
+                _director.OnTickerEntry -= OnPlayByPlay;
+                _director.OnScoreboard -= OnScoreboardUpdate;
+                _director.OnFastForwardChanged -= OnFastForwardChanged;
             }
         }
 
