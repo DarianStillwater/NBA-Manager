@@ -165,6 +165,49 @@ namespace NBAHeadCoach.Core
         /// <summary>Fired when a shot is attempted (for court shot markers)</summary>
         public event Action<ShotMarkerData> OnShotAttempt;
 
+        /// <summary>
+        /// Fired with a complete possession packaged for presentation (FM-style playback).
+        /// When subscribed, per-possession presentation events (PBP, scoreboard, shots,
+        /// spatial states) are captured into the packet instead of firing live, and the
+        /// sim loop blocks until <see cref="CompletePresentation"/> is called.
+        /// With no subscriber, behavior is exactly the legacy live-event flow.
+        /// </summary>
+        public event Action<PossessionPlaybackPacket> OnPossessionReady;
+
+        #endregion
+
+        #region Presentation Capture (FM-style playback handshake)
+
+        private PossessionPlaybackPacket _captureSink;       // non-null while capturing a possession
+        private float _captureCurrentOffset;                  // playback offset for events being emitted
+        private bool _presentationDone;
+
+        /// <summary>Called by the playback director when it has finished presenting a possession.</summary>
+        public void CompletePresentation() => _presentationDone = true;
+
+        private bool HasPresentationConsumer => OnPossessionReady != null;
+
+        private void BeginCapture(PossessionResult result, bool offenseIsHome)
+        {
+            _captureSink = new PossessionPlaybackPacket
+            {
+                Timeline = result.SpatialStates ?? new List<SpatialState>(),
+                StartGameClock = result.StartGameClock,
+                EndGameClock = result.EndGameClock,
+                Quarter = result.Quarter,
+                OffenseIsHome = offenseIsHome
+            };
+            _captureCurrentOffset = 0f;
+        }
+
+        private void CaptureOffsetForEvent(float eventGameClock)
+        {
+            if (_captureSink == null) return;
+            float offset = _captureSink.StartGameClock - eventGameClock;
+            float max = _captureSink.DurationGameSeconds;
+            _captureCurrentOffset = Mathf.Clamp(offset, 0f, max);
+        }
+
         #endregion
 
         #region Unity Lifecycle
@@ -401,8 +444,9 @@ namespace NBAHeadCoach.Core
                     yield return HandleQuarterEnd();
                 }
 
-                // Wait based on speed — always yield at least once per possession to prevent freezing
-                float delay = GetDelayForSpeed();
+                // Wait based on speed — always yield at least once per possession to prevent freezing.
+                // In packet mode the playback director owns all pacing, so no extra delay here.
+                float delay = HasPresentationConsumer ? 0f : GetDelayForSpeed();
                 if (delay > 0)
                 {
                     yield return new WaitForSeconds(delay);
@@ -457,6 +501,10 @@ namespace NBAHeadCoach.Core
                 scoreDifferential
             );
 
+            // In packet mode, presentation side-effects are captured instead of fired live
+            if (HasPresentationConsumer)
+                BeginCapture(result, _homeHasPossession);
+
             // Process result
             ProcessPossessionResult(result, _homeHasPossession);
 
@@ -473,6 +521,25 @@ namespace NBAHeadCoach.Core
             {
                 if (_playerMinutes.ContainsKey(playerId))
                     _playerMinutes[playerId] += minutesElapsed;
+            }
+
+            // Hand the captured possession to the playback director and wait until
+            // it has been presented (played or skipped). Sim state is already final.
+            if (_captureSink != null)
+            {
+                var packet = _captureSink;
+                _captureSink = null;
+
+                packet.AnyHighlight = packet.Events.Any(e => e.Entry != null && e.Entry.IsHighlight);
+                packet.AnyScore = packet.Events.Any(e => (e.Entry != null && e.Entry.Points > 0) || e.ShotPoints > 0);
+                packet.AnyDefensiveHighlight = result.Events.Any(e =>
+                    e.Type == EventType.Block || e.Type == EventType.Steal);
+
+                _presentationDone = false;
+                OnPossessionReady?.Invoke(packet);
+
+                // If the subscriber vanished or completed synchronously, don't deadlock
+                yield return new WaitUntil(() => _presentationDone || OnPossessionReady == null);
             }
 
             // Detect dead ball situations
@@ -666,6 +733,7 @@ namespace NBAHeadCoach.Core
         /// </summary>
         private IEnumerator ProcessFreeThrowsFromResult(PossessionResult result, bool offenseIsHome)
         {
+            int ftSequence = 0;
             foreach (var evt in result.Events)
             {
                 if (evt.Type == EventType.Foul && evt.FoulDetail != null &&
@@ -675,23 +743,37 @@ namespace NBAHeadCoach.Core
                     var shooter = GetPlayer(evt.ActorPlayerId);
                     if (shooter == null) continue;
 
-                    // Calculate FT results using the handler
-                    var ftHandler = _possessionSimulator.FreeThrowHandler;
-                    var ftContext = new GameContext
+                    // Use the simulator's pre-computed FT result when present so the
+                    // displayed score always matches the simulated possession (and the
+                    // choreographed FT visuals). Re-roll only as a legacy fallback.
+                    var ftResult = evt.FreeThrowResult;
+                    if (ftResult == null)
                     {
-                        Quarter = _currentQuarter,
-                        GameClock = _gameClock,
-                        ScoreDifferential = offenseIsHome
-                            ? _homeScore - _awayScore
-                            : _awayScore - _homeScore,
-                        IsClutchTime = IsClutchTime,
-                        TimeoutJustCalled = false
-                    };
+                        var ftHandler = _possessionSimulator.FreeThrowHandler;
+                        var ftContext = new GameContext
+                        {
+                            Quarter = _currentQuarter,
+                            GameClock = _gameClock,
+                            ScoreDifferential = offenseIsHome
+                                ? _homeScore - _awayScore
+                                : _awayScore - _homeScore,
+                            IsClutchTime = IsClutchTime,
+                            TimeoutJustCalled = false
+                        };
 
-                    var ftResult = ftHandler.CalculateFreeThrows(
-                        shooter,
-                        evt.FoulDetail.FreeThrowsAwarded,
-                        ftContext);
+                        ftResult = ftHandler.CalculateFreeThrows(
+                            shooter,
+                            evt.FoulDetail.FreeThrowsAwarded,
+                            ftContext);
+                    }
+
+                    // In packet mode, free throws present in the tail past the live timeline
+                    if (_captureSink != null)
+                    {
+                        ftSequence++;
+                        _captureCurrentOffset = _captureSink.DurationGameSeconds + ftSequence * 1.5f;
+                        _captureSink.TailSeconds = ftSequence * 1.5f + 0.5f;
+                    }
 
                     // Update score
                     if (ftResult.Made > 0)
@@ -731,10 +813,13 @@ namespace NBAHeadCoach.Core
 
                     FireScoreboardUpdate();
 
-                    // Brief delay for free throw display
-                    float delay = GetDelayForSpeed() * 0.5f;
-                    if (delay > 0)
-                        yield return new WaitForSeconds(delay);
+                    // Brief delay for free throw display (director paces this in packet mode)
+                    if (_captureSink == null)
+                    {
+                        float delay = GetDelayForSpeed() * 0.5f;
+                        if (delay > 0)
+                            yield return new WaitForSeconds(delay);
+                    }
                 }
             }
         }
@@ -752,8 +837,9 @@ namespace NBAHeadCoach.Core
             var offenseLineup = offenseIsHome ? _homeLineup : _awayLineup;
             var defenseLineup = offenseIsHome ? _awayLineup : _homeLineup;
 
-            // Fire spatial state events for court visualization
-            if (result.SpatialStates != null)
+            // Fire spatial state events for court visualization.
+            // In packet mode the timeline travels inside the packet instead.
+            if (result.SpatialStates != null && _captureSink == null)
             {
                 foreach (var state in result.SpatialStates)
                 {
@@ -802,6 +888,14 @@ namespace NBAHeadCoach.Core
             {
                 _allEvents.Add(evt);
 
+                // Free throws are scored + narrated exclusively by ProcessFreeThrowsFromResult.
+                // Counting them here as well double-counted FT points and duplicated FT play-by-play.
+                if (evt.Type == EventType.FreeThrow)
+                    continue;
+
+                // Anchor captured presentation events to this event's moment in the possession
+                CaptureOffsetForEvent(evt.GameClock);
+
                 // Generate play-by-play
                 var entry = CreatePlayByPlayEntry(evt, offenseIsHome);
                 if (entry != null)
@@ -846,7 +940,21 @@ namespace NBAHeadCoach.Core
                         _currentQuarter,
                         ConvertToShotType(evt.ShotType)
                     );
-                    OnShotAttempt?.Invoke(shotMarker);
+
+                    if (_captureSink != null)
+                    {
+                        _captureSink.Events.Add(new TimedPlaybackEvent
+                        {
+                            Offset = _captureCurrentOffset,
+                            ShotMarker = shotMarker,
+                            ShotMade = evt.Outcome == EventOutcome.Success,
+                            ShotPoints = evt.PointsScored
+                        });
+                    }
+                    else
+                    {
+                        OnShotAttempt?.Invoke(shotMarker);
+                    }
                 }
 
                 // Track fouls
@@ -1126,7 +1234,7 @@ namespace NBAHeadCoach.Core
 
         private void FireScoreboardUpdate()
         {
-            OnScoreboardUpdate?.Invoke(new ScoreboardUpdate
+            var update = new ScoreboardUpdate
             {
                 HomeScore = _homeScore,
                 AwayScore = _awayScore,
@@ -1134,12 +1242,35 @@ namespace NBAHeadCoach.Core
                 Clock = _gameClock,
                 ShotClock = _shotClock,
                 HomeHasPossession = _homeHasPossession
-            });
+            };
+
+            if (_captureSink != null)
+            {
+                _captureSink.Events.Add(new TimedPlaybackEvent
+                {
+                    Offset = _captureCurrentOffset,
+                    Scoreboard = update
+                });
+                return;
+            }
+
+            OnScoreboardUpdate?.Invoke(update);
         }
 
         private void AddPlayByPlayEntry(PlayByPlayEntry entry)
         {
             _playByPlay.Add(entry);
+
+            if (_captureSink != null)
+            {
+                _captureSink.Events.Add(new TimedPlaybackEvent
+                {
+                    Offset = _captureCurrentOffset,
+                    Entry = entry
+                });
+                return;
+            }
+
             OnPlayByPlay?.Invoke(entry);
         }
 
