@@ -523,6 +523,15 @@ namespace NBAHeadCoach.Core
             // Initialize all 30 teams with AI coach personalities, lineups, and strategies
             InitializeAllTeamCoaches();
 
+            // Generate hidden personalities for every roster so morale/chemistry has data to work with
+            if (_moraleChemistryManager != null)
+            {
+                foreach (var team in _allTeams)
+                {
+                    if (team != null) _moraleChemistryManager.InitializeTeamPersonalities(team);
+                }
+            }
+
             // Initialize season stats for all players (must be after rosters are loaded)
             SeasonController.InitializePlayerSeasonStats(_currentSeason);
 
@@ -797,6 +806,12 @@ namespace NBAHeadCoach.Core
                 _playoffManager?.RestoreFromSave(data.PlayoffData);
             }
 
+            // Restore injury manager state (recent injury records)
+            if (data.InjuryData != null)
+            {
+                _injuryManager?.RestoreFromSave(data.InjuryData);
+            }
+
             // Restore personality data
             if (data.PersonalityData != null)
             {
@@ -860,6 +875,7 @@ namespace NBAHeadCoach.Core
                 PlayerStates = CreatePlayerStates(),
                 CalendarData = SeasonController.CreateCalendarSaveData(),
                 PlayoffData = _playoffManager?.CreateSaveData(),
+                InjuryData = _injuryManager?.CreateSaveState(),
                 PersonalityData = _personalityManager?.CreateSaveData(),
                 UnifiedCareers = PersonnelManager.Instance?.GetSaveData(),
                 DraftPickRegistryData = _draftPickRegistry?.CreateSaveData(),
@@ -905,6 +921,19 @@ namespace NBAHeadCoach.Core
             // Process daily trade offers from AI teams
             _tradeOfferGenerator?.ProcessDailyOffers();
 
+            // Daily staff work (scouting assignments, development tasks)
+            _personnelManager?.ProcessDailyWork(_playerTeamId, _currentDate);
+
+            // Job market simulation (openings, AI hires)
+            _jobMarketManager?.AdvanceDay(_currentDate);
+
+            // Weekly mentorship sessions (Mondays)
+            if (_currentDate.DayOfWeek == DayOfWeek.Monday)
+                _mentorshipManager?.ProcessWeeklyUpdate();
+
+            // Daily media/reputation tick
+            _mediaManager?.ProcessDailyReputation();
+
             OnDayAdvanced?.Invoke(_currentDate);
         }
 
@@ -945,6 +974,7 @@ namespace NBAHeadCoach.Core
                     simulator.RecordGameToPlayerStats(result, game.EventId, game.Date);
                     SeasonController.RecordGameResult(game, result.HomeScore, result.AwayScore);
                     LeagueStats.AddGameResult(result.BoxScore);
+                    ProcessPostGameMorale(result, game.IsPlayoffGame);
                 }
                 catch (System.Exception ex)
                 {
@@ -960,6 +990,20 @@ namespace NBAHeadCoach.Core
             // Recalculate league averages and advanced stats for all players
             LeagueStats.Recalculate();
             RecalculateAllAdvancedStats();
+        }
+
+        /// <summary>
+        /// Apply post-game morale processing for both teams of a completed simulated game.
+        /// Safe to call from any sim path (league auto-sim, quick sim, interactive match).
+        /// </summary>
+        public void ProcessPostGameMorale(Simulation.GameResult result, bool isPlayoff = false)
+        {
+            if (result == null || _moraleChemistryManager == null) return;
+
+            var homeTeam = GetTeam(result.HomeTeamId);
+            var awayTeam = GetTeam(result.AwayTeamId);
+            if (homeTeam != null) _moraleChemistryManager.ProcessGameResult(result, homeTeam, isPlayoff);
+            if (awayTeam != null) _moraleChemistryManager.ProcessGameResult(result, awayTeam, isPlayoff);
         }
 
         /// <summary>

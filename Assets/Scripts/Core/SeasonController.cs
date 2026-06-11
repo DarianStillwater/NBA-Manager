@@ -490,7 +490,15 @@ namespace NBAHeadCoach.Core
                 injuryManager.CleanupOldRecords(30);
             }
 
-            // AI team activities could go here
+            // Daily morale processing for every team (decay toward neutral, escalation checks)
+            var moraleManager = MoraleChemistryManager.Instance;
+            if (moraleManager != null)
+            {
+                foreach (var team in _gameManager.AllTeams)
+                {
+                    if (team != null) moraleManager.ProcessDailyMorale(team);
+                }
+            }
         }
 
         /// <summary>

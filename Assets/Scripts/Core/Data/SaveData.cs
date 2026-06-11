@@ -47,6 +47,9 @@ namespace NBAHeadCoach.Core.Data
         [Header("Playoffs")]
         public PlayoffSaveData PlayoffData;
 
+        [Header("Injuries")]
+        public Manager.InjuryManagerState InjuryData;
+
         [Header("Draft")]
         public List<DraftProspectSaveState> DraftClass = new List<DraftProspectSaveState>();
         public Dictionary<string, List<int>> TeamDraftPicks = new Dictionary<string, List<int>>();

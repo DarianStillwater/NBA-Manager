@@ -310,6 +310,16 @@ namespace NBAHeadCoach.Core
             // Check for injuries
             ProcessInjuries(result);
 
+            // Post-game morale for both teams
+            _gameManager.ProcessPostGameMorale(new Simulation.GameResult
+            {
+                HomeTeamId = result.HomeTeamId,
+                AwayTeamId = result.AwayTeamId,
+                HomeScore = homeScore,
+                AwayScore = awayScore,
+                BoxScore = result
+            }, _currentGame?.IsPlayoffGame ?? false);
+
             // Fire event
             OnMatchCompleted?.Invoke(result);
 
