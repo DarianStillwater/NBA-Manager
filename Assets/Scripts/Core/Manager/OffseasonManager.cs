@@ -240,7 +240,7 @@ namespace NBAHeadCoach.Core.Manager
     /// <summary>
     /// Manages entire offseason progression: Draft, Free Agency, Extensions
     /// </summary>
-    public class OffseasonManager : MonoBehaviour
+    public class OffseasonManager
     {
         public static OffseasonManager Instance { get; private set; }
 
@@ -281,17 +281,9 @@ namespace NBAHeadCoach.Core.Manager
         public event Action<OffseasonEvent> OnOffseasonEvent;
         public event Action<OffseasonSummary> OnOffseasonComplete;
 
-        private void Awake()
+        public OffseasonManager()
         {
-            if (Instance == null)
-            {
-                Instance = this;
-                DontDestroyOnLoad(gameObject);
-            }
-            else
-            {
-                Destroy(gameObject);
-            }
+            Instance = this;
         }
 
         /// <summary>

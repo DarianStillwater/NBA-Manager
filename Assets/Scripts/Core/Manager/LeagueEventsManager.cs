@@ -277,7 +277,7 @@ namespace NBAHeadCoach.Core.Manager
     /// <summary>
     /// Manages major league events: Expansion, Relocation, Rebranding
     /// </summary>
-    public class LeagueEventsManager : MonoBehaviour
+    public class LeagueEventsManager
     {
         public static LeagueEventsManager Instance { get; private set; }
 
@@ -314,18 +314,10 @@ namespace NBAHeadCoach.Core.Manager
         public event Action<List<ExpansionDraftPick>> OnExpansionDraftCompleted;
         public event Action<LeagueHistoricalEvent> OnMajorLeagueEvent;
 
-        private void Awake()
+        public LeagueEventsManager()
         {
-            if (Instance == null)
-            {
-                Instance = this;
-                DontDestroyOnLoad(gameObject);
-                InitializeExpansionCities();
-            }
-            else
-            {
-                Destroy(gameObject);
-            }
+            Instance = this;
+            InitializeExpansionCities();
         }
 
         private void InitializeExpansionCities()

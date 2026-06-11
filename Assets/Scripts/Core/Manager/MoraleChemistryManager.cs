@@ -12,38 +12,38 @@ namespace NBAHeadCoach.Core.Manager
     /// Manages morale impacts and chemistry effects on gameplay.
     /// Connects PersonalityManager data to actual game simulation.
     /// </summary>
-    public class MoraleChemistryManager : MonoBehaviour
+    public class MoraleChemistryManager
     {
         public static MoraleChemistryManager Instance { get; private set; }
 
         #region Configuration
 
-        [Header("Morale Settings")]
-        [SerializeField] private float _moraleDecayPerDay = 0.5f;  // Daily morale decay toward 50
-        [SerializeField] private int _minMorale = 0;
-        [SerializeField] private int _maxMorale = 100;
-        [SerializeField] private int _neutralMorale = 50;
+        // Morale
+        private float _moraleDecayPerDay = 0.5f;  // Daily morale decay toward 50
+        private int _minMorale = 0;
+        private int _maxMorale = 100;
+        private int _neutralMorale = 50;
 
-        [Header("Chemistry Impact")]
-        [SerializeField] private float _maxChemistryBonus = 0.15f;   // +15% at perfect chemistry
-        [SerializeField] private float _maxChemistryPenalty = 0.15f; // -15% at terrible chemistry
+        // Chemistry impact
+        private float _maxChemistryBonus = 0.15f;   // +15% at perfect chemistry
+        private float _maxChemistryPenalty = 0.15f; // -15% at terrible chemistry
 
-        [Header("Streak Bonuses")]
-        [SerializeField] private int _streakThreshold = 3;  // Games to trigger streak bonus
+        // Streak bonuses
+        private int _streakThreshold = 3;  // Games to trigger streak bonus
 
-        [Header("Captain Settings")]
-        [SerializeField] private float _captainMoraleAmplifier = 0.20f;  // +20% morale effect for happy captain
-        [SerializeField] private float _captainNegativeAmplifier = 0.10f; // -10% for unhappy captain
-        [SerializeField] private int _captainLeadershipThreshold = 60;    // Min Leadership to be effective captain
+        // Captain
+        private float _captainMoraleAmplifier = 0.20f;  // +20% morale effect for happy captain
+        private float _captainNegativeAmplifier = 0.10f; // -10% for unhappy captain
+        private int _captainLeadershipThreshold = 60;    // Min Leadership to be effective captain
 
-        [Header("Escalation Settings")]
-        [SerializeField] private int _unhappyThreshold = 30;    // Morale below this triggers discontent
-        [SerializeField] private int _contentThreshold = 50;    // Morale above this allows de-escalation
-        [SerializeField] private int _daysToEscalate = 7;       // Days unhappy before escalating
-        [SerializeField] private int _daysToDeescalate = 14;    // Days content before de-escalating
+        // Escalation
+        private int _unhappyThreshold = 30;    // Morale below this triggers discontent
+        private int _contentThreshold = 50;    // Morale above this allows de-escalation
+        private int _daysToEscalate = 7;       // Days unhappy before escalating
+        private int _daysToDeescalate = 14;    // Days content before de-escalating
 
-        [Header("Meeting Settings")]
-        [SerializeField] private int _meetingCooldownDays = 14;
+        // Meetings
+        private int _meetingCooldownDays = 14;
 
         #endregion
 
@@ -70,25 +70,16 @@ namespace NBAHeadCoach.Core.Manager
 
         #endregion
 
-        #region Unity Lifecycle
+        #region Lifecycle
 
-        private void Awake()
+        /// <summary>
+        /// Constructed by GameManager with its PersonalityManager so morale/chemistry
+        /// reads the same personality store that save data is restored into.
+        /// </summary>
+        public MoraleChemistryManager(PersonalityManager personalityManager)
         {
-            if (Instance == null)
-            {
-                Instance = this;
-                _personalityManager = new PersonalityManager();
-                DontDestroyOnLoad(gameObject);
-            }
-            else
-            {
-                Destroy(gameObject);
-            }
-        }
-
-        private void Start()
-        {
-            GameManager.Instance?.RegisterMoraleChemistryManager(this);
+            Instance = this;
+            _personalityManager = personalityManager ?? new PersonalityManager();
         }
 
         #endregion

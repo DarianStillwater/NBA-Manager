@@ -10,16 +10,15 @@ namespace NBAHeadCoach.Core.Manager
     /// Manages the NBA Playoff tournament including Play-In, bracket progression, and Finals.
     /// Singleton that coordinates with SeasonController and GameManager.
     /// </summary>
-    public class PlayoffManager : MonoBehaviour
+    public class PlayoffManager
     {
         public static PlayoffManager Instance { get; private set; }
 
         #region State
 
-        [Header("Current State")]
-        [SerializeField] private PlayoffBracket _currentBracket;
-        [SerializeField] private int _currentSeason;
-        [SerializeField] private bool _isPlayoffsActive;
+        private PlayoffBracket _currentBracket;
+        private int _currentSeason;
+        private bool _isPlayoffsActive;
 
         public PlayoffBracket CurrentBracket => _currentBracket;
         public PlayoffPhase CurrentPhase => _currentBracket?.CurrentPhase ?? PlayoffPhase.NotStarted;
@@ -55,25 +54,11 @@ namespace NBAHeadCoach.Core.Manager
 
         #endregion
 
-        #region Unity Lifecycle
+        #region Lifecycle
 
-        private void Awake()
+        public PlayoffManager()
         {
-            if (Instance == null)
-            {
-                Instance = this;
-                DontDestroyOnLoad(gameObject);
-            }
-            else
-            {
-                Destroy(gameObject);
-            }
-        }
-
-        private void Start()
-        {
-            // Register with GameManager
-            GameManager.Instance?.RegisterPlayoffManager(this);
+            Instance = this;
         }
 
         #endregion

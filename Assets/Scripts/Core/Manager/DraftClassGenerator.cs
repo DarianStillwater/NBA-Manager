@@ -289,7 +289,7 @@ namespace NBAHeadCoach.Core.Manager
     /// <summary>
     /// Generates draft classes with mock drafts, big boards, and class analysis
     /// </summary>
-    public class DraftClassGenerator : MonoBehaviour
+    public class DraftClassGenerator
     {
         public static DraftClassGenerator Instance { get; private set; }
 
@@ -345,18 +345,10 @@ namespace NBAHeadCoach.Core.Manager
         public event Action<CombineResults> OnCombineResultsReleased;
         public event Action<DraftProspect> OnProspectStockChange;
 
-        private void Awake()
+        public DraftClassGenerator()
         {
-            if (Instance == null)
-            {
-                Instance = this;
-                DontDestroyOnLoad(gameObject);
-                InitializeHistoricalClasses();
-            }
-            else
-            {
-                Destroy(gameObject);
-            }
+            Instance = this;
+            InitializeHistoricalClasses();
         }
 
         /// <summary>

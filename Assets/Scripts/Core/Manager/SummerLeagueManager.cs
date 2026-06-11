@@ -173,7 +173,7 @@ namespace NBAHeadCoach.Core.Manager
     /// <summary>
     /// Manages Summer League with skippable option and development impact
     /// </summary>
-    public class SummerLeagueManager : MonoBehaviour
+    public class SummerLeagueManager
     {
         public static SummerLeagueManager Instance { get; private set; }
 
@@ -208,17 +208,9 @@ namespace NBAHeadCoach.Core.Manager
         public event Action<SummerLeagueSummary> OnSummerLeagueEnded;
         public event Action<SummerLeagueDevelopmentImpact> OnPlayerDevelopmentApplied;
 
-        private void Awake()
+        public SummerLeagueManager()
         {
-            if (Instance == null)
-            {
-                Instance = this;
-                DontDestroyOnLoad(gameObject);
-            }
-            else
-            {
-                Destroy(gameObject);
-            }
+            Instance = this;
         }
 
         /// <summary>

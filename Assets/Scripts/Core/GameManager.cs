@@ -68,8 +68,7 @@ namespace NBAHeadCoach.Core
         public SaveLoadManager SaveLoad { get; private set; }
         public GamePreferences Preferences { get; set; } = new GamePreferences();
 
-        // These managers are MonoBehaviours that register themselves
-        // We store references when they initialize
+        // Plain C# manager systems, constructed in Initialize()
         private SalaryCapManager _salaryCapManager;
         public SalaryCapManager SalaryCapManager => _salaryCapManager;
         private RosterManager _rosterManager;
@@ -105,6 +104,26 @@ namespace NBAHeadCoach.Core
         public FormerPlayerCareerManager FormerPlayerCareerManager => _formerPlayerCareerManager;
         private JobMarketManager _jobMarketManager;
         public JobMarketManager JobMarketManager => _jobMarketManager;
+        private MentorshipManager _mentorshipManager;
+        public MentorshipManager MentorshipManager => _mentorshipManager;
+        private RetirementManager _retirementManager;
+        public RetirementManager RetirementManager => _retirementManager;
+        private GMJobSecurityManager _gmJobSecurityManager;
+        public GMJobSecurityManager GMJobSecurityManager => _gmJobSecurityManager;
+        private DraftClassGenerator _draftClassGenerator;
+        public DraftClassGenerator DraftClassGenerator => _draftClassGenerator;
+        private LeagueEventsManager _leagueEventsManager;
+        public LeagueEventsManager LeagueEventsManager => _leagueEventsManager;
+        private SummerLeagueManager _summerLeagueManager;
+        public SummerLeagueManager SummerLeagueManager => _summerLeagueManager;
+        private GamePlanBuilder _gamePlanBuilder;
+        public GamePlanBuilder GamePlanBuilder => _gamePlanBuilder;
+        private ScoutingReportGenerator _scoutingReportGenerator;
+        public ScoutingReportGenerator ScoutingReportGenerator => _scoutingReportGenerator;
+        private AgentManager _agentManager;
+        public AgentManager AgentManager => _agentManager;
+        private ContractNegotiationManager _contractNegotiationManager;
+        public ContractNegotiationManager ContractNegotiationManager => _contractNegotiationManager;
 
         private FinanceManager _financeManager;
         public FinanceManager FinanceManager => _financeManager;
@@ -206,6 +225,40 @@ namespace NBAHeadCoach.Core
             SaveLoad = new SaveLoadManager();
             _personalityManager = new PersonalityManager();
             _financeManager = new FinanceManager();
+
+            // Construct the (formerly MonoBehaviour, formerly dormant) manager systems.
+            // Order matters: FormerPlayerCareerManager and GMJobSecurityManager subscribe to
+            // RetirementManager events in their constructors; MoraleChemistryManager shares
+            // GameManager's PersonalityManager so restored personalities drive chemistry.
+            _personnelManager = new PersonnelManager();
+            _injuryManager = new InjuryManager();
+            _mentorshipManager = new MentorshipManager();
+            _retirementManager = new RetirementManager();
+            _formerPlayerCareerManager = new FormerPlayerCareerManager();
+            _gmJobSecurityManager = new GMJobSecurityManager();
+            _moraleChemistryManager = new MoraleChemistryManager(_personalityManager);
+            _mediaManager = new MediaManager();
+            _revenueManager = new RevenueManager();
+            _trainingCampManager = new TrainingCampManager();
+            _allStarManager = new AllStarManager();
+            _advanceScoutingManager = new AdvanceScoutingManager();
+            _historyManager = new HistoryManager();
+            _jobMarketManager = new JobMarketManager();
+            _offseasonManager = new OffseasonManager();
+            _draftClassGenerator = new DraftClassGenerator();
+            _playoffManager = new PlayoffManager();
+            _leagueEventsManager = new LeagueEventsManager();
+            _summerLeagueManager = new SummerLeagueManager();
+            _gamePlanBuilder = new GamePlanBuilder();
+            _scoutingReportGenerator = new ScoutingReportGenerator();
+            _agentManager = new AgentManager();
+            _contractNegotiationManager = new ContractNegotiationManager(_agentManager);
+
+            // Plain C# managers that previously relied on never-called Register hooks
+            _draftSystem = new DraftSystem(_salaryCapManager, PlayerDatabase);
+            _freeAgentManager = new FreeAgentManager(_salaryCapManager, PlayerDatabase);
+            _jobSecurityManager = new JobSecurityManager();
+            _developmentManager = new PlayerDevelopmentManager();
 
             // Initialize Trade & AI Systems
             _draftPickRegistry = new DraftPickRegistry();
@@ -1179,32 +1232,7 @@ namespace NBAHeadCoach.Core
 
         #endregion
 
-        #region Manager Registration
-
-        // Managers call these to register themselves when they initialize
-
-        public void RegisterSalaryCapManager(SalaryCapManager manager) => _salaryCapManager = manager;
-        public void RegisterRosterManager(RosterManager manager) => _rosterManager = manager;
-        public void RegisterTradeSystem(TradeSystem manager) => _tradeSystem = manager;
-        public void RegisterFreeAgentManager(FreeAgentManager manager) => _freeAgentManager = manager;
-        public void RegisterDraftSystem(DraftSystem manager) => _draftSystem = manager;
-        public void RegisterOffseasonManager(OffseasonManager manager) => _offseasonManager = manager;
-        public void RegisterDevelopmentManager(PlayerDevelopmentManager manager) => _developmentManager = manager;
-        public void RegisterJobSecurityManager(JobSecurityManager manager) => _jobSecurityManager = manager;
-        public void RegisterAllStarManager(AllStarManager manager) => _allStarManager = manager;
-        public void RegisterPersonnelManager(PersonnelManager manager) => _personnelManager = manager;
-        public void RegisterInjuryManager(InjuryManager manager) => _injuryManager = manager;
-        public void RegisterPlayoffManager(PlayoffManager manager) => _playoffManager = manager;
-        public void RegisterHistoryManager(HistoryManager manager) => _historyManager = manager;
-        public void RegisterTrainingCampManager(TrainingCampManager manager) => _trainingCampManager = manager;
-        public void RegisterMoraleChemistryManager(MoraleChemistryManager manager) => _moraleChemistryManager = manager;
-        public void RegisterMediaManager(MediaManager manager) => _mediaManager = manager;
-        public void RegisterRevenueManager(RevenueManager manager) => _revenueManager = manager;
-        public void RegisterAdvanceScoutingManager(AdvanceScoutingManager manager) => _advanceScoutingManager = manager;
-        public void RegisterFormerPlayerCareerManager(FormerPlayerCareerManager manager) => _formerPlayerCareerManager = manager;
-        public void RegisterJobMarketManager(JobMarketManager manager) => _jobMarketManager = manager;
-
-        #endregion
+        // (Manager registration hooks removed — all managers are constructed directly in Initialize())
 
         #region Debug
 

@@ -10,7 +10,7 @@ namespace NBAHeadCoach.Core.Manager
     /// Manages training camp and preseason activities.
     /// Handles roster cuts, playbook installation, chemistry building, and preseason games.
     /// </summary>
-    public class TrainingCampManager : MonoBehaviour
+    public class TrainingCampManager
     {
         public static TrainingCampManager Instance { get; private set; }
 
@@ -50,23 +50,11 @@ namespace NBAHeadCoach.Core.Manager
 
         #region Unity Lifecycle
 
-        private void Awake()
+        public TrainingCampManager()
         {
-            if (Instance == null)
-            {
-                Instance = this;
-                DontDestroyOnLoad(gameObject);
-            }
-            else
-            {
-                Destroy(gameObject);
-            }
+            Instance = this;
         }
 
-        private void Start()
-        {
-            GameManager.Instance?.RegisterTrainingCampManager(this);
-        }
 
         #endregion
 

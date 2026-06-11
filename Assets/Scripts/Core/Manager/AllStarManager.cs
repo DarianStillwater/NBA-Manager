@@ -188,7 +188,7 @@ namespace NBAHeadCoach.Core.Manager
     /// Manages All-Star voting, selection, and weekend events
     /// Fan votes (50%), Player votes (25%), Media votes (25%)
     /// </summary>
-    public class AllStarManager : MonoBehaviour
+    public class AllStarManager
     {
         public static AllStarManager Instance { get; private set; }
 
@@ -217,17 +217,9 @@ namespace NBAHeadCoach.Core.Manager
         public event Action<AllStarEventResult> OnEventCompleted;
         public event Action<AllStarGameResult> OnAllStarGameCompleted;
 
-        private void Awake()
+        public AllStarManager()
         {
-            if (Instance == null)
-            {
-                Instance = this;
-                DontDestroyOnLoad(gameObject);
-            }
-            else
-            {
-                Destroy(gameObject);
-            }
+            Instance = this;
         }
 
         /// <summary>

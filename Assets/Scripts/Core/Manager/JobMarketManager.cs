@@ -10,7 +10,7 @@ namespace NBAHeadCoach.Core.Manager
     /// Manages job market, firings, and career transitions.
     /// Handles the job search phase when user is fired.
     /// </summary>
-    public class JobMarketManager : MonoBehaviour
+    public class JobMarketManager
     {
         private static JobMarketManager _instance;
         public static JobMarketManager Instance => _instance;
@@ -31,23 +31,11 @@ namespace NBAHeadCoach.Core.Manager
 
         public JobMarketState MarketState => _marketState;
 
-        private void Awake()
+        public JobMarketManager()
         {
-            if (_instance != null && _instance != this)
-            {
-                Destroy(gameObject);
-                return;
-            }
             _instance = this;
-
             _rng = new System.Random();
             _marketState = new JobMarketState();
-        }
-
-        private void Start()
-        {
-            // Register with GameManager
-            GameManager.Instance?.RegisterJobMarketManager(this);
         }
 
         #region Player Firing

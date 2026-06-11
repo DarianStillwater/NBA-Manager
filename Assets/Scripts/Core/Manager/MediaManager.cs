@@ -12,7 +12,7 @@ namespace NBAHeadCoach.Core.Manager
     /// Manages media interactions including press conferences, interviews,
     /// and their consequences on morale, reputation, and relationships.
     /// </summary>
-    public class MediaManager : MonoBehaviour
+    public class MediaManager
     {
         public static MediaManager Instance { get; private set; }
 
@@ -59,23 +59,11 @@ namespace NBAHeadCoach.Core.Manager
 
         #region Unity Lifecycle
 
-        private void Awake()
+        public MediaManager()
         {
-            if (Instance == null)
-            {
-                Instance = this;
-                DontDestroyOnLoad(gameObject);
-            }
-            else
-            {
-                Destroy(gameObject);
-            }
+            Instance = this;
         }
 
-        private void Start()
-        {
-            GameManager.Instance?.RegisterMediaManager(this);
-        }
 
         #endregion
 

@@ -12,7 +12,7 @@ namespace NBAHeadCoach.Core.Manager
     /// Replaces CoachingStaffManager, ScoutingManager, and UnifiedCareerManager.
     /// This is the SINGLE source of truth for all career profiles and team assignments.
     /// </summary>
-    public class PersonnelManager : MonoBehaviour
+    public class PersonnelManager
     {
         public static PersonnelManager Instance { get; private set; }
 
@@ -49,15 +49,9 @@ namespace NBAHeadCoach.Core.Manager
         public event Action<StaffNegotiationSession> OnNegotiationStarted;
         public event Action<StaffNegotiationSession> OnNegotiationComplete;
 
-        private void Awake()
+        public PersonnelManager()
         {
-            if (Instance != null && Instance != this)
-            {
-                Destroy(gameObject);
-                return;
-            }
             Instance = this;
-            DontDestroyOnLoad(gameObject);
         }
 
         public void Initialize(UnifiedCareerSaveData saveData = null)

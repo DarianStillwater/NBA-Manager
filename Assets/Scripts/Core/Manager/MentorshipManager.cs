@@ -10,26 +10,11 @@ namespace NBAHeadCoach.Core.Manager
     /// Manages the mentorship system including assignments, organic formations,
     /// session processing, and development bonuses.
     /// </summary>
-    public class MentorshipManager : MonoBehaviour
+    public class MentorshipManager
     {
         // ==================== SINGLETON ====================
         private static MentorshipManager _instance;
-        public static MentorshipManager Instance
-        {
-            get
-            {
-                if (_instance == null)
-                {
-                    _instance = FindFirstObjectByType<MentorshipManager>();
-                    if (_instance == null)
-                    {
-                        var go = new GameObject("MentorshipManager");
-                        _instance = go.AddComponent<MentorshipManager>();
-                    }
-                }
-                return _instance;
-            }
-        }
+        public static MentorshipManager Instance => _instance;
 
         // ==================== STATE ====================
 
@@ -670,17 +655,9 @@ namespace NBAHeadCoach.Core.Manager
 
         // ==================== LIFECYCLE ====================
 
-        private void Awake()
+        public MentorshipManager()
         {
-            if (_instance == null)
-            {
-                _instance = this;
-                DontDestroyOnLoad(gameObject);
-            }
-            else if (_instance != this)
-            {
-                Destroy(gameObject);
-            }
+            _instance = this;
         }
 
         /// <summary>

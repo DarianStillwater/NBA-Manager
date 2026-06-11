@@ -138,7 +138,7 @@ namespace NBAHeadCoach.Core.Manager
     /// Manages GM job security, hirings, and firings for all teams.
     /// Handles former player GM promotions and career tracking.
     /// </summary>
-    public class GMJobSecurityManager : MonoBehaviour
+    public class GMJobSecurityManager
     {
         public static GMJobSecurityManager Instance { get; private set; }
 
@@ -164,33 +164,16 @@ namespace NBAHeadCoach.Core.Manager
         private int currentYear;
         private List<string> teamsNeedingGM = new List<string>();
 
-        private void Awake()
+        /// <summary>
+        /// Construct AFTER RetirementManager so the FO pipeline subscription attaches.
+        /// </summary>
+        public GMJobSecurityManager()
         {
-            if (Instance == null)
-            {
-                Instance = this;
-                DontDestroyOnLoad(gameObject);
-            }
-            else
-            {
-                Destroy(gameObject);
-            }
-        }
+            Instance = this;
 
-        private void Start()
-        {
-            // Subscribe to retirement events for FO path
             if (RetirementManager.Instance != null)
             {
                 RetirementManager.Instance.OnPlayerEnteredCoachingPipeline += HandlePlayerEnteredFOPipeline;
-            }
-        }
-
-        private void OnDestroy()
-        {
-            if (RetirementManager.Instance != null)
-            {
-                RetirementManager.Instance.OnPlayerEnteredCoachingPipeline -= HandlePlayerEnteredFOPipeline;
             }
         }
 

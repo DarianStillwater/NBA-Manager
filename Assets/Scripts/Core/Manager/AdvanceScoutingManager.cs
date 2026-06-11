@@ -12,7 +12,7 @@ namespace NBAHeadCoach.Core.Manager
     /// Manages advance scouting - opponent analysis reports prepared before games.
     /// Scouts can be assigned to opposing teams to generate detailed game prep reports.
     /// </summary>
-    public class AdvanceScoutingManager : MonoBehaviour
+    public class AdvanceScoutingManager
     {
         public static AdvanceScoutingManager Instance { get; private set; }
 
@@ -47,23 +47,11 @@ namespace NBAHeadCoach.Core.Manager
 
         #region Unity Lifecycle
 
-        private void Awake()
+        public AdvanceScoutingManager()
         {
-            if (Instance == null)
-            {
-                Instance = this;
-                DontDestroyOnLoad(gameObject);
-            }
-            else
-            {
-                Destroy(gameObject);
-            }
+            Instance = this;
         }
 
-        private void Start()
-        {
-            GameManager.Instance?.RegisterAdvanceScoutingManager(this);
-        }
 
         #endregion
 

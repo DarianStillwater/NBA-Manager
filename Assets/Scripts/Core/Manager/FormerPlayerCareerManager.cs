@@ -10,14 +10,14 @@ namespace NBAHeadCoach.Core.Manager
     /// Manages the career progression of former NBA players who enter coaching or scouting.
     /// Tracks their journey through the ranks and handles promotions, hirings, and matchup notifications.
     /// </summary>
-    public class FormerPlayerCareerManager : MonoBehaviour
+    public class FormerPlayerCareerManager
     {
         public static FormerPlayerCareerManager Instance { get; private set; }
 
-        [Header("Settings")]
-        [SerializeField, Range(1, 5)] private int minRetireesToPipeline = 1;
-        [SerializeField, Range(1, 5)] private int maxRetireesToPipeline = 3;
-        [SerializeField, Range(0f, 1f)] private float basePromotionChance = 0.30f;
+        // Settings
+        private int minRetireesToPipeline = 1;
+        private int maxRetireesToPipeline = 3;
+        private float basePromotionChance = 0.30f;
 
         // Events
         public event Action<UnifiedCareerProfile> OnFormerPlayerBecameStaff;
@@ -26,33 +26,20 @@ namespace NBAHeadCoach.Core.Manager
 
         private int currentYear;
 
-        private void Awake()
+        /// <summary>
+        /// Construct AFTER RetirementManager so the pipeline subscription attaches.
+        /// </summary>
+        public FormerPlayerCareerManager()
         {
-            if (Instance == null)
-            {
-                Instance = this;
-                DontDestroyOnLoad(gameObject);
-            }
-            else
-            {
-                Destroy(gameObject);
-            }
-        }
+            Instance = this;
 
-        private void Start()
-        {
-            // Subscribe to retirement events
             if (RetirementManager.Instance != null)
             {
                 RetirementManager.Instance.OnPlayerEnteredCoachingPipeline += HandlePlayerEnteredPipeline;
             }
-        }
-
-        private void OnDestroy()
-        {
-            if (RetirementManager.Instance != null)
+            else
             {
-                RetirementManager.Instance.OnPlayerEnteredCoachingPipeline -= HandlePlayerEnteredPipeline;
+                Debug.LogWarning("[FormerPlayerCareerManager] RetirementManager not constructed yet — pipeline events will not be received");
             }
         }
 

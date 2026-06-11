@@ -259,7 +259,7 @@ namespace NBAHeadCoach.Core.Manager
     /// <summary>
     /// Manages player retirements, farewell tours, and ceremonies
     /// </summary>
-    public class RetirementManager : MonoBehaviour
+    public class RetirementManager
     {
         public static RetirementManager Instance { get; private set; }
 
@@ -293,17 +293,9 @@ namespace NBAHeadCoach.Core.Manager
         // Non-Player Retirement Events
         public event Action<NonPlayerRetirementAnnouncement> OnNonPlayerRetirementAnnounced;
 
-        private void Awake()
+        public RetirementManager()
         {
-            if (Instance == null)
-            {
-                Instance = this;
-                DontDestroyOnLoad(gameObject);
-            }
-            else
-            {
-                Destroy(gameObject);
-            }
+            Instance = this;
         }
 
         /// <summary>

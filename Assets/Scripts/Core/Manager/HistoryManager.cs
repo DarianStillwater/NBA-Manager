@@ -11,7 +11,7 @@ namespace NBAHeadCoach.Core.Manager
     /// Manages historical records, season archives, franchise records, and Hall of Fame.
     /// Tracks all-time leaders, single-game/season records, and career milestones.
     /// </summary>
-    public class HistoryManager : MonoBehaviour
+    public class HistoryManager
     {
         public static HistoryManager Instance { get; private set; }
 
@@ -43,23 +43,11 @@ namespace NBAHeadCoach.Core.Manager
 
         #region Unity Lifecycle
 
-        private void Awake()
+        public HistoryManager()
         {
-            if (Instance == null)
-            {
-                Instance = this;
-                DontDestroyOnLoad(gameObject);
-            }
-            else
-            {
-                Destroy(gameObject);
-            }
+            Instance = this;
         }
 
-        private void Start()
-        {
-            GameManager.Instance?.RegisterHistoryManager(this);
-        }
 
         #endregion
 
