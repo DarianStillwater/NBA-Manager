@@ -51,6 +51,7 @@ namespace NBAHeadCoach.Tests
             RunTest<PracticeSystemTest>("Practice & Mentorship");
             RunTest<PersonnelCareerTest>("Personnel & Career");
             RunTest<TimeoutIntelligenceTest>("Timeout Intelligence");
+            RunTest<PlaybackDeciderTest>("Playback Decider");
 
             // Summary
             Debug.Log("\n" + new string('=', 70));
