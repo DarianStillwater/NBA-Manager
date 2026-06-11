@@ -256,8 +256,10 @@ namespace NBAHeadCoach.Core
             _foulSystem = new FoulSystem();
             _timeoutIntelligence = new TimeoutIntelligence();
 
-            // Initialize simulator with foul system
+            // Initialize simulator with foul system; interactive matches get full
+            // choreographed spatial timelines for the court view
             _possessionSimulator = new PossessionSimulator(null, _foulSystem);
+            _possessionSimulator.SpatialDetail = Simulation.Choreography.SpatialDetailLevel.Full;
 
             // Reset state
             _currentQuarter = 1;

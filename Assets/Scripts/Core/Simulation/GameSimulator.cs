@@ -46,6 +46,8 @@ namespace NBAHeadCoach.Core.Simulation
             _foulSystem = new FoulSystem();
             _freeThrowHandler = new FreeThrowHandler();
             _possessionSimulator = new PossessionSimulator(seed, _foulSystem);
+            // Headless full-game sims need no spatial choreography (league auto-sim runs 15 games/day)
+            _possessionSimulator.SpatialDetail = Choreography.SpatialDetailLevel.None;
             _gameTracker = new SpatialTracker();
         }
 
@@ -259,7 +261,7 @@ namespace NBAHeadCoach.Core.Simulation
                     ? _boxScore.HomeScore - _boxScore.AwayScore
                     : _boxScore.AwayScore - _boxScore.HomeScore;
 
-                // Simulate possession (pass previous outcome for transition logic)
+                // Simulate possession
                 var result = _possessionSimulator.SimulatePossession(
                     offensePlayers,
                     defensePlayers,
@@ -279,10 +281,13 @@ namespace NBAHeadCoach.Core.Simulation
                 // Process any free throws from foul events
                 ProcessFreeThrows(result, _homeHasPossession);
 
-                // Add spatial states to game tracker
-                foreach (var state in result.SpatialStates)
+                // Add spatial states to game tracker (empty at SpatialDetail.None)
+                if (result.SpatialStates != null)
                 {
-                    _gameTracker.RecordState(state);
+                    foreach (var state in result.SpatialStates)
+                    {
+                        _gameTracker.RecordState(state);
+                    }
                 }
 
                 // Update game clock

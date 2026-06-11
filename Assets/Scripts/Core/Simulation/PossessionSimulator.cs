@@ -152,9 +152,11 @@ namespace NBAHeadCoach.Core.Simulation
                 Events = result.Events
             };
 
-            // LEGACY spatial path (replaced by PossessionChoreographer): jittered 0.5s ticks.
-            float possessionClock = SHOT_CLOCK;
-            EmitLegacySpatialTicks(result, possessionDuration, gameClock, quarter, ref possessionClock);
+            // Shot clock remaining at the end of the possession (the legacy tick loop
+            // decremented this in 0.5s steps; preserved exactly for decision parity —
+            // it feeds the shot-clock-pressure modifier in ExecuteShot).
+            float possessionClock = SHOT_CLOCK -
+                Mathf.Min(Mathf.FloorToInt(possessionDuration / 0.5f), 48) * 0.5f;
 
             // Execute the possession outcome
             float endGameClock = gameClock - possessionDuration;
@@ -205,7 +207,7 @@ namespace NBAHeadCoach.Core.Simulation
                         Outcome = EventOutcome.Success
                     });
 
-                    EmitLegacyPassStates(result, endGameClock, quarter, possessionClock, shooterIndex);
+                    _ballHandlerIndex = shooterIndex;
                 }
 
                 // Check for steal before shot (~5% chance)
@@ -239,8 +241,6 @@ namespace NBAHeadCoach.Core.Simulation
 
                     if (defenderFouls)
                     {
-                        EmitLegacyShotFlightState(result, endGameClock, quarter, possessionClock, shooterIndex);
-
                         var shotResult = ExecuteShotWithFoul(shooter, shooterIndex, defender, shotType, endGameClock, quarter, possessionClock);
                         result.Events.AddRange(shotResult.Events);
                         result.Outcome = shotResult.Outcome;
@@ -253,8 +253,6 @@ namespace NBAHeadCoach.Core.Simulation
                     }
                     else
                     {
-                        EmitLegacyShotFlightState(result, endGameClock, quarter, possessionClock, shooterIndex);
-
                         var shotEvent = ExecuteShot(shooter, shooterIndex, endGameClock, quarter, possessionClock);
                         result.Events.Add(shotEvent);
                         _script.ContestLevel = shotEvent.ContestLevel;
@@ -326,67 +324,19 @@ namespace NBAHeadCoach.Core.Simulation
             }
             _script.PointsScored = result.PointsScored;
 
+            // Choreograph the decided possession into a believable spatial timeline.
+            // Headless sims (SpatialDetail.None) skip this entirely — zero cost.
+            if (SpatialDetail == SpatialDetailLevel.Full)
+            {
+                _choreographer ??= new PossessionChoreographer(_choreoRandom);
+                result.SpatialStates = _choreographer.Choreograph(_script);
+            }
+
             result.EndGameClock = endGameClock;
             return result;
         }
 
-        // ──────────────────────────────────────────────────────────────────
-        //  LEGACY spatial emission — reproduces the original crude output.
-        //  Replaced wholesale by PossessionChoreographer (which reads _script).
-        //  NOTE: the tick loop consumes decision RNG via SimulatePlayerMovement,
-        //  so it must keep running unconditionally until the choreographer lands.
-        // ──────────────────────────────────────────────────────────────────
-
-        private void EmitLegacySpatialTicks(PossessionResult result, float possessionDuration,
-            float gameClock, int quarter, ref float possessionClock)
-        {
-            float currentTime = gameClock;
-            int spatialTicks = Mathf.FloorToInt(possessionDuration / 0.5f);
-
-            for (int i = 0; i < spatialTicks && i < 48; i++) // Max 48 ticks (24 seconds)
-            {
-                var state = CreateSpatialState(currentTime, quarter, possessionClock);
-                result.SpatialStates.Add(state);
-                currentTime -= 0.5f;
-                possessionClock -= 0.5f;
-                SimulatePlayerMovement();
-            }
-        }
-
-        private void EmitLegacyPassStates(PossessionResult result, float endGameClock, int quarter,
-            float possessionClock, int shooterIndex)
-        {
-            // Pass flight spatial state
-            var passState = CreateSpatialState(endGameClock + 0.8f, quarter, possessionClock);
-            passState.Ball = new BallState(
-                (_offensePositions[_ballHandlerIndex].X + _offensePositions[shooterIndex].X) / 2f,
-                (_offensePositions[_ballHandlerIndex].Y + _offensePositions[shooterIndex].Y) / 2f, 6f)
-            {
-                Status = BallStatus.InAir_Pass,
-                HeldByPlayerId = null
-            };
-            result.SpatialStates.Add(passState);
-
-            // Catch state (ball now held by shooter)
-            _ballHandlerIndex = shooterIndex;
-            var catchState = CreateSpatialState(endGameClock + 0.5f, quarter, possessionClock);
-            result.SpatialStates.Add(catchState);
-        }
-
-        private void EmitLegacyShotFlightState(PossessionResult result, float endGameClock, int quarter,
-            float possessionClock, int shooterIndex)
-        {
-            float basketX = _isOffenseHome ? 42f : -42f;
-            var shotFlightState = CreateSpatialState(endGameClock + 0.3f, quarter, possessionClock);
-            shotFlightState.Ball = new BallState(
-                (_offensePositions[shooterIndex].X + basketX) / 2f,
-                _offensePositions[shooterIndex].Y * 0.5f, 15f)
-            {
-                Status = BallStatus.InAir_Shot,
-                HeldByPlayerId = null
-            };
-            result.SpatialStates.Add(shotFlightState);
-        }
+        private PossessionChoreographer _choreographer;
 
         /// <summary>
         /// Determines the outcome type of the possession (shot, turnover, violation, or foul).
@@ -631,72 +581,6 @@ namespace NBAHeadCoach.Core.Simulation
                 float defY = _offensePositions[i].Y * 0.7f;
                 _defensePositions[i] = new CourtPosition(defX, defY);
             }
-        }
-
-        /// <summary>
-        /// Simulates player movement during the possession.
-        /// </summary>
-        private void SimulatePlayerMovement()
-        {
-            // Simple movement - players shift positions slightly
-            for (int i = 0; i < 5; i++)
-            {
-                float dx = (float)(_random.NextDouble() * 2.0 - 1.0);
-                float dy = (float)(_random.NextDouble() * 2.0 - 1.0);
-                _offensePositions[i] = new CourtPosition(
-                    _offensePositions[i].X + dx,
-                    _offensePositions[i].Y + dy
-                );
-                
-                // Defenders track their man but stay slightly between offense and basket
-                var defTarget = new CourtPosition(
-                    Mathf.Lerp(_offensePositions[i].X, _defensePositions[i].X, 0.6f),
-                    _offensePositions[i].Y * 0.85f
-                );
-                _defensePositions[i] = _defensePositions[i].MoveTowards(defTarget, 1.2f);
-            }
-        }
-
-        /// <summary>
-        /// Creates a spatial state snapshot.
-        /// </summary>
-        private SpatialState CreateSpatialState(float gameClock, int quarter, float possessionClock)
-        {
-            var state = new SpatialState(gameClock, quarter, possessionClock);
-
-            for (int i = 0; i < 5; i++)
-            {
-                state.Players[i] = new PlayerSnapshot(
-                    _offensePlayers[i].PlayerId,
-                    _offensePositions[i].X,
-                    _offensePositions[i].Y
-                )
-                {
-                    HasBall = (i == _ballHandlerIndex),
-                    CurrentAction = i == _ballHandlerIndex ? PlayerAction.Dribbling : PlayerAction.Idle
-                };
-
-                state.Players[i + 5] = new PlayerSnapshot(
-                    _defensePlayers[i].PlayerId,
-                    _defensePositions[i].X,
-                    _defensePositions[i].Y
-                )
-                {
-                    CurrentAction = PlayerAction.Defending
-                };
-            }
-
-            state.Ball = new BallState(
-                _offensePositions[_ballHandlerIndex].X,
-                _offensePositions[_ballHandlerIndex].Y,
-                4f
-            )
-            {
-                Status = BallStatus.Held,
-                HeldByPlayerId = _offensePlayers[_ballHandlerIndex].PlayerId
-            };
-
-            return state;
         }
 
         /// <summary>

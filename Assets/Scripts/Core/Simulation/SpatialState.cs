@@ -14,7 +14,10 @@ namespace NBAHeadCoach.Core.Simulation
         public float GameClock;        // Seconds remaining in quarter (720 -> 0)
         public int Quarter;            // 1-4 (or 5+ for OT)
         public float PossessionClock;  // Shot clock (24 -> 0)
-        
+
+        /// <summary>Presentational phase hint set by the choreographer (additive; default Advance).</summary>
+        public Choreography.PossessionPhase Phase;
+
         public PlayerSnapshot[] Players = new PlayerSnapshot[10];
         public BallState Ball;
 
