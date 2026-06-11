@@ -6,7 +6,6 @@ using UnityEngine.UI;
 using NBAHeadCoach.Core;
 using NBAHeadCoach.Core.Data;
 using NBAHeadCoach.Core.Gameplay;
-using NBAHeadCoach.UI.Panels;
 using DefensiveScheme = NBAHeadCoach.Core.Gameplay.DefensiveScheme;
 using TimeoutReason = NBAHeadCoach.Core.Gameplay.TimeoutReason;
 using QuickActionType = NBAHeadCoach.Core.Data.QuickActionType;

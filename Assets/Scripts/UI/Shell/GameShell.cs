@@ -22,7 +22,6 @@ namespace NBAHeadCoach.UI.Shell
         private string _lastScene;
         private float _injectDelay;
         private GameObject _fmRoot;
-        private GameSceneController _sceneController;
         private Text _headerRecordText;
         private Text _headerDateText;
         private RectTransform _contentArea;
@@ -96,8 +95,6 @@ namespace NBAHeadCoach.UI.Shell
 
             var canvas = FindAnyObjectByType<Canvas>();
             if (canvas == null) return;
-
-            _sceneController = FindAnyObjectByType<GameSceneController>();
 
             Color teamPrimary = UITheme.ParseTeamColor(team.PrimaryColor, UITheme.AccentPrimary);
             Color teamSecondary = UITheme.ParseTeamColor(team.SecondaryColor, UITheme.AccentSecondary);
