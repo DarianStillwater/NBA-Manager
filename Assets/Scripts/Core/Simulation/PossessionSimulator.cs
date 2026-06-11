@@ -4,6 +4,7 @@ using System.Linq;
 using UnityEngine;
 using NBAHeadCoach.Core.Data;
 using NBAHeadCoach.Core.Manager;
+using NBAHeadCoach.Core.Simulation.Choreography;
 
 namespace NBAHeadCoach.Core.Simulation
 {
@@ -43,11 +44,24 @@ namespace NBAHeadCoach.Core.Simulation
         public PossessionSimulator(int? seed = null, FoulSystem foulSystem = null)
         {
             _random = seed.HasValue ? new System.Random(seed.Value) : new System.Random();
+            // Separate RNG for presentation/choreography so visual variety never
+            // perturbs the decision RNG stream (outcomes identical with/without choreography).
+            _choreoRandom = seed.HasValue ? new System.Random(seed.Value ^ 0x5DEECE6) : new System.Random();
             _tracker = new SpatialTracker();
             _foulSystem = foulSystem ?? new FoulSystem();
             _violationChecker = new ViolationChecker();
             _freeThrowHandler = new FreeThrowHandler();
         }
+
+        /// <summary>
+        /// Spatial output level. Headless sims (GameSimulator) should use None;
+        /// the interactive match sets Full. NOTE: the legacy spatial path still consumes
+        /// decision RNG, so this flag takes effect once the choreographer replaces it.
+        /// </summary>
+        public SpatialDetailLevel SpatialDetail { get; set; } = SpatialDetailLevel.Full;
+
+        private System.Random _choreoRandom;
+        private PossessionScript _script;
 
         /// <summary>
         /// Access to foul system for external tracking.
@@ -117,23 +131,30 @@ namespace NBAHeadCoach.Core.Simulation
 
             // Select primary ball handler (weighted by position and skill)
             _ballHandlerIndex = SelectBallHandler();
-            
+
             // Determine possession outcome FIRST (shot, turnover, or foul)
             PossessionOutcomeType outcomeType = DeterminePossessionOutcome();
 
-            // Record spatial states during possession (every 0.5 seconds)
-            float currentTime = gameClock;
-            float possessionClock = SHOT_CLOCK;
-            int spatialTicks = Mathf.FloorToInt(possessionDuration / 0.5f);
-            
-            for (int i = 0; i < spatialTicks && i < 48; i++) // Max 48 ticks (24 seconds)
+            // Begin the choreography script — decisions are recorded as they're made,
+            // and presentation is generated from the script after all decisions.
+            _script = new PossessionScript
             {
-                var state = CreateSpatialState(currentTime, quarter, possessionClock);
-                result.SpatialStates.Add(state);
-                currentTime -= 0.5f;
-                possessionClock -= 0.5f;
-                SimulatePlayerMovement();
-            }
+                Offense = _offensePlayers,
+                Defense = _defensePlayers,
+                OffenseAttacksRight = _isOffenseHome,
+                StartGameClock = gameClock,
+                Duration = possessionDuration,
+                Quarter = quarter,
+                OffenseStrategy = _offenseStrategy,
+                DefenseStrategy = _defenseStrategy,
+                InitialBallHandlerIndex = _ballHandlerIndex,
+                IsFastBreak = possessionDuration < 8f,
+                Events = result.Events
+            };
+
+            // LEGACY spatial path (replaced by PossessionChoreographer): jittered 0.5s ticks.
+            float possessionClock = SHOT_CLOCK;
+            EmitLegacySpatialTicks(result, possessionDuration, gameClock, quarter, ref possessionClock);
 
             // Execute the possession outcome
             float endGameClock = gameClock - possessionDuration;
@@ -146,6 +167,7 @@ namespace NBAHeadCoach.Core.Simulation
                 result.Events.Add(CreateTurnoverEvent(endGameClock, quarter));
                 result.Outcome = PossessionOutcome.Turnover;
                 result.PointsScored = 0;
+                _script.Ending = ScriptEnding.Turnover;
             }
             else if (outcomeType == PossessionOutcomeType.Violation)
             {
@@ -154,6 +176,7 @@ namespace NBAHeadCoach.Core.Simulation
                 result.Events.Add(violationEvent);
                 result.Outcome = PossessionOutcome.Turnover;
                 result.PointsScored = 0;
+                _script.Ending = ScriptEnding.Violation;
             }
             else // Shot attempt (may include foul check)
             {
@@ -165,6 +188,9 @@ namespace NBAHeadCoach.Core.Simulation
 
                 var shooter = _offensePlayers[shooterIndex];
                 var defender = _defensePlayers[shooterIndex];
+
+                _script.ShooterIndex = shooterIndex;
+                _script.BallHandlerPassedToShooter = shooterIndex != _ballHandlerIndex;
 
                 // Add pass/assist event if ball handler passed to shooter
                 if (shooterIndex != _ballHandlerIndex)
@@ -179,21 +205,7 @@ namespace NBAHeadCoach.Core.Simulation
                         Outcome = EventOutcome.Success
                     });
 
-                    // Emit pass flight spatial state
-                    var passState = CreateSpatialState(endGameClock + 0.8f, quarter, possessionClock);
-                    passState.Ball = new BallState(
-                        (_offensePositions[_ballHandlerIndex].X + _offensePositions[shooterIndex].X) / 2f,
-                        (_offensePositions[_ballHandlerIndex].Y + _offensePositions[shooterIndex].Y) / 2f, 6f)
-                    {
-                        Status = BallStatus.InAir_Pass,
-                        HeldByPlayerId = null
-                    };
-                    result.SpatialStates.Add(passState);
-
-                    // Emit catch state (ball now held by shooter)
-                    _ballHandlerIndex = shooterIndex;
-                    var catchState = CreateSpatialState(endGameClock + 0.5f, quarter, possessionClock);
-                    result.SpatialStates.Add(catchState);
+                    EmitLegacyPassStates(result, endGameClock, quarter, possessionClock, shooterIndex);
                 }
 
                 // Check for steal before shot (~5% chance)
@@ -211,6 +223,7 @@ namespace NBAHeadCoach.Core.Simulation
                     });
                     result.Outcome = PossessionOutcome.Turnover;
                     result.PointsScored = 0;
+                    _script.Ending = ScriptEnding.Steal;
                 }
                 else
                 {
@@ -219,59 +232,50 @@ namespace NBAHeadCoach.Core.Simulation
                         shooter, _offensePositions[shooterIndex],
                         _offensePositions[shooterIndex].DistanceTo(_defensePositions[shooterIndex]), false);
 
+                    _script.ShotType = shotType;
+
                     float foulChance = _foulSystem.CalculateFoulProbability(defender, shooter, shotType, _gameContext);
                     bool defenderFouls = _random.NextDouble() < foulChance;
 
                     if (defenderFouls)
                     {
-                        // Emit shot flight spatial state (fouled shot)
-                        float basketXFoul = _isOffenseHome ? 42f : -42f;
-                        var foulShotFlightState = CreateSpatialState(endGameClock + 0.3f, quarter, possessionClock);
-                        foulShotFlightState.Ball = new BallState(
-                            (_offensePositions[shooterIndex].X + basketXFoul) / 2f,
-                            _offensePositions[shooterIndex].Y * 0.5f, 15f)
-                        {
-                            Status = BallStatus.InAir_Shot,
-                            HeldByPlayerId = null
-                        };
-                        result.SpatialStates.Add(foulShotFlightState);
+                        EmitLegacyShotFlightState(result, endGameClock, quarter, possessionClock, shooterIndex);
 
                         var shotResult = ExecuteShotWithFoul(shooter, shooterIndex, defender, shotType, endGameClock, quarter, possessionClock);
                         result.Events.AddRange(shotResult.Events);
                         result.Outcome = shotResult.Outcome;
                         result.PointsScored = shotResult.Points;
+
+                        bool andOneMade = shotResult.Events.Any(e => e.Type == EventType.Shot && e.IsAndOne);
+                        _script.Ending = andOneMade ? ScriptEnding.AndOneShot : ScriptEnding.ShootingFoulMissed;
+                        _script.FreeThrows = shotResult.Events
+                            .FirstOrDefault(e => e.Type == EventType.Foul)?.FreeThrowResult;
                     }
                     else
                     {
-                        // Emit shot flight spatial state
-                        float basketX = _isOffenseHome ? 42f : -42f;
-                        var shotFlightState = CreateSpatialState(endGameClock + 0.3f, quarter, possessionClock);
-                        shotFlightState.Ball = new BallState(
-                            (_offensePositions[shooterIndex].X + basketX) / 2f,
-                            _offensePositions[shooterIndex].Y * 0.5f, 15f)
-                        {
-                            Status = BallStatus.InAir_Shot,
-                            HeldByPlayerId = null
-                        };
-                        result.SpatialStates.Add(shotFlightState);
+                        EmitLegacyShotFlightState(result, endGameClock, quarter, possessionClock, shooterIndex);
 
                         var shotEvent = ExecuteShot(shooter, shooterIndex, endGameClock, quarter, possessionClock);
                         result.Events.Add(shotEvent);
+                        _script.ContestLevel = shotEvent.ContestLevel;
 
                         if (shotEvent.Type == EventType.Block)
                         {
                             result.Outcome = PossessionOutcome.Block;
                             result.PointsScored = 0;
+                            _script.Ending = ScriptEnding.BlockedShot;
                         }
                         else if (shotEvent.Outcome == EventOutcome.Success)
                         {
                             result.Outcome = PossessionOutcome.Score;
                             result.PointsScored = shotEvent.PointsScored;
+                            _script.Ending = ScriptEnding.MadeShot;
                         }
                         else
                         {
                             result.Outcome = PossessionOutcome.Miss;
                             result.PointsScored = 0;
+                            _script.Ending = ScriptEnding.MissedShot;
                         }
 
                         // Generate rebound on missed shots
@@ -294,6 +298,9 @@ namespace NBAHeadCoach.Core.Simulation
                                 rebounder = _defensePlayers[rebounderIndex];
                             }
 
+                            _script.RebounderIndex = rebounderIndex;
+                            _script.RebounderIsDefense = !offensiveRebound;
+
                             result.Events.Add(new PossessionEvent
                             {
                                 Type = EventType.Rebound,
@@ -306,10 +313,79 @@ namespace NBAHeadCoach.Core.Simulation
                         }
                     }
                 }
+
+                // Final decided geometry for the choreographer
+                _script.ShotPosition = _offensePositions[shooterIndex];
             }
+
+            // Snapshot the decided end-of-possession spots (formation targets for choreography)
+            for (int i = 0; i < 5; i++)
+            {
+                _script.OffenseSpots[i] = _offensePositions[i];
+                _script.DefenseSpots[i] = _defensePositions[i];
+            }
+            _script.PointsScored = result.PointsScored;
 
             result.EndGameClock = endGameClock;
             return result;
+        }
+
+        // ──────────────────────────────────────────────────────────────────
+        //  LEGACY spatial emission — reproduces the original crude output.
+        //  Replaced wholesale by PossessionChoreographer (which reads _script).
+        //  NOTE: the tick loop consumes decision RNG via SimulatePlayerMovement,
+        //  so it must keep running unconditionally until the choreographer lands.
+        // ──────────────────────────────────────────────────────────────────
+
+        private void EmitLegacySpatialTicks(PossessionResult result, float possessionDuration,
+            float gameClock, int quarter, ref float possessionClock)
+        {
+            float currentTime = gameClock;
+            int spatialTicks = Mathf.FloorToInt(possessionDuration / 0.5f);
+
+            for (int i = 0; i < spatialTicks && i < 48; i++) // Max 48 ticks (24 seconds)
+            {
+                var state = CreateSpatialState(currentTime, quarter, possessionClock);
+                result.SpatialStates.Add(state);
+                currentTime -= 0.5f;
+                possessionClock -= 0.5f;
+                SimulatePlayerMovement();
+            }
+        }
+
+        private void EmitLegacyPassStates(PossessionResult result, float endGameClock, int quarter,
+            float possessionClock, int shooterIndex)
+        {
+            // Pass flight spatial state
+            var passState = CreateSpatialState(endGameClock + 0.8f, quarter, possessionClock);
+            passState.Ball = new BallState(
+                (_offensePositions[_ballHandlerIndex].X + _offensePositions[shooterIndex].X) / 2f,
+                (_offensePositions[_ballHandlerIndex].Y + _offensePositions[shooterIndex].Y) / 2f, 6f)
+            {
+                Status = BallStatus.InAir_Pass,
+                HeldByPlayerId = null
+            };
+            result.SpatialStates.Add(passState);
+
+            // Catch state (ball now held by shooter)
+            _ballHandlerIndex = shooterIndex;
+            var catchState = CreateSpatialState(endGameClock + 0.5f, quarter, possessionClock);
+            result.SpatialStates.Add(catchState);
+        }
+
+        private void EmitLegacyShotFlightState(PossessionResult result, float endGameClock, int quarter,
+            float possessionClock, int shooterIndex)
+        {
+            float basketX = _isOffenseHome ? 42f : -42f;
+            var shotFlightState = CreateSpatialState(endGameClock + 0.3f, quarter, possessionClock);
+            shotFlightState.Ball = new BallState(
+                (_offensePositions[shooterIndex].X + basketX) / 2f,
+                _offensePositions[shooterIndex].Y * 0.5f, 15f)
+            {
+                Status = BallStatus.InAir_Shot,
+                HeldByPlayerId = null
+            };
+            result.SpatialStates.Add(shotFlightState);
         }
 
         /// <summary>
