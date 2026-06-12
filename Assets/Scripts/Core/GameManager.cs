@@ -120,8 +120,8 @@ namespace NBAHeadCoach.Core
         public GamePlanBuilder GamePlanBuilder => _gamePlanBuilder;
         private ScoutingReportGenerator _scoutingReportGenerator;
         public ScoutingReportGenerator ScoutingReportGenerator => _scoutingReportGenerator;
-        private AgentManager _agentManager;
-        public AgentManager AgentManager => _agentManager;
+        private Manager.AgentManager _agentManager;
+        public Manager.AgentManager AgentManager => _agentManager;
         private ContractNegotiationManager _contractNegotiationManager;
         public ContractNegotiationManager ContractNegotiationManager => _contractNegotiationManager;
 
@@ -251,7 +251,7 @@ namespace NBAHeadCoach.Core
             _summerLeagueManager = new SummerLeagueManager();
             _gamePlanBuilder = new GamePlanBuilder();
             _scoutingReportGenerator = new ScoutingReportGenerator();
-            _agentManager = new AgentManager();
+            _agentManager = new Manager.AgentManager();
             _contractNegotiationManager = new ContractNegotiationManager(_agentManager);
 
             // Plain C# managers that previously relied on never-called Register hooks

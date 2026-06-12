@@ -3,7 +3,11 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 
-namespace NBAHeadCoach.Core.Manager
+// NOTE: intentionally NBAHeadCoach.Core (not .Core.Manager despite the folder):
+// this file defines its own DraftProspect/CombineResults which would collide with
+// the live draft system's types in DraftSystem.cs/ProspectGenerator.cs. The two
+// parallel draft ecosystems should be unified when the draft feature is built.
+namespace NBAHeadCoach.Core
 {
     /// <summary>
     /// Draft prospect position

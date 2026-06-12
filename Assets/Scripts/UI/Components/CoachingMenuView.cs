@@ -13,6 +13,19 @@ using QuickActionType = NBAHeadCoach.Core.Data.QuickActionType;
 namespace NBAHeadCoach.UI.Components
 {
     /// <summary>
+    /// Tabs of the in-game coaching menu.
+    /// (Previously declared in the removed legacy UI/Panels/MatchPanel.cs.)
+    /// </summary>
+    public enum CoachingMenuTab
+    {
+        Offense,
+        Defense,
+        Substitutions,
+        Matchups,
+        Strategy
+    }
+
+    /// <summary>
     /// Tabbed coaching menu for in-game decisions.
     /// Provides access to offense, defense, substitutions, matchups, and overall strategy.
     /// Wires directly to GameCoach for all actions.
