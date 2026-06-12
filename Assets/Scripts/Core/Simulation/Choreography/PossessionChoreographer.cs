@@ -345,7 +345,12 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
             for (int a = 0; a < _s.FreeThrows.Attempts; a++)
             {
                 bool thisMade = a < made; // presentational ordering: makes first
-                _ball.Add(new DeadSegment(cursor - 0.3f, cursor, ftLine));
+
+                // Ball returns to the line (referee toss) from wherever it ended up
+                var ballPos = SampleBall(cursor - 0.45f);
+                _ball.Add(new PassSegment(cursor - 0.45f, cursor - 0.05f,
+                    new CourtPosition(ballPos.X, ballPos.Y), ftLine));
+                _ball.Add(new DeadSegment(cursor - 0.05f, cursor, ftLine));
                 _offense[shooter].Stamp(cursor, PlayerAction.Shooting);
 
                 float flight = 0.9f;
@@ -497,7 +502,17 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
             var seg = BallSegmentAt(t);
             if (seg != null) return seg.Sample(t);
 
-            // Gap safety: ball with current/last holder
+            // Gap: hold the ball exactly where the most recent segment left it
+            // (jumping back to a holder would teleport the ball).
+            BallSegment latest = null;
+            for (int i = 0; i < _ball.Count; i++)
+            {
+                if (_ball[i].T1 <= t && (latest == null || _ball[i].T1 > latest.T1))
+                    latest = _ball[i];
+            }
+            if (latest != null) return latest.Sample(latest.T1);
+
+            // Before any segment exists: ball with the initial handler
             int holder = _heldBy >= 0 ? _heldBy : _s.InitialBallHandlerIndex;
             var pos = _offense[holder].PositionAt(t);
             return new BallState(pos.X, pos.Y, CourtGeometry.HeldBallHeight)

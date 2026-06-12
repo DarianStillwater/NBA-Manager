@@ -28,21 +28,19 @@ namespace NBAHeadCoach.Tests
             var defStrategy = TeamStrategy.CreateDefault("LAL");
 
             // ── Outcome invariance: None vs Full must decide identically ──
-            var simNone = new PossessionSimulator(42) { SpatialDetail = SpatialDetailLevel.None };
-            var simFull = new PossessionSimulator(42) { SpatialDetail = SpatialDetailLevel.Full };
-            bool outcomesMatch = true;
-            for (int i = 0; i < 100; i++)
-            {
-                var a = Run(simNone, offense, defense, offStrategy, defStrategy, i);
-                var b = Run(simFull, offense, defense, offStrategy, defStrategy, i);
+            // FoulSystem/FreeThrowHandler roll on the global UnityEngine.Random, so the
+            // two runs must be SEQUENTIAL (not interleaved) with the global RNG re-seeded;
+            // the choreographer itself may only consume its own System.Random.
+            var summariesNone = RunSeries(SpatialDetailLevel.None, offense, defense, offStrategy, defStrategy);
+            var summariesFull = RunSeries(SpatialDetailLevel.Full, offense, defense, offStrategy, defStrategy);
 
-                if (a.Outcome != b.Outcome || a.PointsScored != b.PointsScored ||
-                    a.Events.Count != b.Events.Count ||
-                    !a.Events.Select(e => (e.Type, e.ActorPlayerId, e.PointsScored))
-                        .SequenceEqual(b.Events.Select(e => (e.Type, e.ActorPlayerId, e.PointsScored))))
+            bool outcomesMatch = true;
+            for (int i = 0; i < summariesNone.Count; i++)
+            {
+                if (summariesNone[i] != summariesFull[i])
                 {
                     outcomesMatch = false;
-                    Debug.Log($"    Divergence at possession {i}: {a.Outcome}/{a.PointsScored} vs {b.Outcome}/{b.PointsScored}");
+                    Debug.Log($"    Divergence at possession {i}: {summariesNone[i]} vs {summariesFull[i]}");
                     break;
                 }
             }
@@ -132,7 +130,8 @@ namespace NBAHeadCoach.Tests
             AssertEqual(0, madeWithoutRim, "Every made FG passes through the rim");
 
             // Headless mode produces no states at all
-            var headless = Run(simNone, offense, defense, offStrategy, defStrategy, 999);
+            var headlessSim = new PossessionSimulator(7) { SpatialDetail = SpatialDetailLevel.None };
+            var headless = Run(headlessSim, offense, defense, offStrategy, defStrategy, 999);
             Assert(headless.SpatialStates == null || headless.SpatialStates.Count == 0,
                 "SpatialDetail.None emits no spatial states");
 
@@ -144,6 +143,26 @@ namespace NBAHeadCoach.Tests
         {
             return sim.SimulatePossession(off, def, offS, defS,
                 700f - (i * 3f % 650f), (i / 50) % 4 + 1, true, "GSW", "LAL", 0);
+        }
+
+        /// <summary>Run 100 seeded possessions at the given detail level, returning outcome summaries.</summary>
+        private static List<string> RunSeries(SpatialDetailLevel detail, Player[] off, Player[] def,
+            TeamStrategy offS, TeamStrategy defS)
+        {
+            // Identical state for both series: instance RNG via seed, global RNG via InitState,
+            // and fresh player dynamic state (energy mutates via tendencies during sims).
+            UnityEngine.Random.InitState(20260612);
+            foreach (var p in off.Concat(def)) { p.Energy = 100f; }
+
+            var sim = new PossessionSimulator(42) { SpatialDetail = detail };
+            var summaries = new List<string>(100);
+            for (int i = 0; i < 100; i++)
+            {
+                var r = Run(sim, off, def, offS, defS, i);
+                summaries.Add($"{r.Outcome}/{r.PointsScored}/" +
+                    string.Join(",", r.Events.Select(e => $"{e.Type}:{e.ActorPlayerId}:{e.PointsScored}")));
+            }
+            return summaries;
         }
 
         private Player[] BuildLineup(string teamId)
