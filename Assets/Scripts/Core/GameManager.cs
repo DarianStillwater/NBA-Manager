@@ -526,9 +526,9 @@ namespace NBAHeadCoach.Core
             // Generate hidden personalities for every roster so morale/chemistry has data to work with
             if (_moraleChemistryManager != null)
             {
-                foreach (var team in _allTeams)
+                foreach (var rosterTeam in _allTeams)
                 {
-                    if (team != null) _moraleChemistryManager.InitializeTeamPersonalities(team);
+                    if (rosterTeam != null) _moraleChemistryManager.InitializeTeamPersonalities(rosterTeam);
                 }
             }
 
