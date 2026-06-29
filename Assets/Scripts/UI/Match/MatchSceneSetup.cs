@@ -347,6 +347,10 @@ namespace NBAHeadCoach.UI.Match
             var vp = CreateRT(scrollGo, "VP"); Stretch(vp); vp.gameObject.AddComponent<RectMask2D>();
             var content = CreateRT(vp, "Content");
             content.anchorMin = new Vector2(0, 1); content.anchorMax = Vector2.one; content.pivot = new Vector2(0.5f, 1);
+            // Zero the leftover default sizeDelta (100,100) so the content matches the
+            // viewport width exactly — otherwise it is 100px too wide and overhangs the
+            // mask 50px on each side, clipping the left of every play-by-play line.
+            content.sizeDelta = Vector2.zero;
             var vlg = content.gameObject.AddComponent<VerticalLayoutGroup>();
             vlg.spacing = 1; vlg.childControlWidth = true; vlg.childControlHeight = true; vlg.childForceExpandWidth = true;
             vlg.childForceExpandHeight = false;
