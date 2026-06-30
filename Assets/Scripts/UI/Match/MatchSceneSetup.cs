@@ -119,18 +119,18 @@ namespace NBAHeadCoach.UI.Match
             // Setup court view with full court sprite and actual team colors
             var courtBgImg = _courtArea.GetComponent<Image>();
             var fullCourtSprite = ArtManager.GetFullCourt();
-            // Pick visible, contrasting team colors
-            Color homeColor = PickVisibleColor(_homeTeam);
-            Color awayColor = PickVisibleColor(_awayTeam);
-            // If too similar, pick a contrasting color for away (never white — invisible on court)
+            // Home wears its primary color, away wears its secondary (NBA convention).
+            // Each falls back to the team's other color if its choice would wash out on the wood.
+            Color homeColor = ResolveTeamColor(_homeTeam, preferSecondary: false);
+            Color awayColor = ResolveTeamColor(_awayTeam, preferSecondary: true);
+            // If the two still collide, shift the away color so the sides stay distinct.
             float colorDist = Mathf.Abs(homeColor.r - awayColor.r) + Mathf.Abs(homeColor.g - awayColor.g) + Mathf.Abs(homeColor.b - awayColor.b);
-            if (colorDist < 0.6f)
+            if (colorDist < 0.5f)
             {
-                // Rotate hue by ~180° for maximum contrast
-                Color.RGBToHSV(homeColor, out float h, out float s, out float v);
-                awayColor = Color.HSVToRGB((h + 0.5f) % 1f, Mathf.Max(s, 0.5f), Mathf.Max(v, 0.5f));
+                Color.RGBToHSV(awayColor, out float h, out float s, out float v);
+                awayColor = Color.HSVToRGB((h + 0.5f) % 1f, Mathf.Max(s, 0.5f), Mathf.Clamp(v, 0.45f, 0.9f));
             }
-            Debug.Log($"[MatchSceneSetup] Team colors: home={homeColor} away={awayColor} dist={colorDist:F2}");
+            Debug.Log($"[MatchSceneSetup] Team colors: home(primary)={homeColor} away(secondary)={awayColor} dist={colorDist:F2}");
             _courtView.Setup(courtBgImg, fullCourtSprite, homeColor, awayColor);
 
             // Initialize with starting lineups
@@ -713,30 +713,33 @@ namespace NBAHeadCoach.UI.Match
 
         // ── HELPERS ──
 
-        private static Color PickVisibleColor(Team team)
+        /// <summary>
+        /// Home uses its primary color, away its secondary (preferSecondary=true). A near-white
+        /// choice washes out on the light wood court, so fall back to the team's other color;
+        /// if both wash out, darken while preserving hue. Dark colors (navy/black) are kept —
+        /// they read fine on wood and the dots carry a dark outline regardless.
+        /// </summary>
+        private static Color ResolveTeamColor(Team team, bool preferSecondary)
         {
-            // Try primary first, fall back to secondary, then lighten if still too dark
             Color primary = UITheme.ParseTeamColor(team.PrimaryColor, Color.gray);
             Color secondary = UITheme.ParseTeamColor(team.SecondaryColor, Color.gray);
 
-            // Use luminance to check brightness (0.3 threshold — wood court is ~0.4-0.5)
-            float primLum = primary.r * 0.299f + primary.g * 0.587f + primary.b * 0.114f;
-            float secLum = secondary.r * 0.299f + secondary.g * 0.587f + secondary.b * 0.114f;
+            Color chosen = preferSecondary ? secondary : primary;
+            Color other = preferSecondary ? primary : secondary;
 
-            Color best = secLum > primLum ? secondary : primary; // pick brighter one
-            float bestLum = Mathf.Max(primLum, secLum);
+            if (IsWashedOut(chosen) && !IsWashedOut(other))
+                chosen = other;
 
-            // If still too dark, boost brightness
-            if (bestLum < 0.35f)
+            if (IsWashedOut(chosen))
             {
-                float boost = 0.35f / Mathf.Max(bestLum, 0.05f);
-                best = new Color(
-                    Mathf.Min(best.r * boost + 0.15f, 1f),
-                    Mathf.Min(best.g * boost + 0.15f, 1f),
-                    Mathf.Min(best.b * boost + 0.15f, 1f));
+                Color.RGBToHSV(chosen, out float h, out float s, out float v);
+                chosen = Color.HSVToRGB(h, Mathf.Max(s, 0.25f), 0.7f);
             }
-            return best;
+            return chosen;
         }
+
+        /// <summary>Near-white / pale-gray: all channels high, so it disappears on the wood.</summary>
+        private static bool IsWashedOut(Color c) => c.r > 0.8f && c.g > 0.8f && c.b > 0.8f;
 
         private static RectTransform CreateRT(Transform parent, string name)
         {

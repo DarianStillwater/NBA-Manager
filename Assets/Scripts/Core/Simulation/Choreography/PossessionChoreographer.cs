@@ -313,7 +313,21 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
                     _totalT = interceptT + 0.8f;
                     break;
                 }
-                default: // Turnover / Violation: dribble dies, dead ball
+                case ScriptEnding.Turnover:
+                {
+                    // Errant pass / lost handle: the ball sails out of bounds off the nearest line.
+                    float throwT = Math.Max(endT - 0.5f, 0.5f);
+                    EndHeldAt(throwT);
+                    var from = _offense[holder].PositionAt(throwT);
+                    var oob = NearestOutOfBounds(from);
+                    _offense[holder].Stamp(throwT, PlayerAction.Passing);
+                    float arriveT = throwT + BallFlight.PassDuration(from, oob);
+                    _ball.Add(new PassSegment(throwT, arriveT, from, oob));
+                    _ball.Add(new DeadSegment(arriveT, arriveT + 0.8f, oob));
+                    _totalT = arriveT + 0.8f;
+                    break;
+                }
+                default: // Violation: whistle, dead ball in place
                 {
                     EndHeldAt(endT - 0.3f);
                     var pos = _offense[holder].PositionAt(endT - 0.3f);
@@ -426,6 +440,22 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
 
         private bool IsDriveShot() =>
             _s.ShotType == ShotType.Dunk || _s.ShotType == ShotType.Layup || _s.ShotType == ShotType.Floater;
+
+        /// <summary>A point just past the nearest boundary line from `from` — where a turnover ball sails OOB.</summary>
+        private static CourtPosition NearestOutOfBounds(CourtPosition from)
+        {
+            const float past = 1.5f;
+            float distTop = CourtGeometry.HalfWidth - from.Y;     // +Y sideline
+            float distBot = from.Y + CourtGeometry.HalfWidth;     // -Y sideline
+            float distRight = CourtGeometry.HalfLength - from.X;  // +X baseline
+            float distLeft = from.X + CourtGeometry.HalfLength;   // -X baseline
+
+            float min = Math.Min(Math.Min(distTop, distBot), Math.Min(distRight, distLeft));
+            if (min == distTop) return new CourtPosition(from.X, CourtGeometry.HalfWidth + past);
+            if (min == distBot) return new CourtPosition(from.X, -CourtGeometry.HalfWidth - past);
+            if (min == distRight) return new CourtPosition(CourtGeometry.HalfLength + past, from.Y);
+            return new CourtPosition(-CourtGeometry.HalfLength - past, from.Y);
+        }
 
         private CourtPosition NearPoint(CourtPosition p, float maxDist)
         {

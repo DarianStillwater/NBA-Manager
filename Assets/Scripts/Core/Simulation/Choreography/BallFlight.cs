@@ -25,7 +25,7 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
         }
 
         public const float MakeFollowThroughDuration = 0.3f;
-        public const float CaromDuration = 0.7f;
+        public const float CaromDuration = 0.9f;
 
         // ── Sampling ───────────────────────────────────────────────
 
@@ -77,14 +77,37 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
             };
         }
 
-        /// <summary>Missed shot: ball pops off the rim and caroms to the rebound spot.</summary>
+        /// <summary>
+        /// Missed shot: the ball ricochets off the rim, then falls and takes one decaying
+        /// bounce on its way to the rebound spot. Horizontal travel is delayed slightly so the
+        /// initial kick reads as coming off the rim before the ball carries to the floor.
+        /// </summary>
         public static BallState SampleMissCarom(float rimX, CourtPosition reboundSpot, float u)
         {
-            float height = Lerp(CourtGeometry.RimHeight, 6f, u) + 2.5f * Arc(u);
-            return new BallState(
-                Lerp(rimX, reboundSpot.X, u),
-                Lerp(0f, reboundSpot.Y, u),
-                height)
+            // Horizontal: hold at the rim during the kick, then ease out to the rebound spot.
+            float travel = SmoothStep(Clamp((u - 0.12f) / 0.88f, 0f, 1f));
+            float x = Lerp(rimX, reboundSpot.X, travel);
+            float y = Lerp(0f, reboundSpot.Y, travel);
+
+            const float apex = CourtGeometry.RimHeight + 2.5f; // ~12.5 ft kick off the iron
+            const float floorH = 0.9f;
+
+            float h;
+            if (u < 0.18f)
+            {
+                h = Lerp(CourtGeometry.RimHeight, apex, u / 0.18f); // sharp pop up off the rim
+            }
+            else
+            {
+                // f: 0 at the kick apex → 1 at settle. |cos| gives apex→floor→one bounce→floor;
+                // the (1-f) envelope decays the bounce so it dies at the rebound spot.
+                float f = (u - 0.18f) / 0.82f;
+                float arch = (float)Math.Abs(Math.Cos(f * Math.PI * 1.5f));
+                float decay = (float)Math.Pow(1f - f, 1.8);
+                h = floorH + (apex - floorH) * arch * decay;
+            }
+
+            return new BallState(x, y, h)
             {
                 Status = BallStatus.Loose,
                 HeldByPlayerId = null
@@ -136,6 +159,9 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
 
         /// <summary>Parabolic bump: 0 at u=0 and u=1, 1 at u=0.5.</summary>
         private static float Arc(float u) => 4f * u * (1f - u);
+
+        /// <summary>Hermite smoothstep on [0,1].</summary>
+        private static float SmoothStep(float u) => u * u * (3f - 2f * u);
 
         private static float Clamp(float v, float min, float max) => v < min ? min : (v > max ? max : v);
     }

@@ -15,12 +15,19 @@ namespace NBAHeadCoach.UI.Components
     {
         private const float HeightToPixelsPerFoot = 1.2f; // visual lift per foot of height
 
+        private const float SpinDegPerPx = 3f;     // roll rate with horizontal travel
+        private const float AirborneBaseSpin = 200f; // deg/sec so vertical drops still spin
+
         private RectTransform _rect;
         private RectTransform _shadowRect;
         private Image _ball;
         private Image _shadow;
         private float _baseSize;
         private float _pixelsPerFoot;
+
+        private float _spin;
+        private Vector2 _lastPos;
+        private bool _hasLast;
 
         public static MatchBallView Create(RectTransform parent, float ballSize, float pixelsPerFoot)
         {
@@ -61,7 +68,22 @@ namespace NBAHeadCoach.UI.Components
         public void Render(Vector2 groundUiPos, float heightFeet, BallStatus status)
         {
             float lift = heightFeet * _pixelsPerFoot * HeightToPixelsPerFoot;
-            _rect.anchoredPosition = groundUiPos + Vector2.up * lift;
+            Vector2 ballPos = groundUiPos + Vector2.up * lift;
+            _rect.anchoredPosition = ballPos;
+
+            // Spin: the ball rolls in its travel direction while airborne or loose, and keeps
+            // a base spin so even a near-vertical drop through the net rotates. When gripped
+            // (held/dribbled/dead) it holds its last angle so it looks settled, not frozen mid-blur.
+            bool airborne = status == BallStatus.InAir_Shot || status == BallStatus.InAir_Pass || status == BallStatus.Loose;
+            if (_hasLast && airborne)
+            {
+                Vector2 d = ballPos - _lastPos;
+                float dir = d.x >= 0f ? -1f : 1f;   // clockwise when moving right
+                _spin += dir * (d.magnitude * SpinDegPerPx + AirborneBaseSpin * Time.deltaTime);
+                _rect.localEulerAngles = new Vector3(0f, 0f, _spin);
+            }
+            _lastPos = ballPos;
+            _hasLast = true;
 
             // Grow toward the apex so arcs read in top-down view
             float scale = 1f + Mathf.Clamp01(heightFeet / 25f) * 0.7f;

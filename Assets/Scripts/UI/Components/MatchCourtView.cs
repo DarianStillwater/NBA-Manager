@@ -77,7 +77,7 @@ namespace NBAHeadCoach.UI.Components
             foreach (var id in homeLineup.Take(5)) CreateDot(id, homeTeam, true);
             foreach (var id in awayLineup.Take(5)) CreateDot(id, awayTeam, false);
 
-            _ball = MatchBallView.Create(_courtRect, _dotSize * 0.6f, PixelsPerFoot);
+            _ball = MatchBallView.Create(_courtRect, _dotSize * 0.72f, PixelsPerFoot);
 
             BuildFastForwardBadge();
         }
@@ -263,9 +263,14 @@ namespace NBAHeadCoach.UI.Components
 
         private Color EnsureVisible(Color c, bool isHome)
         {
-            float lum = c.r * 0.299f + c.g * 0.587f + c.b * 0.114f;
-            if (lum > 0.85f)
-                return isHome ? new Color(0.2f, 0.4f, 0.9f) : new Color(0.9f, 0.2f, 0.2f);
+            // Final safety: a near-white color washes out on the wood. Darken while keeping
+            // hue rather than swapping to a generic color (the team color is already resolved
+            // upstream; this only catches pale residue). Dark colors are left untouched.
+            if (c.r > 0.8f && c.g > 0.8f && c.b > 0.8f)
+            {
+                Color.RGBToHSV(c, out float h, out float s, out float v);
+                return Color.HSVToRGB(h, Mathf.Max(s, 0.25f), 0.7f);
+            }
             return c;
         }
 
