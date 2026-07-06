@@ -194,6 +194,7 @@ namespace NBAHeadCoach.Core
                 Timeline = result.SpatialStates ?? new List<SpatialState>(),
                 StartGameClock = result.StartGameClock,
                 EndGameClock = result.EndGameClock,
+                PresentationSeconds = result.PresentationSeconds,
                 Quarter = result.Quarter,
                 OffenseIsHome = offenseIsHome
             };

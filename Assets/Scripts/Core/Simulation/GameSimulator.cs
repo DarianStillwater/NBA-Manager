@@ -473,6 +473,9 @@ namespace NBAHeadCoach.Core.Simulation
                     if (onCourtSet.Contains(pid)) continue;
                     var bench = _playerDatabase.GetPlayer(pid);
                     if (bench == null) continue;
+                    // Never rotate a fouled-out player back onto the court
+                    if (_boxScore.PlayerStats.ContainsKey(pid) &&
+                        _boxScore.PlayerStats[pid].PersonalFouls >= 6) continue;
                     if (bench.Energy > bestEnergy)
                     {
                         bestEnergy = bench.Energy;

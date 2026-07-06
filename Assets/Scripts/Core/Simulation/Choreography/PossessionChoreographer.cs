@@ -22,6 +22,9 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
         private const float RunSpeed = 18f;      // ft/s
         private const float SprintSpeed = 27f;   // ft/s
         private const float DefenseSpeed = 20f;  // ft/s
+        // Cap on authored off-ball movement speed. Smoothstep peaks at 1.5× average, so at a
+        // 0.2s tick this yields ≤ ~7.2 ft/tick — under the ChoreographyTest 8 ft playerJumps bound.
+        private const float SafeSpeed = 24f;     // ft/s
 
         private readonly System.Random _rng;
 
@@ -36,11 +39,17 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
         private float _totalT;                   // includes resolution/FT tail
         private CourtPosition _reboundSpot;
         private List<(float t, PossessionPhase phase)> _phaseMarks;
+        private ActionPlan _action;              // the synthesized offensive action for this possession
+        private DefenderAssignment[] _defPlan;   // per-defender assignment (sag/nav/help), decided once
 
         public PossessionChoreographer(System.Random rng)
         {
             _rng = rng ?? new System.Random();
         }
+
+        /// <summary>True length of the last choreographed timeline in seconds from possession start
+        /// (includes the shot-resolution tail). Valid immediately after <see cref="Choreograph"/>.</summary>
+        public float TotalSeconds => _totalT;
 
         public List<SpatialState> Choreograph(PossessionScript script)
         {
@@ -51,8 +60,10 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
             _phaseMarks = new List<(float, PossessionPhase)>();
             _shotStartT = -1f;
             _heldBy = -1;
+            _action = ActionLibrary.Choose(script, _rng);
 
             BuildOffenseAndBall();
+            _defPlan = DefenseChoreographer.BuildPlan(_action, script, _rng);
             return Emit();
         }
 
@@ -98,26 +109,27 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
                 _offense[i].Add(arrive, formation[i], action);
             }
 
-            // Ball: dribbled up by the initial handler
-            int holder = _s.InitialBallHandlerIndex;
-            float ballCursor = 0f;
-            AddHeld(ref ballCursor, advanceEnd + 0.2f, holder, dribbled: true);
-
-            // ── Phase C: action beats ──
+            // ── Phase C: run a recognizable action ──
             float actionStart = advanceEnd + 0.6f;
             float cursor = actionStart;
 
-            // Synthesized cosmetic swing passes (must return ball to the initial handler
-            // before the decided pass so the assist credit matches the visual).
-            holder = BuildSwingPasses(holder, ref cursor, actionEnd, formation);
+            // Ball: dribbled up by the initial handler, held continuously until the action starts
+            // (no gap, so the ball tracks the handler smoothly into the first pass/shot).
+            int holder = _s.InitialBallHandlerIndex;
+            float ballCursor = 0f;
+            AddHeld(ref ballCursor, actionStart, holder, dribbled: true);
 
-            // Cosmetic screen before a drive (big walks up to screen for the handler)
-            if (hasShot && IsDriveShot() && cursor + 1.4f < actionEnd && _s.ShooterIndex != 4)
-            {
-                float screenT = cursor + 0.4f;
-                _offense[4].Add(screenT, NearPoint(_offense[holder].PositionAt(screenT), 3f), PlayerAction.Screening);
-                cursor = screenT + 0.4f;
-            }
+            // Off-ball movement of the action (screens, rolls/pops, cuts, post-ups). Records
+            // beat times on _action for the defense to react to.
+            BuildAction(holder, actionStart, actionEnd, formation);
+
+            // Keep every off-ball player in constant motion (relocations/cuts) so no one stands.
+            // Runs BEFORE ball movement so passes sample players' final positions.
+            BuildContinuousSpacing(advanceEnd, actionEnd);
+
+            // Ball movement: swings + optional interior touch, always returning the ball to the
+            // initial handler before the decided assist so assist credit matches the visual.
+            holder = BuildBallProgression(holder, ref cursor, actionEnd, formation);
 
             if (hasShot)
             {
@@ -128,52 +140,288 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
                 BuildNonShotEnding(holder);
             }
 
-            // Everyone not otherwise scripted drifts/sways at their formation spot
+            // Tail: micro-sway through the resolution so dots never look frozen.
             for (int i = 0; i < 5; i++)
                 _offense[i].SwayUntil(_totalT, _rng);
         }
 
-        /// <summary>Swing the ball around the perimeter and back. Returns the final holder (initial handler).</summary>
-        private int BuildSwingPasses(int holder, ref float cursor, float actionEnd, CourtPosition[] formation)
+        /// <summary>
+        /// Move the ball for the possession. On-ball actions (PnR/PnP/iso/DHO/backdoor) keep the
+        /// ball with the initial handler — the single decided pass is fired later by
+        /// BuildShotSequence. Off-ball actions reverse the ball and, on a post-up, feed the post
+        /// and kick back out. Always ends with the ball back at the initial handler so the decided
+        /// assist credit matches the visual. Returns the final holder.
+        /// </summary>
+        private int BuildBallProgression(int holder, ref float cursor, float actionEnd, CourtPosition[] formation)
         {
             int initial = holder;
-            // Only the perimeter trio (PG/SG/SF) swing the ball cosmetically
-            int[] perimeter = { 0, 1, 2 };
 
-            int maxPasses = (int)((actionEnd - cursor) / 1.6f);
-            int passes = Math.Min(maxPasses, 1 + _rng.Next(3)); // 1-3 if time allows
-            if (passes % 2 == 1) passes++;                       // even count → ball returns
-            passes = Math.Min(passes, maxPasses);
+            // On-ball actions: the handler keeps it (BuildShotSequence bridges the held ball).
+            if (IsOnBallAction(_action.Action))
+                return holder;
 
-            for (int p = 0; p < passes && cursor + 1.5f < actionEnd; p++)
+            const float reserve = 1.4f;                 // time kept back for the return pass
+            float budgetEnd = actionEnd - reserve;
+            var pool = PerimeterPool(initial);
+
+            // Cosmetic perimeter reversals
+            int swings = _rng.Next(0, 3);               // 0-2
+            for (int p = 0; p < swings && cursor + 1.5f < budgetEnd; p++)
             {
-                bool returning = p == passes - 1;
-                int target;
-                if (returning)
-                {
-                    target = initial;
-                }
-                else
-                {
-                    do { target = perimeter[_rng.Next(perimeter.Length)]; }
-                    while (target == holder);
-                }
-                if (target == holder) break;
-
-                var from = _offense[holder].PositionAt(cursor);
-                var to = _offense[target].PositionAt(cursor);
-                float flight = BallFlight.PassDuration(from, to);
-
-                _offense[holder].Stamp(cursor, PlayerAction.Passing, _s.Offense[target].PlayerId);
-                _ball.Add(new PassSegment(cursor, cursor + flight, from, to));
-                _offense[target].Stamp(cursor + flight, PlayerAction.Catching);
-
-                holder = target;
-                cursor += flight + 0.6f + (float)_rng.NextDouble() * 0.4f;
-                AddHeldSegmentEndingAt(cursor, holder);
+                int target = PickDifferent(pool, holder);
+                if (target < 0) break;
+                holder = PassTo(holder, target, ref cursor);
             }
 
+            // Interior touch on a post-up: feed the post, hold a beat, kick back out
+            if (_action.InteriorTouch && _action.PostIndex >= 0 && _action.PostIndex != holder &&
+                cursor + 2.2f < budgetEnd)
+            {
+                int post = _action.PostIndex;
+                holder = PassTo(holder, post, ref cursor);
+                cursor += 0.6f + (float)_rng.NextDouble() * 0.4f;   // post beat
+                AddHeldSegmentEndingAt(cursor, holder);
+                int kick = PickDifferent(pool, post);
+                if (kick >= 0 && cursor + 1.2f < budgetEnd)
+                    holder = PassTo(holder, kick, ref cursor);
+            }
+
+            // Always return the ball to the initial handler before the decided assist.
+            if (holder != initial)
+                holder = PassTo(holder, initial, ref cursor);
+
             return holder;
+        }
+
+        /// <summary>Fire a pass holder→target at the current cursor, advance the cursor past the
+        /// catch + a short hold, and leave the ball held by the target. Returns the new holder.
+        /// The pass is LED to where the catcher will be at arrival — spacers keep relocating, and
+        /// a pass to their old spot would teleport the ball onto the moved player at the catch.</summary>
+        private int PassTo(int holder, int target, ref float cursor)
+        {
+            var from = _offense[holder].PositionAt(cursor);
+            // Two-round fixed point: estimate flight from the current spot, then re-aim at where
+            // the catcher's track puts them at that arrival time (tracks are already fully laid).
+            var to = _offense[target].PositionAt(cursor);
+            float flight = BallFlight.PassDuration(from, to);
+            to = _offense[target].PositionAt(cursor + flight);
+            flight = BallFlight.PassDuration(from, to);
+            to = _offense[target].PositionAt(cursor + flight);
+
+            _offense[holder].Stamp(cursor, PlayerAction.Passing, _s.Offense[target].PlayerId);
+            _ball.Add(new PassSegment(cursor, cursor + flight, from, to));
+            // Pin the catcher at the catch point so the track and the ball agree at the hand-off.
+            _offense[target].Add(cursor + flight, to, PlayerAction.Catching);
+
+            cursor += flight + 0.5f + (float)_rng.NextDouble() * 0.4f;
+            AddHeldSegmentEndingAt(cursor, target);
+            return target;
+        }
+
+        /// <summary>Perimeter passing pool: PG/SG/SF/PF minus the deep post (bigs get the ball via
+        /// the roll/post feed, not random reversals).</summary>
+        private System.Collections.Generic.List<int> PerimeterPool(int initial)
+        {
+            var pool = new System.Collections.Generic.List<int> { 0, 1, 2, 3 };
+            // The shooter and the deep post get the ball only via the decided assist / post feed —
+            // never via a random reversal — so their positions can't be shifted after a pass is laid.
+            if (_action.PostIndex >= 0) pool.Remove(_action.PostIndex);
+            if (_s.ShooterIndex >= 0) pool.Remove(_s.ShooterIndex);
+            if (!pool.Contains(initial)) pool.Add(initial);
+            return pool;
+        }
+
+        private int PickDifferent(System.Collections.Generic.List<int> pool, int exclude)
+        {
+            if (pool.Count == 0) return -1;
+            int start = _rng.Next(pool.Count);
+            for (int k = 0; k < pool.Count; k++)
+            {
+                int cand = pool[(start + k) % pool.Count];
+                if (cand != exclude) return cand;
+            }
+            return -1;
+        }
+
+        private static bool IsOnBallAction(OffensiveAction a) =>
+            a == OffensiveAction.PickAndRoll || a == OffensiveAction.PickAndPop ||
+            a == OffensiveAction.Isolation || a == OffensiveAction.DribbleHandoff ||
+            a == OffensiveAction.Backdoor;
+
+        private float M => _s.OffenseAttacksRight ? 1f : -1f;
+
+        // ════════════════════════════════════════════════════════════════
+        //  Off-ball action choreography (screens, rolls/pops, cuts, post-ups)
+        // ════════════════════════════════════════════════════════════════
+
+        private void BuildAction(int handler, float actionStart, float actionEnd, CourtPosition[] formation)
+        {
+            switch (_action.Action)
+            {
+                case OffensiveAction.PickAndRoll:       BuildScreenAction(handler, actionStart, roll: true); break;
+                case OffensiveAction.PickAndPop:        BuildScreenAction(handler, actionStart, roll: false); break;
+                case OffensiveAction.OffBallScreenCurl: BuildOffBallScreen(actionStart); break;
+                case OffensiveAction.Backdoor:          BuildBackdoor(actionStart); break;
+                case OffensiveAction.PostUp:            BuildPostUp(actionStart); break;
+                case OffensiveAction.DribbleHandoff:    BuildHandoff(handler, actionStart); break;
+                case OffensiveAction.Isolation:         BuildIsolation(handler, actionStart, actionEnd); break;
+                case OffensiveAction.Transition:        BuildTransitionAction(actionStart); break;
+                case OffensiveAction.SpotUp:            break; // movement from spacing + shot sequence
+            }
+        }
+
+        private void BuildScreenAction(int handler, float actionStart, bool roll)
+        {
+            int scr = _action.Screener;
+            if (scr < 0 || scr == handler) return;
+
+            // Screener comes up to set the ball screen; handler dribbles to use it.
+            _action.ScreenStartT = Glide(scr, actionStart, _action.ScreenSpot, PlayerAction.Screening);
+            Glide(handler, actionStart + 0.2f,
+                _action.ScreenSpot.MoveTowards(new CourtPosition(_rimX, 0f), 3f), PlayerAction.Dribbling);
+
+            float holdEnd = _action.ScreenStartT + 0.5f;
+            _action.ScreenEndT = holdEnd;
+            _offense[scr].Stamp(holdEnd, PlayerAction.Screening);
+
+            // Roll to the rim or pop to the elbow/arc.
+            _action.RollStartT = holdEnd + 0.1f;
+            var dest = roll ? _action.RollTarget : _action.PopTarget;
+            Glide(scr, _action.RollStartT, dest, roll ? PlayerAction.Cutting : PlayerAction.Catching);
+        }
+
+        private void BuildOffBallScreen(float actionStart)
+        {
+            int scr = _action.Screener, cut = _action.Cutter;
+            if (cut < 0) return;
+
+            if (scr >= 0)
+            {
+                var screenPos = FormationLibrary.Clamp(new CourtPosition((CourtGeometry.RimX - 8f) * M, _action.SideY * 7f));
+                _action.ScreenStartT = Glide(scr, actionStart, screenPos, PlayerAction.Screening);
+                _action.ScreenEndT = _action.ScreenStartT + 0.5f;
+            }
+
+            // Cutter starts low on the weak side, then curls up off the screen to the catch.
+            var low = FormationLibrary.Clamp(new CourtPosition((CourtGeometry.RimX - 4f) * M, -_action.SideY * 6f));
+            float t1 = Glide(cut, actionStart, low, PlayerAction.Cutting);
+            Glide(cut, t1 + 0.1f, _s.ShotPosition, PlayerAction.Cutting);
+        }
+
+        private void BuildBackdoor(float actionStart)
+        {
+            int cut = _action.Cutter;
+            if (cut < 0) return;
+            var high = FormationLibrary.Clamp(new CourtPosition(30f * M, _action.SideY * 16f));
+            float t1 = Glide(cut, actionStart, high, PlayerAction.Cutting);
+            Glide(cut, t1 + 0.3f, _s.ShotPosition, PlayerAction.Cutting);   // backdoor to the rim
+        }
+
+        private void BuildPostUp(float actionStart)
+        {
+            int post = _action.PostIndex;
+            if (post < 0) return;
+            var block = FormationLibrary.Clamp(new CourtPosition((CourtGeometry.RimX - 6f) * M, _action.SideY * 6f));
+            float t1 = Glide(post, actionStart, block, PlayerAction.PostingUp);
+            _offense[post].Stamp(t1 + 0.8f, PlayerAction.PostingUp);
+        }
+
+        private void BuildHandoff(int handler, float actionStart)
+        {
+            // Dribble to the hand-off spot just outside where the shooter will catch.
+            var spot = FormationLibrary.Clamp(new CourtPosition(_s.ShotPosition.X - 2f * M, _s.ShotPosition.Y));
+            Glide(handler, actionStart + 0.2f, spot, PlayerAction.Dribbling);
+        }
+
+        private void BuildIsolation(int handler, float actionStart, float actionEnd)
+        {
+            var iso = _s.ShooterIndex >= 0 ? _s.ShotPosition : _offense[handler].PositionAt(actionStart);
+            float t = actionStart + 0.3f;
+            for (int k = 0; k < 3 && t + 0.7f < actionEnd; k++)
+            {
+                var jab = FormationLibrary.Jitter(iso, 2.5f, _rng);
+                t = Glide(handler, t, jab, PlayerAction.Dribbling, speed: 12f);
+                t += 0.25f;
+            }
+        }
+
+        private void BuildTransitionAction(float actionStart)
+        {
+            int runner = PickBigNot(_action.Handler);
+            if (runner >= 0)
+                Glide(runner, actionStart,
+                    FormationLibrary.Clamp(new CourtPosition((CourtGeometry.RimX - 5f) * M, _action.SideY * 3f)),
+                    PlayerAction.Sprinting);
+        }
+
+        // ── Continuous off-ball spacing so no one stands still ──
+
+        private void BuildContinuousSpacing(float advanceEnd, float actionEnd)
+        {
+            var involved = new System.Collections.Generic.HashSet<int>();
+            if (_s.ShooterIndex >= 0) involved.Add(_s.ShooterIndex);
+            if (_action.Screener >= 0) involved.Add(_action.Screener);
+            if (_action.Cutter >= 0) involved.Add(_action.Cutter);
+            if (_action.PostIndex >= 0) involved.Add(_action.PostIndex);
+            if (IsOnBallAction(_action.Action)) involved.Add(_action.Handler);
+
+            var slots = SpacingSlots();
+
+            for (int i = 0; i < 5; i++)
+            {
+                if (involved.Contains(i)) continue;
+                float t = advanceEnd + 0.8f + (float)_rng.NextDouble() * 0.5f;
+                while (t + 1.0f < actionEnd)
+                {
+                    var cur = _offense[i].PositionAt(t);
+                    var next = FormationLibrary.Jitter(NearbySlot(cur, slots), 1.5f, _rng);
+                    float arrive = Glide(i, t, next, PlayerAction.Cutting);
+                    t = arrive + 0.4f + (float)_rng.NextDouble() * 0.7f;
+                }
+            }
+        }
+
+        private System.Collections.Generic.List<CourtPosition> SpacingSlots()
+        {
+            float m = M;
+            return new System.Collections.Generic.List<CourtPosition>
+            {
+                new CourtPosition(24f * m, 0f),
+                new CourtPosition(29f * m, -16f),
+                new CourtPosition(29f * m, 16f),
+                new CourtPosition(42f * m, -22f),
+                new CourtPosition(42f * m, 22f),
+                new CourtPosition(30f * m, -7f),
+                new CourtPosition(30f * m, 7f)
+            };
+        }
+
+        private CourtPosition NearbySlot(CourtPosition cur, System.Collections.Generic.List<CourtPosition> slots)
+        {
+            var pick = slots[_rng.Next(slots.Count)];
+            if (cur.DistanceTo(pick) < 4f) pick = slots[_rng.Next(slots.Count)];
+            return pick;
+        }
+
+        private int PickBigNot(int exclude)
+        {
+            if (4 != exclude) return 4;
+            if (3 != exclude) return 3;
+            return -1;
+        }
+
+        /// <summary>Add a waypoint the player eases to, at a speed-capped arrival time so smoothstep's
+        /// 1.5× peak stays under the ChoreographyTest per-tick bound. Returns the arrival time.</summary>
+        private float Glide(int i, float fromT, CourtPosition to, PlayerAction action, float speed = SafeSpeed)
+        {
+            if (speed > 25f) speed = 25f;
+            var from = _offense[i].PositionAt(fromT);
+            to = FormationLibrary.Clamp(to);
+            float dist = from.DistanceTo(to);
+            float span = Math.Max(0.25f, dist / speed);
+            float arriveT = fromT + span;
+            _offense[i].Add(arriveT, to, action);
+            return arriveT;
         }
 
         private void BuildShotSequence(int holder, float actionEnd, float shotReleaseT, float windup, float shotFlight)
@@ -588,8 +836,14 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
             bool resolution = t > _liveEndT;
             bool defenseRebounds = resolution && _s.RebounderIsDefense && _s.RebounderIndex >= 0;
 
+            var rim = new CourtPosition(_rimX, 0f);
+            // Only on-ball screens (PnR/PnP) drive the ball-defender nav / hedge / roller-help logic.
+            bool screenAction = _action.ScreenEndT > 0f &&
+                (_action.Action == OffensiveAction.PickAndRoll || _action.Action == OffensiveAction.PickAndPop);
+
             for (int i = 0; i < 5; i++)
             {
+                int man = _defPlan[i].ManIndex;   // follows a Switch
                 CourtPosition target;
                 float speed = DefenseSpeed;
 
@@ -601,23 +855,45 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
                 else if (resolution && _s.Ending == ScriptEnding.MadeShot && i == 0)
                 {
                     // Point-of-attack defender collects the made ball under the rim
-                    target = new CourtPosition(_rimX, 0f);
+                    target = rim;
                 }
-                else if (IsContestMoment(t) && i == _s.ShooterIndex)
+                else if (IsContestMoment(t) && man == _s.ShooterIndex)
                 {
                     // At the shot, the contest distance is the exact inverse of the
                     // decided ContestLevel so the visual matches the probability math.
                     float contestDist = (1f - _s.ContestLevel) * 6f;
                     var shooterPos = _offense[_s.ShooterIndex].PositionAt(t);
-                    target = shooterPos.MoveTowards(new CourtPosition(_rimX, 0f), contestDist);
+                    target = shooterPos.MoveTowards(rim, contestDist);
                     speed = SprintSpeed;
+                }
+                else if (screenAction && _defPlan[i].Nav == ScreenNavigation.Hedge &&
+                         man == _action.Screener &&
+                         t >= _action.ScreenStartT && t <= _action.ScreenEndT + 0.4f)
+                {
+                    // Screener's defender shows/hedges on the ball, then recovers after the beat.
+                    target = Blend(_action.ScreenSpot, _offense[_action.Handler].PositionAt(t), 0.3f);
+                    speed = SprintSpeed;
+                }
+                else if (_defPlan[i].IsHelper && _defPlan[i].TagIndex >= 0 && _action.RollStartT > 0f &&
+                         t >= _action.RollStartT && t <= _action.RollStartT + 0.9f)
+                {
+                    // Low man tags the roller/popper, then recovers to his own man.
+                    var roller = _offense[_defPlan[i].TagIndex].PositionAt(t);
+                    target = Blend(roller, rim, 0.4f);
                 }
                 else
                 {
-                    var man = _offense[i].PositionAt(t);
+                    var manPos = _offense[man].PositionAt(t);
                     float sag = SagFor(i, ball);
-                    var rim = new CourtPosition(_rimX, 0f);
-                    target = Blend(man, rim, sag);
+                    target = Blend(manPos, rim, sag);
+
+                    // Ball defender navigating the screen (over/under) — a subtle, stable offset.
+                    if (screenAction && man == _action.Handler &&
+                        t >= _action.ScreenStartT && t <= _action.ScreenEndT + 0.3f)
+                    {
+                        float side = _defPlan[i].Nav == ScreenNavigation.GoUnder ? -1f : 1f;
+                        target = new CourtPosition(target.X, target.Y + side * 1.5f);
+                    }
                 }
 
                 _defPos[i] = _defPos[i].MoveTowards(target, speed * dt);
@@ -627,20 +903,24 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
         private bool IsContestMoment(float t) =>
             _shotStartT > 0f && _s.ShooterIndex >= 0 && t > _shotStartT - 0.8f && t < _shotStartT + 0.3f;
 
+        // Sag depth is decided ONCE per defender in the plan — no per-tick re-roll, so no twitch.
         private float SagFor(int defenderIdx, BallState ball)
         {
+            var a = _defPlan[defenderIdx];
             bool guardsBall = ball.HeldByPlayerId != null &&
-                              _s.Offense[defenderIdx].PlayerId == ball.HeldByPlayerId;
-            if (guardsBall) return 0.12f;
-
-            // One pass away = adjacent perimeter neighbor of the ball handler; weak side sags more
-            return _rng.NextDouble() < 0.5 ? 0.22f : 0.34f;
+                              _s.Offense[a.ManIndex].PlayerId == ball.HeldByPlayerId;
+            return guardsBall ? a.OnBallPressure : a.SagDepth;
         }
 
         private PlayerAction DefenseActionAt(int i, float t)
         {
-            if (IsContestMoment(t) && i == _s.ShooterIndex) return PlayerAction.Contesting;
+            int man = _defPlan[i].ManIndex;
+            if (IsContestMoment(t) && man == _s.ShooterIndex) return PlayerAction.Contesting;
             if (t > _liveEndT && _s.RebounderIsDefense && i == _s.RebounderIndex) return PlayerAction.Rebounding;
+            if (t > _liveEndT) return PlayerAction.BoxingOut;   // box out during the shot/resolution
+            if (_action.ScreenEndT > 0f && _defPlan[i].Nav == ScreenNavigation.Hedge &&
+                man == _action.Screener && t >= _action.ScreenStartT && t <= _action.ScreenEndT + 0.4f)
+                return PlayerAction.Screening;   // hedging posture
             return PlayerAction.Defending;
         }
 

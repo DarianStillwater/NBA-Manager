@@ -32,8 +32,19 @@ namespace NBAHeadCoach.Core
         /// <summary>Extra presentation time appended past the live timeline (free throws etc.).</summary>
         public float TailSeconds;
 
+        /// <summary>True length of the choreographed timeline in seconds from possession start —
+        /// includes the shot-resolution tail (ball through the net / carom + rebound) that extends
+        /// past the live possession end. 0 when there is no timeline (legacy/headless).</summary>
+        public float PresentationSeconds;
+
         public float DurationGameSeconds => StartGameClock - EndGameClock;
         public float TotalPlaybackSeconds => DurationGameSeconds + TailSeconds;
+
+        /// <summary>Seconds the director should actually play: the full choreographed timeline when
+        /// present (so shots resolve on screen), otherwise the live+tail estimate. Never shorter
+        /// than TotalPlaybackSeconds so free-throw ticker timing is still covered.</summary>
+        public float PlaybackSeconds =>
+            PresentationSeconds > TotalPlaybackSeconds ? PresentationSeconds : TotalPlaybackSeconds;
     }
 
     /// <summary>

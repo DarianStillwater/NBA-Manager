@@ -151,6 +151,8 @@ namespace NBAHeadCoach.UI.Components
                 float y = Mathf.Lerp(pa.Y, pb.Y, u);
                 dot.SetPositionImmediate(CourtToUI(x, y));
                 dot.SetHasBall(pb.HasBall);
+                dot.SetFacing(pb.FacingAngle);
+                dot.SetAction(pb.CurrentAction);
             }
 
             // Ball

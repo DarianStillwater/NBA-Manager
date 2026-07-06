@@ -20,6 +20,7 @@ namespace NBAHeadCoach.UI.Components
         [SerializeField] private Image _dotImage;
         [SerializeField] private Image _highlightRing;
         [SerializeField] private Text _jerseyNumberText;
+        [SerializeField] private RectTransform _facingRT;   // rotates a small nub to show orientation
 
         [Header("Tooltip")]
         [SerializeField] private CanvasGroup _tooltipGroup;
@@ -160,6 +161,35 @@ namespace NBAHeadCoach.UI.Components
             _hasBall = hasBall;
             if (_highlightRing != null)
                 _highlightRing.gameObject.SetActive(hasBall);
+        }
+
+        /// <summary>Point the facing nub in a direction (radians). Conveys player orientation.</summary>
+        public void SetFacing(float angleRad)
+        {
+            if (_facingRT != null)
+                _facingRT.localEulerAngles = new Vector3(0f, 0f, angleRad * Mathf.Rad2Deg);
+        }
+
+        /// <summary>Reflect the current action with a subtle scale/pose cue so play reads at a glance.</summary>
+        public void SetAction(NBAHeadCoach.Core.Simulation.PlayerAction action)
+        {
+            float s;
+            switch (action)
+            {
+                case NBAHeadCoach.Core.Simulation.PlayerAction.Shooting:
+                case NBAHeadCoach.Core.Simulation.PlayerAction.Dunking:
+                case NBAHeadCoach.Core.Simulation.PlayerAction.Layup:
+                    s = 1.16f; break;
+                case NBAHeadCoach.Core.Simulation.PlayerAction.Screening:
+                case NBAHeadCoach.Core.Simulation.PlayerAction.BoxingOut:
+                case NBAHeadCoach.Core.Simulation.PlayerAction.Rebounding:
+                    s = 1.12f; break;
+                case NBAHeadCoach.Core.Simulation.PlayerAction.Contesting:
+                    s = 1.10f; break;
+                default:
+                    s = 1f; break;
+            }
+            _rectTransform.localScale = new Vector3(s, s, 1f);
         }
 
         /// <summary>
@@ -331,6 +361,26 @@ namespace NBAHeadCoach.UI.Components
             float lum = teamColor.r * 0.299f + teamColor.g * 0.587f + teamColor.b * 0.114f;
             text.color = lum > 0.5f ? Color.black : Color.white;
 
+            // Facing nub: a small light dot on the leading edge, rotated by SetFacing to show orientation.
+            var faceGO = new GameObject("Facing");
+            faceGO.transform.SetParent(dotGO.transform, false);
+            var faceRT = faceGO.AddComponent<RectTransform>();
+            faceRT.anchorMin = faceRT.anchorMax = new Vector2(0.5f, 0.5f);
+            faceRT.pivot = new Vector2(0.5f, 0.5f);
+            faceRT.sizeDelta = new Vector2(dotSize, dotSize);
+            faceRT.anchoredPosition = Vector2.zero;
+            var nubGO = new GameObject("Nub");
+            nubGO.transform.SetParent(faceGO.transform, false);
+            var nubRT = nubGO.AddComponent<RectTransform>();
+            nubRT.anchorMin = nubRT.anchorMax = new Vector2(0.5f, 0.5f);
+            nubRT.pivot = new Vector2(0.5f, 0.5f);
+            nubRT.sizeDelta = new Vector2(dotSize * 0.3f, dotSize * 0.3f);
+            nubRT.anchoredPosition = new Vector2(dotSize * 0.44f, 0f);
+            var nubImg = nubGO.AddComponent<Image>();
+            nubImg.color = new Color(1f, 1f, 1f, 0.9f);
+            if (circleSprite != null) nubImg.sprite = circleSprite;
+            nubImg.raycastTarget = false;
+
             // Add tooltip
             var tooltipGO = new GameObject("Tooltip");
             tooltipGO.transform.SetParent(dotGO.transform, false);
@@ -405,6 +455,7 @@ namespace NBAHeadCoach.UI.Components
             component._dotImage = dotImage;
             component._highlightRing = ringImage;
             component._jerseyNumberText = text;
+            component._facingRT = faceRT;
             component._tooltipGroup = tooltipCanvasGroup;
             component._tooltipRect = tooltipRT;
             component._tooltipNameText = nameText;

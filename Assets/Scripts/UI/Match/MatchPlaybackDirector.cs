@@ -73,7 +73,9 @@ namespace NBAHeadCoach.UI.Match
             SetFastForward(false);
             _court.BeginPossession(packet);
 
-            float total = packet.TotalPlaybackSeconds;
+            // Play the FULL choreographed timeline (through the shot's resolution — ball through
+            // the net on a make, carom + rebound on a miss), not just up to the ball reaching the rim.
+            float total = packet.PlaybackSeconds;
             float t = 0f;
             int eventCursor = 0;
 
@@ -101,6 +103,10 @@ namespace NBAHeadCoach.UI.Match
                 // Flush anything left (clamped offsets, FT tail)
                 FireDueEvents(packet, float.MaxValue, eventCursor);
                 _court.RenderAt(total);
+
+                // TV beat: hold on the resolved result before advancing, so a made basket or a
+                // rebound registers. Court stays frozen on the final frame; skipped at Instant speed.
+                yield return HoldOnResult(packet);
             }
             finally
             {
@@ -156,6 +162,26 @@ namespace NBAHeadCoach.UI.Match
             finally
             {
                 Complete();
+            }
+        }
+
+        // Brief dwell on a possession that ended in a shot, so the make/miss + rebound reads.
+        private IEnumerator HoldOnResult(PossessionPlaybackPacket packet)
+        {
+            bool hadShot = false;
+            for (int i = 0; i < packet.Events.Count; i++)
+                if (packet.Events[i].ShotMarker.HasValue) { hadShot = true; break; }
+            if (!hadShot) yield break;
+            if (_sim != null && _sim.CurrentSpeed == SimulationSpeed.Instant) yield break;
+
+            float speed = PlaybackDecider.SpeedMultiplier(_sim != null ? _sim.CurrentSpeed : SimulationSpeed.Normal);
+            float hold = Mathf.Clamp(1.2f / speed, 0.08f, 0.6f);
+            float h = 0f;
+            while (h < hold)
+            {
+                while (_sim != null && _sim.IsPaused) yield return null;
+                h += Time.deltaTime;
+                yield return null;
             }
         }
 
