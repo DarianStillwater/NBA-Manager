@@ -331,6 +331,7 @@ namespace NBAHeadCoach.Core.Simulation
                 _choreographer ??= new PossessionChoreographer(_choreoRandom);
                 result.SpatialStates = _choreographer.Choreograph(_script);
                 result.PresentationSeconds = _choreographer.TotalSeconds;
+                result.NarrationBeats = _choreographer.Beats;
             }
 
             result.EndGameClock = endGameClock;
@@ -892,6 +893,10 @@ namespace NBAHeadCoach.Core.Simulation
         /// <summary>True length of the choreographed timeline in seconds from possession start
         /// (includes the shot-resolution tail past the live end). 0 when no choreography ran.</summary>
         public float PresentationSeconds;
+
+        /// <summary>Timed narration moments from the choreographer (radio bar + ticker re-timing).
+        /// Null when no choreography ran (headless). Purely presentational.</summary>
+        public List<Choreography.NarrationBeat> NarrationBeats;
 
         public float Duration => StartGameClock - EndGameClock;
 

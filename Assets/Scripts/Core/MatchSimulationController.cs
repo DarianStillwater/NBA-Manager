@@ -533,6 +533,11 @@ namespace NBAHeadCoach.Core
                 var packet = _captureSink;
                 _captureSink = null;
 
+                // Narration beats and re-timed events interleave out of append order; the
+                // director's forward-only cursor needs ascending offsets. OrderBy is stable,
+                // so same-offset entries keep their append order (entry → scoreboard → marker).
+                packet.Events = packet.Events.OrderBy(e => e.Offset).ToList();
+
                 packet.AnyHighlight = packet.Events.Any(e => e.Entry != null && e.Entry.IsHighlight);
                 packet.AnyScore = packet.Events.Any(e => (e.Entry != null && e.Entry.Points > 0) || e.ShotPoints > 0);
                 packet.AnyDefensiveHighlight = result.Events.Any(e =>
@@ -770,12 +775,37 @@ namespace NBAHeadCoach.Core
                             ftContext);
                     }
 
-                    // In packet mode, free throws present in the tail past the live timeline
+                    // In packet mode, free throws present in the tail past the live timeline.
+                    // When the choreographer produced FT beats, anchor the summary entry to the
+                    // LAST attempt's actual visual moment instead of the synthetic 1.5s spacing.
                     if (_captureSink != null)
                     {
                         ftSequence++;
-                        _captureCurrentOffset = _captureSink.DurationGameSeconds + ftSequence * 1.5f;
-                        _captureSink.TailSeconds = ftSequence * 1.5f + 0.5f;
+                        float? lastFtBeat = null;
+                        if (result.NarrationBeats != null)
+                        {
+                            for (int i = result.NarrationBeats.Count - 1; i >= 0; i--)
+                            {
+                                if (result.NarrationBeats[i].Kind ==
+                                    Simulation.Choreography.NarrationBeatKind.FreeThrowAttempt)
+                                {
+                                    lastFtBeat = result.NarrationBeats[i].T;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (lastFtBeat.HasValue)
+                        {
+                            _captureCurrentOffset = lastFtBeat.Value + 0.2f;
+                            _captureSink.TailSeconds = Mathf.Max(_captureSink.TailSeconds,
+                                lastFtBeat.Value - _captureSink.DurationGameSeconds + 1f);
+                        }
+                        else
+                        {
+                            _captureCurrentOffset = _captureSink.DurationGameSeconds + ftSequence * 1.5f;
+                            _captureSink.TailSeconds = ftSequence * 1.5f + 0.5f;
+                        }
                     }
 
                     // Update score
@@ -887,6 +917,9 @@ namespace NBAHeadCoach.Core
                 }
             }
 
+            // Radio narration for the court bar, timed to the choreographed beats
+            EmitNarrationEvents(result, offenseIsHome);
+
             foreach (var evt in result.Events)
             {
                 _allEvents.Add(evt);
@@ -896,8 +929,13 @@ namespace NBAHeadCoach.Core
                 if (evt.Type == EventType.FreeThrow)
                     continue;
 
-                // Anchor captured presentation events to this event's moment in the possession
-                CaptureOffsetForEvent(evt.GameClock);
+                // Anchor captured presentation events to this event's true on-screen moment
+                // (choreographed beat time when available; possession-boundary clock otherwise).
+                float? beatT = BeatTimeFor(evt, result.NarrationBeats);
+                if (beatT.HasValue && _captureSink != null)
+                    _captureCurrentOffset = beatT.Value;
+                else
+                    CaptureOffsetForEvent(evt.GameClock);
 
                 // Generate play-by-play
                 var entry = CreatePlayByPlayEntry(evt, offenseIsHome);
@@ -941,7 +979,7 @@ namespace NBAHeadCoach.Core
                         evt.PointsScored,
                         _gameClock,
                         _currentQuarter,
-                        ConvertToShotType(evt.ShotType)
+                        ConvertToShotType(evt.ShotType, evt.ActorPosition)
                     );
 
                     if (_captureSink != null)
@@ -1032,6 +1070,189 @@ namespace NBAHeadCoach.Core
         private Player GetPlayer(string playerId)
         {
             return GameManager.Instance?.PlayerDatabase?.GetPlayer(playerId);
+        }
+
+        // ── Radio narration (court bar) ─────────────────────────────
+
+        /// <summary>Action-beat priority for the per-possession line budget (lower = kept first).</summary>
+        private static int NarrationPriority(Simulation.Choreography.NarrationBeatKind kind)
+        {
+            switch (kind)
+            {
+                case Simulation.Choreography.NarrationBeatKind.Drive:
+                case Simulation.Choreography.NarrationBeatKind.Curl:
+                case Simulation.Choreography.NarrationBeatKind.BackdoorCut:
+                case Simulation.Choreography.NarrationBeatKind.Handoff:
+                    return 1;
+                case Simulation.Choreography.NarrationBeatKind.ScreenSet:
+                case Simulation.Choreography.NarrationBeatKind.Roll:
+                case Simulation.Choreography.NarrationBeatKind.PostMove:
+                case Simulation.Choreography.NarrationBeatKind.PostFeed:
+                case Simulation.Choreography.NarrationBeatKind.KickOut:
+                case Simulation.Choreography.NarrationBeatKind.AssistPass:
+                    return 2;
+                case Simulation.Choreography.NarrationBeatKind.BringUp:
+                    return 3;
+                default:
+                    return 4;   // SwingPass / IsoJab
+            }
+        }
+
+        private static bool IsResultBeat(Simulation.Choreography.NarrationBeatKind kind)
+        {
+            switch (kind)
+            {
+                case Simulation.Choreography.NarrationBeatKind.ShotWindup:
+                case Simulation.Choreography.NarrationBeatKind.RimResult:
+                case Simulation.Choreography.NarrationBeatKind.ReboundScramble:
+                case Simulation.Choreography.NarrationBeatKind.StealJump:
+                case Simulation.Choreography.NarrationBeatKind.OobTurnover:
+                case Simulation.Choreography.NarrationBeatKind.Violation:
+                case Simulation.Choreography.NarrationBeatKind.FreeThrowSetup:
+                case Simulation.Choreography.NarrationBeatKind.FreeThrowAttempt:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        /// <summary>
+        /// Convert the choreographer's narration beats into timed radio-call lines for the court
+        /// bar. Result-class beats always narrate; action beats are budgeted (≤4 by priority) so
+        /// a possession reads as ~4-7 calls. Never touches the play-by-play ticker.
+        /// </summary>
+        private void EmitNarrationEvents(PossessionResult result, bool offenseIsHome)
+        {
+            if (_captureSink == null || result.NarrationBeats == null) return;
+
+            var offLineup = offenseIsHome ? _homeLineup : _awayLineup;
+            var defLineup = offenseIsHome ? _awayLineup : _homeLineup;
+
+            var ctx = new PlayByPlayContext
+            {
+                HomeTeam = _homeTeam,
+                AwayTeam = _awayTeam,
+                OffenseTeam = offenseIsHome ? _homeTeam : _awayTeam,
+                HomeScore = _homeScore,
+                AwayScore = _awayScore,
+                Quarter = _currentQuarter,
+                GameClock = _gameClock,
+                HomeOnOffense = offenseIsHome
+            };
+
+            // Budget the action beats; keep every result-class beat.
+            var actionBeats = result.NarrationBeats.Where(b => !IsResultBeat(b.Kind))
+                .OrderBy(b => NarrationPriority(b.Kind)).ThenBy(b => b.T)
+                .Take(4).ToList();
+            var chosen = result.NarrationBeats.Where(b => IsResultBeat(b.Kind))
+                .Concat(actionBeats).OrderBy(b => b.T).ToList();
+
+            var shotEvt = result.Events.FirstOrDefault(e => e.Type == EventType.Shot);
+            bool wasBlocked = result.Events.Any(e => e.Type == EventType.Block);
+
+            foreach (var beat in chosen)
+            {
+                Player actor = ResolveBeatPlayer(beat.ActorIndex, beat.ActorIsDefense, offLineup, defLineup);
+                Player target = beat.Kind == Simulation.Choreography.NarrationBeatKind.FreeThrowSetup
+                    ? null   // TargetIndex carries the attempt count, not a player
+                    : ResolveBeatPlayer(beat.TargetIndex, false, offLineup, defLineup);
+
+                var line = RadioNarrator.Narrate(beat, ctx, actor, target);
+                if (line == null || string.IsNullOrEmpty(line.Text)) continue;
+
+                ApplyNarrationSpecials(beat, line, result, ctx, shotEvt, wasBlocked);
+
+                _captureSink.Events.Add(new TimedPlaybackEvent { Offset = beat.T, Narration = line });
+            }
+        }
+
+        private Player ResolveBeatPlayer(int lineupIndex, bool isDefense, List<string> off, List<string> def)
+        {
+            if (lineupIndex < 0) return null;
+            var lineup = isDefense ? def : off;
+            if (lineup == null || lineupIndex >= lineup.Count) return null;
+            return GetPlayer(lineup[lineupIndex]);
+        }
+
+        /// <summary>Big-moment banners: breakaway slams, rejections, buzzer beaters, daggers, and-ones.</summary>
+        private void ApplyNarrationSpecials(Simulation.Choreography.NarrationBeat beat, NarrationLine line,
+            PossessionResult result, PlayByPlayContext ctx, PossessionEvent shotEvt, bool wasBlocked)
+        {
+            if (beat.Kind != Simulation.Choreography.NarrationBeatKind.RimResult) return;
+
+            // Blocked shots: the rim-result call becomes the rejection.
+            if (wasBlocked)
+            {
+                line.Text = ctx.IsClutchTime ? "SWATTED AWAY! Huge stop!" : "Rejected at the rim!";
+                if (ctx.IsClutchTime || (shotEvt?.ContestLevel ?? 0f) > 0.8f)
+                {
+                    line.Style = NarrationStyle.Special;
+                    line.Badge = "REJECTED!";
+                }
+                else line.Style = NarrationStyle.Excited;
+                return;
+            }
+
+            if (!beat.Made) return;
+
+            int pts = beat.IsThree ? 3 : 2;
+            int homeAfter = ctx.HomeScore + (ctx.HomeOnOffense ? pts : 0);
+            int awayAfter = ctx.AwayScore + (ctx.HomeOnOffense ? 0 : pts);
+            int offenseMargin = ctx.HomeOnOffense ? homeAfter - awayAfter : awayAfter - homeAfter;
+
+            if (beat.ShotType == Simulation.ShotType.Dunk && (shotEvt?.IsFastBreak ?? false))
+            {
+                line.Style = NarrationStyle.Special; line.Badge = "SLAM!";
+            }
+            else if (result.EndGameClock <= 0.1f && _gameClock <= 24f)
+            {
+                line.Style = NarrationStyle.Special; line.Badge = "BUZZER BEATER!";
+            }
+            else if (beat.IsThree && ctx.IsClutchTime && offenseMargin >= 6)
+            {
+                line.Style = NarrationStyle.Special; line.Badge = "DAGGER!";
+            }
+            else if (shotEvt?.IsAndOne ?? false)
+            {
+                line.Style = NarrationStyle.Special; line.Badge = "AND ONE!";
+            }
+        }
+
+        /// <summary>The true on-screen moment for a decided event, from the choreographed beats.</summary>
+        private static float? BeatTimeFor(PossessionEvent evt,
+            List<Simulation.Choreography.NarrationBeat> beats)
+        {
+            if (beats == null) return null;
+
+            Simulation.Choreography.NarrationBeatKind kind;
+            switch (evt.Type)
+            {
+                case EventType.Shot:
+                case EventType.Block:
+                    kind = Simulation.Choreography.NarrationBeatKind.RimResult; break;
+                case EventType.Rebound:
+                    kind = Simulation.Choreography.NarrationBeatKind.ReboundScramble; break;
+                case EventType.Steal:
+                    kind = Simulation.Choreography.NarrationBeatKind.StealJump; break;
+                case EventType.Turnover:
+                {
+                    var oob = FindBeat(beats, Simulation.Choreography.NarrationBeatKind.OobTurnover);
+                    return oob ?? FindBeat(beats, Simulation.Choreography.NarrationBeatKind.Violation);
+                }
+                case EventType.Foul:
+                    kind = Simulation.Choreography.NarrationBeatKind.ShotWindup; break;
+                default:
+                    return null;
+            }
+            return FindBeat(beats, kind);
+        }
+
+        private static float? FindBeat(List<Simulation.Choreography.NarrationBeat> beats,
+            Simulation.Choreography.NarrationBeatKind kind)
+        {
+            for (int i = 0; i < beats.Count; i++)
+                if (beats[i].Kind == kind) return beats[i].T;
+            return null;
         }
 
         private PlayByPlayType GetPlayByPlayType(PossessionEvent evt)
@@ -1214,24 +1435,25 @@ namespace NBAHeadCoach.Core
             return $"{mins}:{secs:D2}";
         }
 
-        private ShotType ConvertToShotType(Simulation.ShotType? simShotType)
+        private ShotType ConvertToShotType(Simulation.ShotType? simShotType, CourtPosition shotPos)
         {
             if (simShotType == null) return Data.ShotType.Jumper;
 
+            // ThreePointer is a DISTANCE class, not a shot style — classify by the actual
+            // spot so a mid-range catch-and-shoot doesn't get three-point FX.
+            float rimX = shotPos.X >= 0f ? 41.75f : -41.75f;
+            float dx = shotPos.X - rimX;
+            bool isThree = Mathf.Sqrt(dx * dx + shotPos.Y * shotPos.Y) > 22f ||
+                           simShotType == Simulation.ShotType.Heave;
+
             return simShotType.Value switch
             {
-                Simulation.ShotType.Layup => Data.ShotType.Layup,
                 Simulation.ShotType.Dunk => Data.ShotType.Dunk,
+                Simulation.ShotType.Layup => Data.ShotType.Layup,
                 Simulation.ShotType.Floater => Data.ShotType.Layup,
                 Simulation.ShotType.Hookshot => Data.ShotType.Layup,
-                Simulation.ShotType.Jumper => Data.ShotType.Jumper,
-                Simulation.ShotType.StepBack => Data.ShotType.Jumper,
-                Simulation.ShotType.Fadeaway => Data.ShotType.Jumper,
-                Simulation.ShotType.CatchAndShoot => Data.ShotType.ThreePointer,
-                Simulation.ShotType.PullUp => Data.ShotType.Jumper,
-                Simulation.ShotType.Heave => Data.ShotType.ThreePointer,
                 Simulation.ShotType.TipIn => Data.ShotType.Layup,
-                _ => Data.ShotType.Jumper
+                _ => isThree ? Data.ShotType.ThreePointer : Data.ShotType.Jumper
             };
         }
 

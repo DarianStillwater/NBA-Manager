@@ -536,7 +536,8 @@ namespace NBAHeadCoach.Core
             };
         }
 
-        private static string GetDisplayName(Player player, string fallbackId)
+        /// <summary>Broadcast display name (last name first). Public — reused by RadioNarrator.</summary>
+        public static string GetDisplayName(Player player, string fallbackId)
         {
             if (player == null) return fallbackId ?? "Unknown";
             return player.LastName ?? player.DisplayName ?? fallbackId;

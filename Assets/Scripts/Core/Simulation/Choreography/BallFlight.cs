@@ -3,10 +3,20 @@ using NBAHeadCoach.Core.Data;
 
 namespace NBAHeadCoach.Core.Simulation.Choreography
 {
+    /// <summary>How a pass travels: flat chest pass, off-the-floor bounce pass, or a high lob.</summary>
+    public enum PassStyle
+    {
+        Chest,
+        Bounce,
+        Lob
+    }
+
     /// <summary>
     /// Pure math for continuous ball trajectories: pass arcs, shot parabolas to the rim,
     /// through-the-net follow-through, rim caroms to a rebound spot. All sampled by
     /// normalized progress u ∈ [0,1] so the choreographer can emit ticks at any density.
+    /// Shot flights are differentiated by ShotType so a dunk's low carried thrust looks
+    /// nothing like a rainbow three or a soft layup glide.
     /// </summary>
     public static class BallFlight
     {
@@ -19,9 +29,49 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
         }
 
         public static float ShotDuration(CourtPosition from, float rimX)
+            => ShotDuration(from, rimX, null);
+
+        /// <summary>Flight time by shot type: dunks are a violent instant, threes hang.</summary>
+        public static float ShotDuration(CourtPosition from, float rimX, ShotType? type)
         {
             float dist = Dist(from, rimX);
-            return Clamp(0.7f + dist / 45f, 0.7f, 1.3f);
+            switch (type)
+            {
+                case ShotType.Dunk: return Clamp(0.3f + dist / 30f, 0.3f, 0.5f);
+                case ShotType.TipIn: return 0.35f;
+                case ShotType.Layup: return Clamp(0.45f + dist / 40f, 0.45f, 0.65f);
+                case ShotType.Floater: return Clamp(0.9f + dist / 60f, 0.9f, 1.15f);
+                case ShotType.Hookshot: return Clamp(0.8f + dist / 60f, 0.8f, 1.05f);
+                case ShotType.Heave: return Clamp(1.2f + dist / 40f, 1.4f, 1.9f);
+                default:
+                    float baseDur = 0.7f + dist / 45f;
+                    if (dist > 22f) baseDur *= 1.25f;             // three: long hang
+                    return Clamp(baseDur, 0.7f, 1.7f);
+            }
+        }
+
+        /// <summary>Gather/windup time before release: a dunk explodes, a jumper rises and sets.</summary>
+        public static float WindupFor(ShotType? type)
+        {
+            switch (type)
+            {
+                case ShotType.Dunk: return 0.25f;
+                case ShotType.TipIn: return 0.1f;
+                case ShotType.Layup: return 0.3f;
+                case ShotType.CatchAndShoot: return 0.25f;
+                default: return 0.4f;
+            }
+        }
+
+        /// <summary>Through-the-net time: a dunk snaps the net; a jumper drips through.</summary>
+        public static float MakeFollowThroughFor(ShotType? type)
+        {
+            switch (type)
+            {
+                case ShotType.Dunk: return 0.12f;
+                case ShotType.TipIn: return 0.2f;
+                default: return MakeFollowThroughDuration;
+            }
         }
 
         public const float MakeFollowThroughDuration = 0.3f;
@@ -29,15 +79,37 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
 
         // ── Sampling ───────────────────────────────────────────────
 
-        /// <summary>Pass in flight: flat-ish arc between two players.</summary>
-        public static BallState SamplePass(CourtPosition from, CourtPosition to, float u)
+        /// <summary>Pass in flight. Chest = flat arc; Bounce = off the floor with a cusp at
+        /// contact (~60% of the way); Lob = high floating arc for backdoors/hit-aheads.</summary>
+        public static BallState SamplePass(CourtPosition from, CourtPosition to, float u,
+            PassStyle style = PassStyle.Chest)
         {
             float dist = from.DistanceTo(to);
-            float bump = (dist > 25f ? 4f : 1.5f) * Arc(u);
+            float height;
+            switch (style)
+            {
+                case PassStyle.Bounce:
+                {
+                    // Hand (~3.5 ft) down to the floor at u≈0.6, then up into the catcher's hands.
+                    const float contactU = 0.6f;
+                    if (u < contactU)
+                        height = Lerp(3.5f, 0.2f, u / contactU);
+                    else
+                        height = Lerp(0.2f, 3f, (u - contactU) / (1f - contactU));
+                    break;
+                }
+                case PassStyle.Lob:
+                    height = Lerp(5f, 6f, u) + 5f * Arc(u);   // apex ~10 ft
+                    break;
+                default:
+                    height = 5f + (dist > 25f ? 4f : 1.5f) * Arc(u);
+                    break;
+            }
+
             return new BallState(
                 Lerp(from.X, to.X, u),
                 Lerp(from.Y, to.Y, u),
-                5f + bump)
+                height)
             {
                 Status = BallStatus.InAir_Pass,
                 HeldByPlayerId = null
@@ -45,35 +117,49 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
         }
 
         /// <summary>
-        /// Jump shot in flight from the shot position to the rim.
-        /// Apex height scales with distance (3PT ~7 ft above release line, short ~3.5).
+        /// Shot in flight from the shot position to the rim. Shape is keyed by ShotType:
+        /// dunk = low fast carried thrust; layup = soft low glide; floater = high touch arc;
+        /// three = long-hang rainbow; heave = moonball; jumpers = standard arc by distance.
         /// </summary>
         public static BallState SampleShot(CourtPosition from, float rimX, float u, ShotType? shotType = null)
         {
             float dist = Dist(from, rimX);
-            float apexExtra =
-                shotType == ShotType.Heave ? 12f :
-                dist > 22f ? 7f :
-                dist > 12f ? 5.5f : 3.5f;
+            float release, apexExtra;
+            switch (shotType)
+            {
+                case ShotType.Dunk:     release = 8.5f; apexExtra = 1.2f; break;
+                case ShotType.TipIn:    release = 9.5f; apexExtra = 1.0f; break;
+                case ShotType.Layup:    release = 6.5f; apexExtra = 2.0f; break;
+                case ShotType.Floater:  release = 8f;   apexExtra = 6f;   break;
+                case ShotType.Hookshot: release = 8.5f; apexExtra = 4.5f; break;
+                case ShotType.Heave:    release = 7f;   apexExtra = 14f;  break;
+                default:
+                    release = 7f;
+                    apexExtra = dist > 22f ? 9f : dist > 12f ? 5.5f : 4f;
+                    break;
+            }
 
-            float height = Lerp(7f, CourtGeometry.RimHeight, u) + apexExtra * Arc(u);
+            float height = Lerp(release, CourtGeometry.RimHeight, u) + apexExtra * Arc(u);
             return new BallState(
                 Lerp(from.X, rimX, u),
                 Lerp(from.Y, 0f, u),
                 height)
             {
                 Status = BallStatus.InAir_Shot,
-                HeldByPlayerId = null
+                HeldByPlayerId = null,
+                ShotStyle = shotType
             };
         }
 
-        /// <summary>Made shot: ball drops from the rim down through the net.</summary>
-        public static BallState SampleMadeFollowThrough(float rimX, float u)
+        /// <summary>Made shot: ball drops from the rim down through the net (punched through on dunks).</summary>
+        public static BallState SampleMadeFollowThrough(float rimX, float u, ShotType? shotType = null)
         {
-            return new BallState(rimX, 0f, Lerp(CourtGeometry.RimHeight, 5.5f, u))
+            float settle = shotType == ShotType.Dunk ? 4.5f : 5.5f;
+            return new BallState(rimX, 0f, Lerp(CourtGeometry.RimHeight, settle, u))
             {
                 Status = BallStatus.InAir_Shot,
-                HeldByPlayerId = null
+                HeldByPlayerId = null,
+                ShotStyle = shotType
             };
         }
 

@@ -62,5 +62,26 @@ namespace NBAHeadCoach.Core
         public ShotMarkerData? ShotMarker;   // shot marker + hoop FX trigger
         public bool ShotMade;
         public int ShotPoints;
+        public NarrationLine Narration;      // radio-call line for the court narration bar (nullable)
+    }
+
+    /// <summary>Visual treatment of a narration-bar line.</summary>
+    public enum NarrationStyle
+    {
+        Normal,    // white text
+        Excited,   // gold text + pop (highlights)
+        Special    // banner: badge chip + flash + shake (slams, daggers, buzzer beaters...)
+    }
+
+    /// <summary>
+    /// One radio-broadcast call shown in the narration bar over the court during highlights.
+    /// Separate channel from the play-by-play ticker (which stays terse).
+    /// </summary>
+    public class NarrationLine
+    {
+        public string Text;
+        public NarrationStyle Style = NarrationStyle.Normal;
+        /// <summary>Badge chip text for Special lines ("SLAM!", "DAGGER!", ...). Null otherwise.</summary>
+        public string Badge;
     }
 }

@@ -161,7 +161,7 @@ namespace NBAHeadCoach.UI.Components
                 float bx = Mathf.Lerp(a.Ball.X, b.Ball.X, u);
                 float by = Mathf.Lerp(a.Ball.Y, b.Ball.Y, u);
                 float bh = Mathf.Lerp(a.Ball.Height, b.Ball.Height, u);
-                _ball.Render(CourtToUI(bx, by), bh, b.Ball.Status);
+                _ball.Render(CourtToUI(bx, by), bh, b.Ball.Status, b.Ball.ShotStyle);
             }
         }
 
@@ -182,7 +182,16 @@ namespace NBAHeadCoach.UI.Components
             var hoop = data.Position.X >= 0f ? _rightHoop : _leftHoop;
             if (hoop != null)
             {
-                if (made) hoop.PlaySwish();
+                if (made && data.ShotType == NBAHeadCoach.Core.Data.ShotType.Dunk)
+                {
+                    hoop.PlayDunk();                    // violent slam
+                    _ball?.Punch(0.6f);
+                }
+                else if (made && data.ShotType == NBAHeadCoach.Core.Data.ShotType.ThreePointer)
+                {
+                    hoop.PlaySwish(1.7f);               // big splash from deep
+                }
+                else if (made) hoop.PlaySwish();
                 else hoop.PlayRimOut();
             }
         }

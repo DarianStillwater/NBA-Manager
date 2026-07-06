@@ -68,10 +68,10 @@ namespace NBAHeadCoach.UI.Components
             return hoop;
         }
 
-        public void PlaySwish()
+        public void PlaySwish(float intensity = 1f)
         {
             if (_fx != null) StopCoroutine(_fx);
-            _fx = StartCoroutine(SwishRoutine());
+            _fx = StartCoroutine(SwishRoutine(intensity));
         }
 
         public void PlayRimOut()
@@ -80,7 +80,14 @@ namespace NBAHeadCoach.UI.Components
             _fx = StartCoroutine(RimOutRoutine());
         }
 
-        private IEnumerator SwishRoutine()
+        /// <summary>Dunk slam: violent rim shake + white flash + hard net snap + white ripple.</summary>
+        public void PlayDunk()
+        {
+            if (_fx != null) StopCoroutine(_fx);
+            _fx = StartCoroutine(DunkRoutine());
+        }
+
+        private IEnumerator SwishRoutine(float intensity)
         {
             float t = 0f;
             var netRect = _net.rectTransform;
@@ -94,13 +101,51 @@ namespace NBAHeadCoach.UI.Components
                 float u = Mathf.Clamp01(t / 0.35f);
 
                 _rim.color = Color.Lerp(Color.white, RimColor, u);
-                netRect.sizeDelta = new Vector2(netBaseSize.x, netBaseSize.y * (1f + 0.3f * Mathf.Sin(u * Mathf.PI)));
+                netRect.sizeDelta = new Vector2(netBaseSize.x,
+                    netBaseSize.y * (1f + 0.3f * intensity * Mathf.Sin(u * Mathf.PI)));
 
-                rippleRect.sizeDelta = rippleBase * (1f + 1.2f * u);
-                _ripple.color = new Color(1f, 0.85f, 0.4f, 0.8f * (1f - u));
+                rippleRect.sizeDelta = rippleBase * (1f + 1.2f * intensity * u);
+                _ripple.color = new Color(1f, 0.85f, 0.4f, Mathf.Min(1f, 0.8f * intensity) * (1f - u));
                 yield return null;
             }
 
+            _rim.color = RimColor;
+            netRect.sizeDelta = netBaseSize;
+            _ripple.color = Color.clear;
+            rippleRect.sizeDelta = rippleBase;
+            _fx = null;
+        }
+
+        private IEnumerator DunkRoutine()
+        {
+            float t = 0f;
+            var basePos = _rim.rectTransform.anchoredPosition;
+            var netRect = _net.rectTransform;
+            var netBaseSize = netRect.sizeDelta;
+            var rippleRect = _ripple.rectTransform;
+            var rippleBase = rippleRect.sizeDelta;
+
+            while (t < 0.4f)
+            {
+                t += Time.deltaTime;
+                float u = Mathf.Clamp01(t / 0.4f);
+
+                // Violent shake (2× the rim-out amplitude) decaying out
+                _rim.rectTransform.anchoredPosition = basePos +
+                    new Vector2(Mathf.Sin(u * 40f) * 4f * (1f - u), Mathf.Cos(u * 34f) * 2f * (1f - u));
+                // White flash back to orange
+                _rim.color = Color.Lerp(Color.white, RimColor, u * u);
+
+                // Hard net snap: stretch fast, snap back in the first quarter
+                float snap = u < 0.25f ? 1f + 0.8f * (u / 0.25f) : 1f + 0.8f * Mathf.Max(0f, 1f - (u - 0.25f) / 0.2f);
+                netRect.sizeDelta = new Vector2(netBaseSize.x, netBaseSize.y * snap);
+
+                rippleRect.sizeDelta = rippleBase * (1f + 2f * u);
+                _ripple.color = new Color(1f, 1f, 1f, 0.9f * (1f - u));
+                yield return null;
+            }
+
+            _rim.rectTransform.anchoredPosition = basePos;
             _rim.color = RimColor;
             netRect.sizeDelta = netBaseSize;
             _ripple.color = Color.clear;

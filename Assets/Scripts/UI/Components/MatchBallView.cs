@@ -16,7 +16,6 @@ namespace NBAHeadCoach.UI.Components
         private const float HeightToPixelsPerFoot = 1.2f; // visual lift per foot of height
 
         private const float SpinDegPerPx = 3f;     // roll rate with horizontal travel
-        private const float AirborneBaseSpin = 200f; // deg/sec so vertical drops still spin
 
         private RectTransform _rect;
         private RectTransform _shadowRect;
@@ -28,6 +27,28 @@ namespace NBAHeadCoach.UI.Components
         private float _spin;
         private Vector2 _lastPos;
         private bool _hasLast;
+        private float _punch;                       // slam scale-punch, decays each frame
+
+        /// <summary>Base airborne spin (deg/sec) by shot style — a carried dunk barely rotates,
+        /// a catch-and-shoot three has heavy backspin.</summary>
+        private static float SpinFor(NBAHeadCoach.Core.Simulation.ShotType? style)
+        {
+            switch (style)
+            {
+                case NBAHeadCoach.Core.Simulation.ShotType.Dunk: return 60f;
+                case NBAHeadCoach.Core.Simulation.ShotType.Layup: return 140f;
+                case NBAHeadCoach.Core.Simulation.ShotType.TipIn:
+                case NBAHeadCoach.Core.Simulation.ShotType.Hookshot: return 220f;
+                case NBAHeadCoach.Core.Simulation.ShotType.Floater: return 300f;
+                case NBAHeadCoach.Core.Simulation.ShotType.Jumper:
+                case NBAHeadCoach.Core.Simulation.ShotType.StepBack:
+                case NBAHeadCoach.Core.Simulation.ShotType.Fadeaway:
+                case NBAHeadCoach.Core.Simulation.ShotType.PullUp: return 330f;
+                case NBAHeadCoach.Core.Simulation.ShotType.CatchAndShoot: return 360f;
+                case NBAHeadCoach.Core.Simulation.ShotType.Heave: return 430f;
+                default: return 200f;   // passes / caroms / loose balls
+            }
+        }
 
         public static MatchBallView Create(RectTransform parent, float ballSize, float pixelsPerFoot)
         {
@@ -64,29 +85,37 @@ namespace NBAHeadCoach.UI.Components
             return view;
         }
 
+        /// <summary>Slam punch: brief scale spike (e.g. on a dunk at the rim), decays in Render.</summary>
+        public void Punch(float strength)
+        {
+            _punch = Mathf.Max(_punch, strength);
+        }
+
         /// <summary>Render the ball at an interpolated court position + height (feet).</summary>
-        public void Render(Vector2 groundUiPos, float heightFeet, BallStatus status)
+        public void Render(Vector2 groundUiPos, float heightFeet, BallStatus status,
+            NBAHeadCoach.Core.Simulation.ShotType? style = null)
         {
             float lift = heightFeet * _pixelsPerFoot * HeightToPixelsPerFoot;
             Vector2 ballPos = groundUiPos + Vector2.up * lift;
             _rect.anchoredPosition = ballPos;
 
-            // Spin: the ball rolls in its travel direction while airborne or loose, and keeps
-            // a base spin so even a near-vertical drop through the net rotates. When gripped
-            // (held/dribbled/dead) it holds its last angle so it looks settled, not frozen mid-blur.
+            // Spin: the ball rolls in its travel direction while airborne or loose, with a base
+            // rate keyed to the shot style (a carried dunk barely turns; a three has heavy
+            // backspin). When gripped (held/dribbled/dead) it holds its last angle.
             bool airborne = status == BallStatus.InAir_Shot || status == BallStatus.InAir_Pass || status == BallStatus.Loose;
             if (_hasLast && airborne)
             {
                 Vector2 d = ballPos - _lastPos;
                 float dir = d.x >= 0f ? -1f : 1f;   // clockwise when moving right
-                _spin += dir * (d.magnitude * SpinDegPerPx + AirborneBaseSpin * Time.deltaTime);
+                _spin += dir * (d.magnitude * SpinDegPerPx + SpinFor(style) * Time.deltaTime);
                 _rect.localEulerAngles = new Vector3(0f, 0f, _spin);
             }
             _lastPos = ballPos;
             _hasLast = true;
 
-            // Grow toward the apex so arcs read in top-down view
-            float scale = 1f + Mathf.Clamp01(heightFeet / 25f) * 0.7f;
+            // Grow toward the apex so arcs read in top-down view; slam punch decays on top.
+            _punch = Mathf.MoveTowards(_punch, 0f, Time.deltaTime * 4f);
+            float scale = (1f + Mathf.Clamp01(heightFeet / 25f) * 0.7f) * (1f + _punch);
             _rect.sizeDelta = new Vector2(_baseSize * scale, _baseSize * scale);
 
             _shadowRect.anchoredPosition = groundUiPos;

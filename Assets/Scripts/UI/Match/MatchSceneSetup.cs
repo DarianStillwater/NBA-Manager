@@ -38,6 +38,7 @@ namespace NBAHeadCoach.UI.Match
         private MatchCourtView _courtView;
         private MatchPlaybackDirector _director;
         private Text _ffTickerLabel;
+        private NarrationBarView _narrationBar;
 
         // Speed buttons
         private Button _pauseBtn, _playBtn;
@@ -113,6 +114,10 @@ namespace NBAHeadCoach.UI.Match
             _director.OnTickerEntry += OnPlayByPlay;
             _director.OnScoreboard += OnScoreboardUpdate;
             _director.OnFastForwardChanged += OnFastForwardChanged;
+
+            // Radio narration bar over the court (separate channel — never in the PBP box)
+            _narrationBar = NarrationBarView.Create(_courtArea);
+            _director.OnNarration += _narrationBar.Show;
 
             SubscribeToEvents();
 
@@ -411,6 +416,7 @@ namespace NBAHeadCoach.UI.Match
         private void OnFastForwardChanged(bool on)
         {
             if (_ffTickerLabel != null) _ffTickerLabel.enabled = on;
+            if (on && _narrationBar != null) _narrationBar.HideImmediate();
         }
 
         private int _lastHomeScore, _lastAwayScore;
@@ -708,6 +714,7 @@ namespace NBAHeadCoach.UI.Match
                 _director.OnTickerEntry -= OnPlayByPlay;
                 _director.OnScoreboard -= OnScoreboardUpdate;
                 _director.OnFastForwardChanged -= OnFastForwardChanged;
+                if (_narrationBar != null) _director.OnNarration -= _narrationBar.Show;
             }
         }
 

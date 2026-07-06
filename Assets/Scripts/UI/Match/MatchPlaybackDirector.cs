@@ -29,6 +29,10 @@ namespace NBAHeadCoach.UI.Match
         /// <summary>True while fast-forwarding (court dims, ticker shows the badge).</summary>
         public event Action<bool> OnFastForwardChanged;
 
+        /// <summary>Radio-call lines for the court narration bar, fired at their beat offsets.
+        /// Separate channel from OnTickerEntry — never rendered in the play-by-play box.</summary>
+        public event Action<NarrationLine> OnNarration;
+
         private MatchSimulationController _sim;
         private MatchCourtView _court;
         private Coroutine _active;
@@ -193,6 +197,7 @@ namespace NBAHeadCoach.UI.Match
                 if (evt.Entry != null) OnTickerEntry?.Invoke(evt.Entry);
                 if (evt.Scoreboard != null) OnScoreboard?.Invoke(evt.Scoreboard);
                 if (evt.ShotMarker.HasValue) _court.ResolveShot(evt.ShotMarker.Value, evt.ShotMade);
+                if (evt.Narration != null) OnNarration?.Invoke(evt.Narration);
                 cursor++;
             }
             return cursor;
