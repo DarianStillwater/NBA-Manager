@@ -232,6 +232,8 @@ namespace NBAHeadCoach.UI.Shell
                 new[] { "\u2630", "Squad",     "Roster" },
                 new[] { "\u2637", "Schedule",  "Schedule" },
                 new[] { "\u2261", "Standings", "Standings" },
+                new[] { "\u2605", "Playoffs",  "Playoffs" },
+                new[] { "\u25CE", "League",    "League" },
                 new[] { "\u2709", "Inbox",     "Inbox" },
                 new[] { "\u2699", "Staff",     "Staff" },
             };
