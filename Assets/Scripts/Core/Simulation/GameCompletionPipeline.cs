@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using UnityEngine;
 using NBAHeadCoach.Core.Data;
 using NBAHeadCoach.Core.Manager;
@@ -55,6 +56,7 @@ namespace NBAHeadCoach.Core.Simulation
         private readonly PlayerDatabase _db;
         private readonly SeasonController _season;
         private readonly LeagueStatsAggregator _leagueStats;
+        private readonly InjuryManager _injuries;
         private readonly MoraleChemistryManager _morale;
         private readonly Func<string, Team> _teamLookup;
 
@@ -68,12 +70,14 @@ namespace NBAHeadCoach.Core.Simulation
             PlayerDatabase playerDb,
             SeasonController season,
             LeagueStatsAggregator leagueStats,
+            InjuryManager injuries,
             MoraleChemistryManager morale,
             Func<string, Team> teamLookup)
         {
             _db = playerDb;
             _season = season;
             _leagueStats = leagueStats;
+            _injuries = injuries;
             _morale = morale;
             _teamLookup = teamLookup;
         }
@@ -84,6 +88,7 @@ namespace NBAHeadCoach.Core.Simulation
                 gm.PlayerDatabase,
                 gm.SeasonController,
                 gm.LeagueStats,
+                gm.InjuryManager,
                 gm.MoraleChemistryManager,
                 gm.GetTeam);
         }
@@ -125,7 +130,94 @@ namespace NBAHeadCoach.Core.Simulation
                 if (awayTeam != null) _morale.ProcessGameResult(result, awayTeam, ctx.IsPlayoff);
             }
 
+            // 5. Injuries + minutes load for every participant — headless games roll
+            //    the same post-hoc probabilistic model interactive matches use.
+            ProcessInjuriesAndMinutes(ctx, result.BoxScore);
+
+            // 6. Energy sanity: post-game values persist to the next game (there is no
+            //    tip-off reset); keep them in range.
+            ClampParticipantEnergy(result.BoxScore);
+
             OnGameCompleted?.Invoke(ctx);
+        }
+
+        private void ProcessInjuriesAndMinutes(in GameCompletionContext ctx, BoxScore box)
+        {
+            if (_injuries == null || box == null || _db == null) return;
+
+            DateTime gameDate = ctx.GameEvent.Date;
+            bool homeB2B = HadGameYesterday(box.HomeTeamId, gameDate);
+            bool awayB2B = HadGameYesterday(box.AwayTeamId, gameDate);
+
+            // The PlayerStats dictionary is the canonical participant set — the
+            // Home/AwayPlayerStats lists are not populated by every sim path.
+            foreach (var stats in box.PlayerStats.Values)
+            {
+                if (stats == null || stats.Minutes <= 0) continue; // didn't play
+
+                var player = _db.GetPlayer(stats.PlayerId);
+                if (player == null) continue;
+
+                bool isBackToBack = player.TeamId == box.HomeTeamId ? homeB2B : awayB2B;
+
+                if (!player.IsInjured)
+                {
+                    var context = new InjuryContext
+                    {
+                        IsGameAction = true,
+                        IsContactPlay = DetermineIfContactHeavy(stats),
+                        PlayerEnergy = player.Energy,
+                        MinutesThisGame = stats.Minutes,
+                        MinutesLast7Days = player.GetMinutesInLastDays(7, gameDate),
+                        IsBackToBack = isBackToBack,
+                        IsPlayoffs = ctx.IsPlayoff
+                    };
+
+                    var injuryEvent = _injuries.CheckForInjury(player, context);
+                    if (injuryEvent != null)
+                        _injuries.ApplyInjury(player, injuryEvent);
+                }
+
+                // Record minutes played for load management
+                _injuries.RecordMinutesPlayed(player, stats.Minutes, gameDate, isBackToBack);
+            }
+        }
+
+        /// <summary>
+        /// Contact-heavy game heuristic: rebounds, fouls, and blocks are physical battles.
+        /// </summary>
+        private static bool DetermineIfContactHeavy(PlayerGameStats stats)
+        {
+            int contactIndicator = stats.TotalRebounds * 2 +
+                                   stats.PersonalFouls * 3 +
+                                   stats.Blocks * 2;
+            return contactIndicator > 10;
+        }
+
+        /// <summary>
+        /// Whether THIS team played yesterday — the second night of a back-to-back.
+        /// </summary>
+        private bool HadGameYesterday(string teamId, DateTime date)
+        {
+            var schedule = _season?.Schedule;
+            if (schedule == null || string.IsNullOrEmpty(teamId)) return false;
+
+            var yesterday = date.AddDays(-1).Date;
+            return schedule.Any(e =>
+                e.Type == CalendarEventType.Game &&
+                e.Date.Date == yesterday &&
+                (e.HomeTeamId == teamId || e.AwayTeamId == teamId));
+        }
+
+        private void ClampParticipantEnergy(BoxScore box)
+        {
+            if (box == null || _db == null) return;
+            foreach (var stats in box.PlayerStats.Values)
+            {
+                var player = stats != null ? _db.GetPlayer(stats.PlayerId) : null;
+                if (player != null)
+                    player.Energy = Mathf.Clamp(player.Energy, 0f, 100f);
+            }
         }
 
         /// <summary>

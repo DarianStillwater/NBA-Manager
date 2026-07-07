@@ -485,9 +485,14 @@ namespace NBAHeadCoach.UI.Shell
             Action<SeasonPhase> onPhase = p => { phaseChanged = true; newPhase = p; };
             sc.OnPhaseChanged += onPhase;
 
-            // Subscribe to injury events if InjuryManager exists
+            // Subscribe to injury events if InjuryManager exists. Scoped to the
+            // player's team — league-wide injuries happen daily and must not stop
+            // the Continue loop.
             var injMgr = InjuryManager.Instance;
-            Action<Player, InjuryEvent> onInjury = (p, e) => { playerInjured = true; };
+            Action<Player, InjuryEvent> onInjury = (p, e) =>
+            {
+                if (p != null && p.TeamId == gm.PlayerTeamId) playerInjured = true;
+            };
             if (injMgr != null) injMgr.OnPlayerInjured += onInjury;
 
             int safety = 0;

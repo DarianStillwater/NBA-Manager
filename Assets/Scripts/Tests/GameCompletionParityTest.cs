@@ -46,7 +46,7 @@ namespace NBAHeadCoach.Tests
                 // Season/standings omitted (needs a live GameManager) — identically for
                 // every source, so parity across the asserted categories still holds.
                 var pipeline = new GameCompletionPipeline(
-                    fixture.Db, null, new LeagueStatsAggregator(), null,
+                    fixture.Db, null, new LeagueStatsAggregator(), new InjuryManager(), null,
                     id => id == fixture.Home.TeamId ? fixture.Home : fixture.Away);
 
                 bool hookFired = false;
@@ -73,6 +73,12 @@ namespace NBAHeadCoach.Tests
 
                 AssertEqual(result.HomeScore + result.AwayScore, totalPoints,
                     $"{source}: recorded season points == game score");
+
+                // Minutes load recorded for load management (injury step ran)
+                int minutesRecorded = fixture.Db.GetAllPlayers()
+                    .Sum(p => p.MinutesPlayedThisSeason);
+                AssertGreaterThan(minutesRecorded, 0,
+                    $"{source}: minutes load recorded for participants");
             }
 
             // The parity assertion itself: identical categories, identical values.
@@ -88,7 +94,7 @@ namespace NBAHeadCoach.Tests
 
             // Score-only fallback must not throw and must not record stats
             var fb = BuildFixture();
-            var fbPipeline = new GameCompletionPipeline(fb.Db, null, null, null, null);
+            var fbPipeline = new GameCompletionPipeline(fb.Db, null, null, null, null, null);
             fbPipeline.CompleteScoreOnly(new CalendarEvent { EventId = "fb" }, 100, 98);
             AssertEqual(0, fb.Db.GetAllPlayers().Sum(p => p.CurrentSeasonStats?.GamesPlayed ?? 0),
                 "Score-only completion records no player stats");

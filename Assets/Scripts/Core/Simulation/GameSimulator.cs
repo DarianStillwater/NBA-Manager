@@ -72,12 +72,14 @@ namespace NBAHeadCoach.Core.Simulation
             SetupLineup(_homeOnCourt, homeTeam);
             SetupLineup(_awayOnCourt, awayTeam);
 
-            // Reset all player energy to 100
+            // Energy carries over between games — players tip off with whatever the
+            // season (rest days, back-to-backs) left them. Guard only against raw
+            // never-initialized Players from tools/tests.
             foreach (var pid in homeTeam.RosterPlayerIds.Concat(awayTeam.RosterPlayerIds))
             {
                 if (string.IsNullOrEmpty(pid)) continue;
                 var p = _playerDatabase.GetPlayer(pid);
-                if (p != null) p.Energy = 100f;
+                if (p != null && p.Energy <= 0f) p.Energy = 100f;
             }
 
             // Simulate 4 regular quarters

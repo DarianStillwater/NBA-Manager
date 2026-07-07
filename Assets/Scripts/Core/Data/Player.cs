@@ -619,12 +619,23 @@ namespace NBAHeadCoach.Core.Data
         }
 
         /// <summary>
-        /// Get total minutes played in the last N days.
+        /// Get total minutes played in the last N days, relative to the game clock.
         /// </summary>
         public int GetMinutesInLastDays(int days)
         {
+            var reference = GameManager.Instance?.CurrentDate ?? DateTime.Now;
+            if (reference.Year <= 1) reference = DateTime.Now; // clock not started yet
+            return GetMinutesInLastDays(days, reference);
+        }
+
+        /// <summary>
+        /// Get total minutes played in the last N days relative to an explicit date
+        /// (sim pipelines pass the game date rather than trusting the global clock).
+        /// </summary>
+        public int GetMinutesInLastDays(int days, DateTime asOf)
+        {
             if (RecentMinutes == null) return 0;
-            var cutoff = GameManager.Instance?.CurrentDate.AddDays(-days) ?? DateTime.Now.AddDays(-days);
+            var cutoff = asOf.Year <= 1 ? DateTime.MinValue : asOf.AddDays(-days);
             return RecentMinutes
                 .Where(r => r.Date >= cutoff)
                 .Sum(r => r.Minutes);

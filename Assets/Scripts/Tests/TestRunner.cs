@@ -55,6 +55,7 @@ namespace NBAHeadCoach.Tests
             RunTest<ChoreographyTest>("Possession Choreography");
             RunTest<RegistryOrderTest>("System Registry Order");
             RunTest<GameCompletionParityTest>("Game Completion Parity");
+            RunTest<EnergyCarryoverTest>("Energy Carryover");
 
             // Summary
             Debug.Log("\n" + new string('=', 70));
