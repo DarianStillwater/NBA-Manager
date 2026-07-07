@@ -11,6 +11,9 @@ namespace NBAHeadCoach.EditorTools
         [MenuItem("Tools/Enter Play Mode")]
         public static void EnterPlayMode()
         {
+            // A leftover editor pause silently blocks the first frame after entering
+            // play mode — automation would wait forever. Always clear it.
+            EditorApplication.isPaused = false;
             if (!EditorApplication.isPlaying)
                 EditorApplication.isPlaying = true;
         }
@@ -20,6 +23,17 @@ namespace NBAHeadCoach.EditorTools
         {
             if (EditorApplication.isPlaying)
                 EditorApplication.isPlaying = false;
+        }
+
+        [MenuItem("Tools/Play Mode Status")]
+        public static void PlayModeStatus()
+        {
+            UnityEngine.Debug.Log(
+                $"[PlayModeStatus] isPlaying={EditorApplication.isPlaying} " +
+                $"willChange={EditorApplication.isPlayingOrWillChangePlaymode} " +
+                $"isPaused={EditorApplication.isPaused} " +
+                $"isCompiling={EditorApplication.isCompiling} " +
+                $"isUpdating={EditorApplication.isUpdating}");
         }
     }
 }

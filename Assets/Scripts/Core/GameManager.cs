@@ -211,6 +211,13 @@ namespace NBAHeadCoach.Core
             }
         }
 
+        /// <summary>
+        /// Manifest of live game systems. The daily loop (and, as migration proceeds,
+        /// the save pipeline and phase fan-out) iterates this registry instead of
+        /// hand-maintained call lists.
+        /// </summary>
+        public GameSystemRegistry Systems { get; private set; }
+
         private void Initialize()
         {
             Debug.Log("[GameManager] Initializing...");
@@ -293,8 +300,41 @@ namespace NBAHeadCoach.Core
                 SeasonController.OnPhaseChanged += OnSeasonPhaseChangedHandler;
             }
 
+            RegisterSystems();
+
             // Load player/team data
             StartCoroutine(LoadGameData());
+        }
+
+        /// <summary>
+        /// Register every live system with the registry. Runs after ALL constructions —
+        /// constructor order above carries event subscriptions and must not change.
+        /// Adapters are migration scaffolding: they wrap the exact calls the old
+        /// hand-written AdvanceDay made, and are replaced by native IDailyTickable
+        /// implementations as each manager adopts the lifecycle contract.
+        /// </summary>
+        private void RegisterSystems()
+        {
+            Systems = new GameSystemRegistry();
+
+            Systems.Register(new DailyTickAdapter("SeasonCalendar", TickOrder.SeasonCalendar,
+                _ => SeasonController.AdvanceDay()));
+            Systems.Register(new DailyTickAdapter("LeagueSim", TickOrder.LeagueSim,
+                ctx => SimulateLeagueGamesForDate(ctx.Date)));
+            Systems.Register(new DailyTickAdapter("TradeOffers", TickOrder.TradeOffers,
+                _ => _tradeOfferGenerator?.ProcessDailyOffers()));
+            Systems.Register(new DailyTickAdapter("Personnel", TickOrder.Personnel,
+                ctx => _personnelManager?.ProcessDailyWork(ctx.PlayerTeamId, ctx.Date)));
+            Systems.Register(new DailyTickAdapter("JobMarket", TickOrder.JobMarket,
+                ctx => _jobMarketManager?.AdvanceDay(ctx.Date)));
+            Systems.Register(new DailyTickAdapter("Mentorship", TickOrder.Mentorship,
+                ctx =>
+                {
+                    if (ctx.Date.DayOfWeek == DayOfWeek.Monday)
+                        _mentorshipManager?.ProcessWeeklyUpdate();
+                }));
+            Systems.Register(new DailyTickAdapter("Media", TickOrder.Media,
+                _ => _mediaManager?.ProcessDailyReputation()));
         }
 
         private IEnumerator LoadGameData()
@@ -913,27 +953,7 @@ namespace NBAHeadCoach.Core
         public void AdvanceDay()
         {
             _currentDate = _currentDate.AddDays(1);
-            SeasonController.AdvanceDay();
-
-            // Simulate all other league games for today
-            SimulateLeagueGamesForDate(_currentDate);
-
-            // Process daily trade offers from AI teams
-            _tradeOfferGenerator?.ProcessDailyOffers();
-
-            // Daily staff work (scouting assignments, development tasks)
-            _personnelManager?.ProcessDailyWork(_playerTeamId, _currentDate);
-
-            // Job market simulation (openings, AI hires)
-            _jobMarketManager?.AdvanceDay(_currentDate);
-
-            // Weekly mentorship sessions (Mondays)
-            if (_currentDate.DayOfWeek == DayOfWeek.Monday)
-                _mentorshipManager?.ProcessWeeklyUpdate();
-
-            // Daily media/reputation tick
-            _mediaManager?.ProcessDailyReputation();
-
+            Systems?.TickDay(new DailyTickContext(_currentDate, _playerTeamId, this));
             OnDayAdvanced?.Invoke(_currentDate);
         }
 

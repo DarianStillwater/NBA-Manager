@@ -53,6 +53,7 @@ namespace NBAHeadCoach.Tests
             RunTest<TimeoutIntelligenceTest>("Timeout Intelligence");
             RunTest<PlaybackDeciderTest>("Playback Decider");
             RunTest<ChoreographyTest>("Possession Choreography");
+            RunTest<RegistryOrderTest>("System Registry Order");
 
             // Summary
             Debug.Log("\n" + new string('=', 70));
