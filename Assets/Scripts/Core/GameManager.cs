@@ -83,6 +83,8 @@ namespace NBAHeadCoach.Core
         private JobSecurityManager _jobSecurityManager;
         private TransactionLog _transactionLog;
         public TransactionLog Transactions => _transactionLog;
+        private InboxService _inboxService;
+        public InboxService Inbox => _inboxService;
         private AllStarManager _allStarManager;
         private PersonnelManager _personnelManager;
         public PersonnelManager PersonnelManager => _personnelManager;
@@ -277,6 +279,7 @@ namespace NBAHeadCoach.Core
             _jobSecurityManager = new JobSecurityManager();
             _developmentManager = new PlayerDevelopmentManager();
             _transactionLog = new TransactionLog();
+            _inboxService = new InboxService();
 
             // Initialize Trade & AI Systems
             _draftPickRegistry = new DraftPickRegistry();
@@ -313,6 +316,10 @@ namespace NBAHeadCoach.Core
 
             RegisterSystems();
 
+            // Bridge existing producer events into the inbox
+            InboxWiring.Wire(this, _inboxService, _jobSecurityManager, _financeManager,
+                _tradeAnnouncementSystem, _mediaManager, _injuryManager);
+
             // Load player/team data
             StartCoroutine(LoadGameData());
         }
@@ -343,6 +350,7 @@ namespace NBAHeadCoach.Core
             Systems.Register(_personalityManager);
             Systems.Register(_draftPickRegistry);
             Systems.Register(_transactionLog);
+            Systems.Register(_inboxService);
         }
 
         private IEnumerator LoadGameData()

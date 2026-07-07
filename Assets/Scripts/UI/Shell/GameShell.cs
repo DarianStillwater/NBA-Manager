@@ -244,9 +244,12 @@ namespace NBAHeadCoach.UI.Shell
                 navGOs[nav[2]] = navGo;
             }
 
-            // Activity indicators
+            // Activity indicators. The inbox dot is live: visible only with unread mail.
             if (navGOs.ContainsKey("Inbox"))
-                AddActivityDot(navGOs["Inbox"], UITheme.AccentPrimary);
+            {
+                _inboxDot = AddActivityDot(navGOs["Inbox"], UITheme.AccentPrimary);
+                HookInboxBadge();
+            }
             if (navGOs.ContainsKey("Schedule") && GameManager.Instance?.SeasonController?.GetTodaysGame() != null)
                 AddActivityDot(navGOs["Schedule"], UITheme.Success);
 
@@ -316,7 +319,7 @@ namespace NBAHeadCoach.UI.Shell
             }
         }
 
-        private void AddActivityDot(GameObject navItem, Color color)
+        private GameObject AddActivityDot(GameObject navItem, Color color)
         {
             var dot = UIBuilder.Child(navItem.GetComponent<RectTransform>(), "Dot");
             var dr = dot.GetComponent<RectTransform>();
@@ -325,6 +328,30 @@ namespace NBAHeadCoach.UI.Shell
             dr.sizeDelta = new Vector2(8, 8);
             dr.anchoredPosition = new Vector2(-8, 0);
             dot.AddComponent<Image>().color = color;
+            return dot;
+        }
+
+        private GameObject _inboxDot;
+        private Core.Manager.InboxService _hookedInbox;
+
+        private void HookInboxBadge()
+        {
+            _hookedInbox = Core.Manager.InboxService.Instance;
+            if (_hookedInbox != null)
+                _hookedInbox.OnUnreadCountChanged += RefreshInboxBadge;
+            RefreshInboxBadge();
+        }
+
+        private void RefreshInboxBadge()
+        {
+            if (_inboxDot != null)
+                _inboxDot.SetActive((_hookedInbox?.UnreadCount ?? 0) > 0);
+        }
+
+        private void OnDestroy()
+        {
+            if (_hookedInbox != null)
+                _hookedInbox.OnUnreadCountChanged -= RefreshInboxBadge;
         }
 
         private void CreateActionButton(Transform parent, string label, Color bgColor, Action onClick)
@@ -370,6 +397,20 @@ namespace NBAHeadCoach.UI.Shell
             if (_currentPanel == panelId) return;
             _currentPanel = panelId;
             UpdateNavActiveStates(panelId);
+            ShowPanel(panelId);
+        }
+
+        /// <summary>
+        /// Show a registered panel with a deep-link payload (an entity id the panel
+        /// should focus on — e.g. a player id from an inbox message).
+        /// </summary>
+        public void ShowPanel(string panelId, string deepLinkPayload)
+        {
+            if (!string.IsNullOrEmpty(deepLinkPayload) &&
+                _panels.TryGetValue(panelId, out var p) && p is GamePanels.IDeepLinkPanel dlp)
+            {
+                dlp.SetDeepLinkPayload(deepLinkPayload);
+            }
             ShowPanel(panelId);
         }
 

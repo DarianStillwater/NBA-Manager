@@ -82,6 +82,9 @@ namespace NBAHeadCoach.Core.Data
         public DraftPickRegistrySaveData DraftPickRegistryData;
         public IncomingOffersSaveData IncomingOffersData;
 
+        [Header("Inbox")]
+        public List<InboxMessage> Inbox = new List<InboxMessage>();
+
         /// <summary>
         /// Create a display-friendly summary of the save
         /// </summary>

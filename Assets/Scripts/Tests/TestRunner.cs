@@ -58,6 +58,7 @@ namespace NBAHeadCoach.Tests
             RunTest<EnergyCarryoverTest>("Energy Carryover");
             RunTest<SaveRoundTripTest>("Save Round Trip");
             RunTest<LegacySaveLoadTest>("Legacy Save Load");
+            RunTest<InboxServiceTest>("Inbox Service");
 
             // Summary
             Debug.Log("\n" + new string('=', 70));
