@@ -135,6 +135,15 @@ namespace NBAHeadCoach.Core.Manager
         }
 
         /// <summary>
+        /// CBA validation only — no AI evaluation, nothing executes. Lets the UI
+        /// show legality feedback while a proposal is being assembled.
+        /// </summary>
+        public TradeValidationResult ValidateProposal(TradeProposal proposal)
+        {
+            return _validator.ValidateTrade(proposal);
+        }
+
+        /// <summary>
         /// Validates and executes a deal both sides have already agreed to (an
         /// accepted negotiation or an incoming AI offer the player accepted).
         /// Skips the AI re-evaluation and commissioner roll — consent happened

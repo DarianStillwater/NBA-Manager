@@ -78,6 +78,8 @@ namespace NBAHeadCoach.Core
         public TradeSystem Trades => _tradeSystem;
         private TradeDeskSystem _tradeDesk;
         public TradeDeskSystem TradeDesk => _tradeDesk;
+        private InSeasonFreeAgencySystem _inSeasonSigning;
+        public InSeasonFreeAgencySystem InSeasonSigning => _inSeasonSigning;
         private FreeAgentManager _freeAgentManager;
         public FreeAgentManager FreeAgents => _freeAgentManager;
         private DraftSystem _draftSystem;
@@ -317,6 +319,9 @@ namespace NBAHeadCoach.Core
             // League-wide trade market (AI-AI deals, deadline frenzy, offer desk)
             _tradeDesk = TradeDeskSystem.CreateDefault(this);
 
+            // In-season free agency: AI roster patching + the player's buyout market
+            _inSeasonSigning = InSeasonFreeAgencySystem.CreateDefault(this);
+
             // Wire up trade execution -> announcements and captain detection
             if (_tradeSystem != null)
             {
@@ -366,6 +371,7 @@ namespace NBAHeadCoach.Core
             Systems.Register(new LeagueGameSimSystem(this));
             Systems.Register(_tradeOfferGenerator);   // also ISaveSection (incoming offers)
             Systems.Register(_tradeDesk);             // AI-AI trades + deadline frenzy
+            Systems.Register(_inSeasonSigning);       // in-season FA wire
             Systems.Register(_personnelManager);      // also ISaveSection (unified careers)
             Systems.Register(_jobMarketManager);
             Systems.Register(_mentorshipManager);

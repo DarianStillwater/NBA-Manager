@@ -30,6 +30,7 @@ namespace NBAHeadCoach.Tests
             TestOfferPersistenceAndHusks();
             TestMarketDateGating();
             TestAiToAiLeagueTrade();
+            TestInSeasonFreeAgency();
 
             return (_passed, _failed);
         }
@@ -314,6 +315,34 @@ namespace NBAHeadCoach.Tests
                         $"{team.TeamId} contracts match roster after trade");
                 }
             }
+        }
+
+        private void TestInSeasonFreeAgency()
+        {
+            ResetLeague();
+            var thin = BuildTeam("AAA", 12, 5_000_000L, 72, 27);   // below the 13 target
+            var plr = BuildTeam("PLR", 12, 5_000_000L, 72, 27);    // player team must be skipped
+
+            var fam = new FreeAgentManager(_cap, _db);
+            AddPlayer("faGood", "", 74, 28);
+            AddPlayer("faOk", "", 68, 31);
+            fam.AddFreeAgent("faGood", FreeAgentType.Unrestricted, "ZZZ", 0);
+            fam.AddFreeAgent("faOk", FreeAgentType.Unrestricted, "ZZZ", 0);
+
+            var wire = new InSeasonFreeAgencySystem(fam, _db, LookupTeam, () => _teams.Values.ToList());
+
+            int signed = wire.RunAiSigningDay(new DateTime(2027, 1, 5), "PLR");
+
+            AssertEqual(1, signed, "Shorthanded AI team signs exactly one free agent");
+            AssertEqual(13, thin.RosterPlayerIds.Count, "AI roster patched to 13");
+            AssertEqual(12, plr.RosterPlayerIds.Count, "Player team is never auto-signed");
+            Assert(thin.RosterPlayerIds.Contains("faGood"), "Best available free agent signs first");
+            AssertEqual("AAA", _db.GetPlayer("faGood").TeamId, "Signing sets the player's team");
+            Assert(_cap.GetContract("faGood") != null, "Minimum contract registered");
+            AssertEqual(1, fam.GetFreeAgents().Count, "Signed player leaves the pool");
+
+            AssertEqual(0, wire.RunAiSigningDay(new DateTime(2027, 1, 6), "PLR"),
+                "No further signings once the roster is healthy");
         }
     }
 }
