@@ -75,6 +75,9 @@ namespace NBAHeadCoach.Core
         public SalaryCapManager SalaryCapManager => _salaryCapManager;
         private RosterManager _rosterManager;
         private TradeSystem _tradeSystem;
+        public TradeSystem Trades => _tradeSystem;
+        private TradeDeskSystem _tradeDesk;
+        public TradeDeskSystem TradeDesk => _tradeDesk;
         private FreeAgentManager _freeAgentManager;
         public FreeAgentManager FreeAgents => _freeAgentManager;
         private DraftSystem _draftSystem;
@@ -302,6 +305,18 @@ namespace NBAHeadCoach.Core
             // Load initial front office profiles (real NBA GMs as of Dec 2025)
             _tradeOfferGenerator?.LoadInitialFrontOfficeData();
 
+            // AI trade evaluations share the same front-office personalities the
+            // offer generator loaded — without this, every evaluation falls back
+            // to a bland average GM.
+            if (_tradeEvaluator != null && _tradeOfferGenerator != null)
+            {
+                foreach (var fo in _tradeOfferGenerator.GetAllFrontOffices().Values)
+                    _tradeEvaluator.RegisterFrontOffice(fo);
+            }
+
+            // League-wide trade market (AI-AI deals, deadline frenzy, offer desk)
+            _tradeDesk = TradeDeskSystem.CreateDefault(this);
+
             // Wire up trade execution -> announcements and captain detection
             if (_tradeSystem != null)
             {
@@ -330,7 +345,8 @@ namespace NBAHeadCoach.Core
 
             // Bridge existing producer events into the inbox
             InboxWiring.Wire(this, _inboxService, _jobSecurityManager, _financeManager,
-                _tradeAnnouncementSystem, _mediaManager, _injuryManager, _playoffManager);
+                _tradeAnnouncementSystem, _mediaManager, _injuryManager, _playoffManager,
+                _tradeOfferGenerator);
 
             // Load player/team data
             StartCoroutine(LoadGameData());
@@ -349,6 +365,7 @@ namespace NBAHeadCoach.Core
             Systems.Register(SeasonController);
             Systems.Register(new LeagueGameSimSystem(this));
             Systems.Register(_tradeOfferGenerator);   // also ISaveSection (incoming offers)
+            Systems.Register(_tradeDesk);             // AI-AI trades + deadline frenzy
             Systems.Register(_personnelManager);      // also ISaveSection (unified careers)
             Systems.Register(_jobMarketManager);
             Systems.Register(_mentorshipManager);
@@ -1225,6 +1242,11 @@ namespace NBAHeadCoach.Core
 
         private void OnTradeExecutedHandler(TradeProposal proposal)
         {
+            // Move traded players between Team rosters — the trade engine only
+            // rewrites contracts and PlayerDatabase TeamIds. Without this the
+            // rosters (and everything reading them) go stale.
+            TradeDeskSystem.ApplyRosterSync(proposal, GetTeam);
+
             // Generate trade announcement
             _tradeAnnouncementSystem?.GenerateAnnouncement(proposal);
 

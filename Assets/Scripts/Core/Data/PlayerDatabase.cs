@@ -500,7 +500,6 @@ namespace NBAHeadCoach.Core.Data
                     Conference = t.conference,
                     Division = t.division,
                     ArenaName = t.arena,
-                    Roster = new List<Player>(),
                     RosterPlayerIds = new List<string>(),
                     Wins = 0,
                     Losses = 0
@@ -515,30 +514,22 @@ namespace NBAHeadCoach.Core.Data
         /// </summary>
         private void AssignPlayersToTeams()
         {
-            // Clear existing rosters
-            foreach (var team in _teams.Values)
-            {
-                team.Roster = team.Roster ?? new List<Player>();
-                team.Roster.Clear();
-            }
-
-            // Assign players to teams
-            foreach (var player in _players.Values)
-            {
-                if (!string.IsNullOrEmpty(player.TeamId) && _teams.TryGetValue(player.TeamId, out var team))
-                {
-                    team.Roster.Add(player);
-                }
-            }
-
-            // Sync RosterPlayerIds from Roster
+            // RosterPlayerIds is the single roster authority. Never pin the Player
+            // cache here — later id-list mutations (trades, signings, waivers)
+            // would silently miss a pinned cache.
             foreach (var team in _teams.Values)
             {
                 team.RosterPlayerIds.Clear();
-                foreach (var player in team.Roster)
+                team.InvalidateRosterCache();
+            }
+
+            foreach (var player in _players.Values)
+            {
+                if (!string.IsNullOrEmpty(player.PlayerId) &&
+                    !string.IsNullOrEmpty(player.TeamId) &&
+                    _teams.TryGetValue(player.TeamId, out var team))
                 {
-                    if (!string.IsNullOrEmpty(player?.PlayerId))
-                        team.RosterPlayerIds.Add(player.PlayerId);
+                    team.RosterPlayerIds.Add(player.PlayerId);
                 }
             }
         }

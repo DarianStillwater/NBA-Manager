@@ -166,6 +166,13 @@ namespace NBAHeadCoach.Core.Data
         }
 
         /// <summary>
+        /// Drops the cached Player list so the next Roster read re-resolves from
+        /// RosterPlayerIds. Call after mutating RosterPlayerIds directly (trades,
+        /// signings, waivers) — the cache does not track the id list.
+        /// </summary>
+        public void InvalidateRosterCache() => _cachedRoster = null;
+
+        /// <summary>
         /// Gets a specific player from the roster by ID.
         /// </summary>
         public Player GetPlayer(string playerId)

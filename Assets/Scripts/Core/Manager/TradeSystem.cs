@@ -26,6 +26,13 @@ namespace NBAHeadCoach.Core.Manager
         public event Action<TradeProposal, string> OnTradeVetoed;
         public event Action<TradeProposal> OnTradeExecuted;
 
+        /// <summary>Game clock when available, wall clock otherwise (headless tests).</summary>
+        internal static DateTime GameNow()
+        {
+            var d = GameManager.Instance?.CurrentDate ?? DateTime.Now;
+            return d.Year <= 1 ? DateTime.Now : d;
+        }
+
         public TradeSystem(SalaryCapManager capManager, PlayerDatabase playerDatabase, DraftPickRegistry draftPickRegistry = null)
         {
             _capManager = capManager;
@@ -124,6 +131,31 @@ namespace NBAHeadCoach.Core.Manager
                 result.Status = TradeStatus.Approved;
             }
 
+            return result;
+        }
+
+        /// <summary>
+        /// Validates and executes a deal both sides have already agreed to (an
+        /// accepted negotiation or an incoming AI offer the player accepted).
+        /// Skips the AI re-evaluation and commissioner roll — consent happened
+        /// during the negotiation itself. No-trade-clause approval is treated as
+        /// granted as part of the agreement.
+        /// </summary>
+        public TradeResult FinalizeAgreedTrade(TradeProposal proposal)
+        {
+            var result = new TradeResult();
+
+            var validation = _validator.ValidateTrade(proposal);
+            result.ValidationResult = validation;
+
+            if (!validation.IsValid)
+            {
+                result.Status = TradeStatus.Invalid;
+                return result;
+            }
+
+            ExecuteTrade(proposal);
+            result.Status = TradeStatus.Completed;
             return result;
         }
 
@@ -380,11 +412,11 @@ namespace NBAHeadCoach.Core.Manager
                 }
             }
             
-            // Record trade in history
+            // Record trade in history (game clock, not wall clock)
             _tradeHistory.Add(new TradeRecord
             {
                 Proposal = proposal,
-                ExecutedDate = DateTime.Now
+                ExecutedDate = GameNow()
             });
 
             // Fire trade executed event for announcements and UI updates
@@ -496,7 +528,8 @@ namespace NBAHeadCoach.Core.Manager
 
         public TradeProposalBuilder(SalaryCapManager capManager)
         {
-            _proposal = new TradeProposal { ProposedDate = DateTime.Now };
+            // Game clock, not wall clock — the deadline validator reads this date.
+            _proposal = new TradeProposal { ProposedDate = TradeSystem.GameNow() };
             _capManager = capManager;
         }
 

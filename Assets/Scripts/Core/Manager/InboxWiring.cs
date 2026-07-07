@@ -17,11 +17,33 @@ namespace NBAHeadCoach.Core.Manager
             TradeAnnouncementSystem tradeNews,
             MediaManager media,
             InjuryManager injuries,
-            PlayoffManager playoffs = null)
+            PlayoffManager playoffs = null,
+            AITradeOfferGenerator tradeOffers = null)
         {
             if (inbox == null) return;
 
             string TeamName(string id) => gm?.GetTeam(id)?.Name ?? id;
+
+            if (tradeOffers != null)
+            {
+                tradeOffers.OnNewOfferGenerated += offer =>
+                {
+                    if (offer == null) return;
+                    var wanted = offer.Proposal?.AllAssets?
+                        .FirstOrDefault(a => a.SendingTeamId == gm?.PlayerTeamId &&
+                                             a.Type == TradeAssetType.Player);
+                    string wantedName = wanted != null
+                        ? gm?.PlayerDatabase?.GetPlayer(wanted.PlayerId)?.FullName ?? "one of your players"
+                        : "one of your players";
+
+                    inbox.Publish(InboxMessageType.Trade, $"{TeamName(offer.OfferingTeamId)} Front Office",
+                        $"Trade offer: {TeamName(offer.OfferingTeamId)} want {wantedName}",
+                        $"{offer.OfferMessage}\n\nThe offer expires in {offer.DaysUntilExpiry} days. Review it at your Front Office desk.",
+                        highPriority: true,
+                        deepLinkPanelId: "FrontOffice",
+                        deepLinkPayload: $"offer:{offer.OfferId}");
+                };
+            }
 
             if (playoffs != null)
             {

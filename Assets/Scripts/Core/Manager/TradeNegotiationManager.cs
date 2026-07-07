@@ -384,12 +384,28 @@ namespace NBAHeadCoach.Core.Manager
             negotiation.Status = TradeNegotiationStatus.Accepted;
             negotiation.LastActivity = DateTime.Now;
 
-            // Execute the trade
-            var tradeResult = _tradeSystem.ProposeTrade(negotiation.CurrentProposal, executeIfValid: true);
+            // Both sides agreed — validate against the CBA and execute. No AI
+            // re-evaluation: re-rolling consent here could silently drop a deal
+            // the evaluator already accepted.
+            var tradeResult = _tradeSystem.FinalizeAgreedTrade(negotiation.CurrentProposal);
+
+            if (tradeResult.Status != TradeStatus.Completed)
+            {
+                negotiation.Status = TradeNegotiationStatus.Rejected;
+                negotiation.Rounds.Add(new TradeNegotiationRound
+                {
+                    RoundNumber = negotiation.TotalRounds + 1,
+                    ActingTeamId = "LEAGUE",
+                    Action = TradeNegotiationAction.Reject,
+                    Message = "League office blocked the deal: " +
+                              (tradeResult.ValidationResult?.ToString() ?? "failed validation."),
+                    Timestamp = DateTime.Now
+                });
+            }
 
             FinalizeNegotiation(negotiation);
 
-            Debug.Log($"[TradeNegotiation] Trade accepted after {negotiation.TotalRounds} rounds");
+            Debug.Log($"[TradeNegotiation] Trade {(negotiation.Status == TradeNegotiationStatus.Accepted ? "accepted" : "blocked by validation")} after {negotiation.TotalRounds} rounds");
         }
 
         /// <summary>

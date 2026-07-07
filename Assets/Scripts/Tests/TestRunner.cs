@@ -62,6 +62,7 @@ namespace NBAHeadCoach.Tests
             RunTest<PlayoffFlowTest>("Playoff Flow");
             RunTest<AwardsAllStarTest>("Awards & All-Star");
             RunTest<OffseasonEngineTest>("Offseason Engine");
+            RunTest<TradeDeskTest>("Trade Desk");
 
             // Summary
             Debug.Log("\n" + new string('=', 70));

@@ -545,8 +545,11 @@ namespace NBAHeadCoach.Core.Manager
     // ==================== TRADE PROPOSAL ====================
 
     /// <summary>
-    /// Represents a proposed trade between teams.
+    /// Represents a proposed trade between teams. Serializable so pending
+    /// incoming offers survive save/load (ProposedDate does not round-trip
+    /// under JsonUtility — restamp it from the game clock before validating).
     /// </summary>
+    [Serializable]
     public class TradeProposal
     {
         public List<TradeAsset> AllAssets = new List<TradeAsset>();
@@ -617,6 +620,7 @@ namespace NBAHeadCoach.Core.Manager
     /// <summary>
     /// A single asset in a trade (player, pick, or cash).
     /// </summary>
+    [Serializable]
     public class TradeAsset
     {
         public TradeAssetType Type;
