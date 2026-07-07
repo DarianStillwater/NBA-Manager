@@ -43,6 +43,11 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
 
         // Filled while laying waypoints (defense timing):
         public float ScreenStartT, ScreenEndT, RollStartT;
+
+        // DribbleHandoff: when/where the exchange happens (stamped by BuildHandoff so the
+        // shot sequence can fire the actual ball transfer AT the hand-off moment).
+        public float HandoffT = -1f;
+        public CourtPosition HandoffSpot;
     }
 
     /// <summary>Pure selection + spot math for the offensive action. No side effects, no UnityEngine.</summary>
@@ -75,8 +80,7 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
             bool shooterIsBig = shooter >= 3;
             bool passedTo = s.BallHandlerPassedToShooter && shooter != handler;
             bool driveShot = s.ShotType == ShotType.Dunk || s.ShotType == ShotType.Layup || s.ShotType == ShotType.Floater;
-            float shotDist = s.ShotPosition.DistanceTo(new CourtPosition(rimX, 0f));
-            bool isThree = shotDist > 22f;
+            bool isThree = s.ShotPosition.IsThreePointShot(attacksRight);
 
             if (s.IsFastBreak)
                 plan.Action = OffensiveAction.Transition;

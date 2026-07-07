@@ -93,6 +93,28 @@ namespace NBAHeadCoach.Core
         private Dictionary<string, float> _playerMinutes = new Dictionary<string, float>();
         private Dictionary<string, int> _playerFouls = new Dictionary<string, int>();
 
+        // Full per-player box score, updated live as possessions resolve (shared applier
+        // with the headless GameSimulator, so both paths count stats identically).
+        private BoxScore _liveBox;
+
+        /// <summary>Live box score for in-game UI (overlay, tooltips). Stats lead the
+        /// on-screen presentation by at most one possession. Scores synced on read.</summary>
+        public BoxScore LiveBoxScore
+        {
+            get
+            {
+                if (_liveBox != null)
+                {
+                    _liveBox.HomeScore = _homeScore;
+                    _liveBox.AwayScore = _awayScore;
+                }
+                return _liveBox;
+            }
+        }
+
+        public List<string> CurrentHomeLineup => new List<string>(_homeLineup);
+        public List<string> CurrentAwayLineup => new List<string>(_awayLineup);
+
         #endregion
 
         #region Properties
@@ -290,11 +312,18 @@ namespace NBAHeadCoach.Core
             _homeLineup = homeTeam.StartingLineupIds?.ToList() ?? new List<string>();
             _awayLineup = awayTeam.StartingLineupIds?.ToList() ?? new List<string>();
 
-            // Initialize player tracking
+            // Initialize player tracking + the live box score (HomeTeam/AwayTeam set so the
+            // game-end result carries real team references, not nulls).
+            _liveBox = new BoxScore(homeTeam.TeamId, awayTeam.TeamId)
+            {
+                HomeTeam = homeTeam,
+                AwayTeam = awayTeam
+            };
             foreach (var playerId in homeTeam.RosterPlayerIds.Concat(awayTeam.RosterPlayerIds))
             {
                 _playerMinutes[playerId] = 0f;
                 _playerFouls[playerId] = 0;
+                _liveBox.InitializePlayer(playerId);
             }
 
             // Initialize analytics systems with player lookup functions
@@ -509,6 +538,10 @@ namespace NBAHeadCoach.Core
             if (HasPresentationConsumer)
                 BeginCapture(result, _homeHasPossession);
 
+            // Snapshot scores for per-possession +/- (applied after FT processing)
+            int preHomeScore = _homeScore;
+            int preAwayScore = _awayScore;
+
             // Process result
             ProcessPossessionResult(result, _homeHasPossession);
 
@@ -519,12 +552,21 @@ namespace NBAHeadCoach.Core
             _gameClock = result.EndGameClock;
             _shotClock = 24f;
 
-            // Track minutes
+            // Track minutes + live box score minutes/plus-minus
             float minutesElapsed = result.Duration / 60f;
+            int deltaHome = _homeScore - preHomeScore;
+            int deltaAway = _awayScore - preAwayScore;
             foreach (var playerId in offenseLineup.Concat(defenseLineup))
             {
                 if (_playerMinutes.ContainsKey(playerId))
                     _playerMinutes[playerId] += minutesElapsed;
+
+                if (_liveBox != null && _liveBox.PlayerStats.TryGetValue(playerId, out var line))
+                {
+                    line.SecondsPlayed += result.Duration;
+                    bool onHome = _homeLineup.Contains(playerId);
+                    line.PlusMinus += onHome ? deltaHome - deltaAway : deltaAway - deltaHome;
+                }
             }
 
             // Hand the captured possession to the playback director and wait until
@@ -809,6 +851,9 @@ namespace NBAHeadCoach.Core
                         }
                     }
 
+                    // Live box score: free-throw stats (FG points already applied via events)
+                    _liveBox?.AddFreeThrows(shooter.PlayerId, ftResult.Made, ftResult.Attempts);
+
                     // Update score
                     if (ftResult.Made > 0)
                     {
@@ -918,6 +963,13 @@ namespace NBAHeadCoach.Core
                 }
             }
 
+            // Live box score: per-player stats via the same applier as the headless sim
+            if (_liveBox != null)
+            {
+                string defTeamId = offenseIsHome ? _awayTeam.TeamId : _homeTeam.TeamId;
+                BoxScoreEventApplier.Apply(_liveBox, result, offenseIsHome, defTeamId, _currentQuarter);
+            }
+
             // Radio narration for the court bar, timed to the choreographed beats
             EmitNarrationEvents(result, offenseIsHome);
 
@@ -980,7 +1032,7 @@ namespace NBAHeadCoach.Core
                         evt.PointsScored,
                         _gameClock,
                         _currentQuarter,
-                        ConvertToShotType(evt.ShotType, evt.ActorPosition)
+                        ConvertToShotType(evt.ShotType, evt.ActorPosition, offenseIsHome)
                     );
 
                     if (_captureSink != null)
@@ -1108,6 +1160,7 @@ namespace NBAHeadCoach.Core
                 case Simulation.Choreography.NarrationBeatKind.ReboundScramble:
                 case Simulation.Choreography.NarrationBeatKind.StealJump:
                 case Simulation.Choreography.NarrationBeatKind.OobTurnover:
+                case Simulation.Choreography.NarrationBeatKind.LooseBallTurnover:
                 case Simulation.Choreography.NarrationBeatKind.Violation:
                 case Simulation.Choreography.NarrationBeatKind.FreeThrowSetup:
                 case Simulation.Choreography.NarrationBeatKind.FreeThrowAttempt:
@@ -1196,7 +1249,7 @@ namespace NBAHeadCoach.Core
 
             if (!beat.Made) return;
 
-            int pts = beat.IsThree ? 3 : 2;
+            int pts = beat.PointsScored > 0 ? beat.PointsScored : (beat.IsThree ? 3 : 2);
             int homeAfter = ctx.HomeScore + (ctx.HomeOnOffense ? pts : 0);
             int awayAfter = ctx.AwayScore + (ctx.HomeOnOffense ? 0 : pts);
             int offenseMargin = ctx.HomeOnOffense ? homeAfter - awayAfter : awayAfter - homeAfter;
@@ -1237,8 +1290,9 @@ namespace NBAHeadCoach.Core
                     kind = Simulation.Choreography.NarrationBeatKind.StealJump; break;
                 case EventType.Turnover:
                 {
-                    var oob = FindBeat(beats, Simulation.Choreography.NarrationBeatKind.OobTurnover);
-                    return oob ?? FindBeat(beats, Simulation.Choreography.NarrationBeatKind.Violation);
+                    return FindBeat(beats, Simulation.Choreography.NarrationBeatKind.OobTurnover)
+                        ?? FindBeat(beats, Simulation.Choreography.NarrationBeatKind.LooseBallTurnover)
+                        ?? FindBeat(beats, Simulation.Choreography.NarrationBeatKind.Violation);
                 }
                 case EventType.Foul:
                     kind = Simulation.Choreography.NarrationBeatKind.ShotWindup; break;
@@ -1436,15 +1490,13 @@ namespace NBAHeadCoach.Core
             return $"{mins}:{secs:D2}";
         }
 
-        private ShotType ConvertToShotType(Simulation.ShotType? simShotType, CourtPosition shotPos)
+        private ShotType ConvertToShotType(Simulation.ShotType? simShotType, CourtPosition shotPos, bool offenseIsHome)
         {
             if (simShotType == null) return Data.ShotType.Jumper;
 
-            // ThreePointer is a DISTANCE class, not a shot style — classify by the actual
-            // spot so a mid-range catch-and-shoot doesn't get three-point FX.
-            float rimX = shotPos.X >= 0f ? 41.75f : -41.75f;
-            float dx = shotPos.X - rimX;
-            bool isThree = Mathf.Sqrt(dx * dx + shotPos.Y * shotPos.Y) > 22f ||
+            // ThreePointer is a DISTANCE class, not a shot style — use THE scoring
+            // definition so three-point FX fire exactly when the scoreboard adds 3.
+            bool isThree = shotPos.IsThreePointShot(offenseIsHome) ||
                            simShotType == Simulation.ShotType.Heave;
 
             return simShotType.Value switch
@@ -1502,24 +1554,13 @@ namespace NBAHeadCoach.Core
 
         private BoxScore CreateBoxScore()
         {
-            var boxScore = new BoxScore(_homeTeam.TeamId, _awayTeam.TeamId)
+            // The live box has been accumulating real per-player stats all game —
+            // interactive matches now record a full box score (season stats, POTG).
+            return LiveBoxScore ?? new BoxScore(_homeTeam.TeamId, _awayTeam.TeamId)
             {
                 HomeScore = _homeScore,
                 AwayScore = _awayScore
             };
-
-            // Add player stats from events
-            foreach (var playerId in _playerMinutes.Keys)
-            {
-                boxScore.PlayerStats[playerId] = new PlayerGameStats
-                {
-                    PlayerId = playerId,
-                    SecondsPlayed = _playerMinutes[playerId] * 60f,
-                    PersonalFouls = _playerFouls.GetValueOrDefault(playerId, 0)
-                };
-            }
-
-            return boxScore;
         }
 
         #endregion

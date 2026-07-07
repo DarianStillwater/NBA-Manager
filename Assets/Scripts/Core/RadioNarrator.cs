@@ -162,9 +162,9 @@ namespace NBAHeadCoach.Core
 
                 case NarrationBeatKind.StealJump:
                     text = Pick(beat.Kind,
-                        "Picked off!",
-                        "Jumped the lane — taken away!",
-                        "The pass is cut out!");
+                        $"Picked off by {a}!",
+                        $"{a} jumps the lane — taken away!",
+                        $"{a} cuts out the pass!");
                     style = NarrationStyle.Excited;
                     break;
 
@@ -175,11 +175,28 @@ namespace NBAHeadCoach.Core
                         "It sails out of bounds — turnover!");
                     break;
 
-                case NarrationBeatKind.Violation:
+                case NarrationBeatKind.LooseBallTurnover:
                     text = Pick(beat.Kind,
-                        "Whistle — the play is dead.",
-                        "The officials wave it off.",
-                        "Violation on the floor.");
+                        $"{a} loses the handle — it's loose on the floor!",
+                        $"It squirts away from {a} — the defense comes up with it!",
+                        $"{a} coughs it up! Scooped by the defense!");
+                    style = NarrationStyle.Excited;
+                    break;
+
+                case NarrationBeatKind.Violation:
+                    text = beat.Turnover switch
+                    {
+                        TurnoverKind.Traveled => Pick(beat.Kind,
+                            $"Traveling on {a} — they wave it off.",
+                            $"{a} shuffles his feet — whistle, travel."),
+                        TurnoverKind.OffensiveFoul => Pick(beat.Kind,
+                            $"Offensive foul on {a}! The whistle blows.",
+                            $"{a} bowls him over — charge!"),
+                        _ => Pick(beat.Kind,
+                            "Whistle — the play is dead.",
+                            "The officials wave it off.",
+                            "Violation on the floor.")
+                    };
                     break;
 
                 case NarrationBeatKind.FreeThrowSetup:
@@ -249,7 +266,9 @@ namespace NBAHeadCoach.Core
             if (!beat.Made)
                 return Pick(beat.Kind, "Off the iron!", "No good!", "It rims out!", "Short — off the rim!");
 
-            string tag = ScoreTag(ctx, beat.IsThree ? 3 : 2);
+            // Score tag from the ACTUAL decided points — never a guess from distance.
+            int pts = beat.PointsScored > 0 ? beat.PointsScored : (beat.IsThree ? 3 : 2);
+            string tag = ScoreTag(ctx, pts);
             if (beat.ShotType == ShotType.Dunk)
                 return Pick(beat.Kind, $"THROWS IT DOWN! {tag}", $"HAMMERED HOME! {tag}", $"OH, WHAT A SLAM! {tag}");
             if (beat.IsThree)

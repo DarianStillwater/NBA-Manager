@@ -522,40 +522,13 @@ namespace NBAHeadCoach.Core.Simulation
         }
 
         /// <summary>
-        /// Processes a possession result to update box score.
+        /// Processes a possession result to update box score. Per-player stat application
+        /// lives in BoxScoreEventApplier (shared with the interactive match controller).
         /// </summary>
         private void ProcessPossessionResult(PossessionResult result, bool isHomePossession)
         {
-            string offenseTeamId = isHomePossession ? _homeTeam.TeamId : _awayTeam.TeamId;
             string defenseTeamId = isHomePossession ? _awayTeam.TeamId : _homeTeam.TeamId;
-
-            foreach (var evt in result.Events)
-            {
-                switch (evt.Type)
-                {
-                    case EventType.Shot:
-                        ProcessShot(evt, offenseTeamId, isHomePossession);
-                        break;
-                    case EventType.Steal:
-                        ProcessSteal(evt);
-                        break;
-                    case EventType.Block:
-                        ProcessBlock(evt);
-                        break;
-                    case EventType.Rebound:
-                        ProcessRebound(evt, offenseTeamId);
-                        break;
-                    case EventType.Pass when evt.Outcome == EventOutcome.Success:
-                        // Potential assist - tracked when shot made
-                        break;
-                    case EventType.Turnover:
-                        ProcessTurnover(evt);
-                        break;
-                    case EventType.Foul:
-                        ProcessFoul(evt, defenseTeamId);
-                        break;
-                }
-            }
+            BoxScoreEventApplier.Apply(_boxScore, result, isHomePossession, defenseTeamId, _currentQuarter);
 
             // Add points to team score
             if (result.PointsScored > 0)
@@ -564,77 +537,7 @@ namespace NBAHeadCoach.Core.Simulation
                     _boxScore.HomeScore += result.PointsScored;
                 else
                     _boxScore.AwayScore += result.PointsScored;
-
-                // Find the assist (pass before made shot)
-                var shotEvent = result.Events.LastOrDefault(e => e.Type == EventType.Shot);
-                if (shotEvent != null)
-                {
-                    var passEvent = result.Events.LastOrDefault(e => 
-                        e.Type == EventType.Pass && 
-                        e.TargetPlayerId == shotEvent.ActorPlayerId &&
-                        e.Outcome == EventOutcome.Success);
-                    
-                    if (passEvent != null)
-                    {
-                        _boxScore.AddAssist(passEvent.ActorPlayerId);
-                    }
-                }
             }
-        }
-
-        private void ProcessShot(PossessionEvent evt, string teamId, bool isHomePossession)
-        {
-            var zone = evt.ActorPosition.GetZone(isHomePossession);
-            bool isThree = zone == CourtZone.ThreePoint;
-            bool made = evt.Outcome == EventOutcome.Success;
-
-            _boxScore.AddShotAttempt(evt.ActorPlayerId, isThree);
-            if (made)
-            {
-                _boxScore.AddShotMade(evt.ActorPlayerId, isThree, evt.PointsScored);
-            }
-        }
-
-        private void ProcessSteal(PossessionEvent evt)
-        {
-            _boxScore.AddSteal(evt.ActorPlayerId);
-            if (evt.TargetPlayerId != null)
-            {
-                _boxScore.AddTurnover(evt.TargetPlayerId);
-            }
-        }
-
-        private void ProcessBlock(PossessionEvent evt)
-        {
-            _boxScore.AddBlock(evt.DefenderPlayerId);
-        }
-
-        private void ProcessRebound(PossessionEvent evt, string teamId)
-        {
-            _boxScore.AddRebound(evt.ActorPlayerId, isOffensive: evt.IsOffensiveRebound);
-        }
-
-        private void ProcessTurnover(PossessionEvent evt)
-        {
-            _boxScore.AddTurnover(evt.ActorPlayerId);
-        }
-
-        /// <summary>
-        /// Process foul events and update box score.
-        /// </summary>
-        private void ProcessFoul(PossessionEvent evt, string defenseTeamId)
-        {
-            if (evt.FoulDetail == null) return;
-
-            // Record personal foul in box score
-            if (evt.DefenderPlayerId != null &&
-                evt.FoulDetail.FoulType != FoulType.Technical)
-            {
-                _boxScore.AddFoul(evt.DefenderPlayerId);
-            }
-
-            // Track team fouls in box score
-            _boxScore.AddTeamFoul(defenseTeamId, _currentQuarter);
         }
 
         /// <summary>

@@ -54,6 +54,10 @@ namespace NBAHeadCoach.UI.Components
         private int _currentPoints;
         private int _currentRebounds;
         private int _currentAssists;
+        private int _fgm;
+        private int _fga;
+        private int _minutes;
+        private int _fouls;
         private float _energy = 100f;
 
         #endregion
@@ -224,6 +228,10 @@ namespace NBAHeadCoach.UI.Components
                 _currentPoints = gameStats.Points;
                 _currentRebounds = gameStats.Rebounds;
                 _currentAssists = gameStats.Assists;
+                _fgm = gameStats.TotalFGM;
+                _fga = gameStats.TotalFGA;
+                _minutes = gameStats.Minutes;
+                _fouls = gameStats.PersonalFouls;
             }
 
             RefreshTooltip();
@@ -258,7 +266,9 @@ namespace NBAHeadCoach.UI.Components
         {
             if (_tooltipStatsText != null)
             {
-                _tooltipStatsText.text = $"PTS: {_currentPoints}  REB: {_currentRebounds}  AST: {_currentAssists}";
+                _tooltipStatsText.text =
+                    $"PTS {_currentPoints}  REB {_currentRebounds}  AST {_currentAssists}\n" +
+                    $"FG {_fgm}-{_fga}  MIN {_minutes}  PF {_fouls}";
             }
 
             if (_energyBarFill != null)
@@ -280,7 +290,7 @@ namespace NBAHeadCoach.UI.Components
             if (_tooltipRect == null) return;
 
             // Position tooltip above the dot
-            _tooltipRect.anchoredPosition = new Vector2(0, 40);
+            _tooltipRect.anchoredPosition = new Vector2(0, 52);
 
             // TODO: Check screen bounds and flip if needed
         }
@@ -381,12 +391,12 @@ namespace NBAHeadCoach.UI.Components
             if (circleSprite != null) nubImg.sprite = circleSprite;
             nubImg.raycastTarget = false;
 
-            // Add tooltip
+            // Add tooltip (two stat lines + energy bar)
             var tooltipGO = new GameObject("Tooltip");
             tooltipGO.transform.SetParent(dotGO.transform, false);
             var tooltipRT = tooltipGO.AddComponent<RectTransform>();
-            tooltipRT.sizeDelta = new Vector2(140, 60);
-            tooltipRT.anchoredPosition = new Vector2(0, 45);
+            tooltipRT.sizeDelta = new Vector2(176, 76);
+            tooltipRT.anchoredPosition = new Vector2(0, 52);
             var tooltipBG = tooltipGO.AddComponent<Image>();
             tooltipBG.color = new Color(0.1f, 0.1f, 0.15f, 0.95f);
 
@@ -398,7 +408,7 @@ namespace NBAHeadCoach.UI.Components
             var nameTextGO = new GameObject("NameText");
             nameTextGO.transform.SetParent(tooltipGO.transform, false);
             var nameTextRT = nameTextGO.AddComponent<RectTransform>();
-            nameTextRT.anchorMin = new Vector2(0, 0.5f);
+            nameTextRT.anchorMin = new Vector2(0, 0.66f);
             nameTextRT.anchorMax = new Vector2(1, 1);
             nameTextRT.offsetMin = new Vector2(5, 0);
             nameTextRT.offsetMax = new Vector2(-5, -3);
@@ -414,23 +424,24 @@ namespace NBAHeadCoach.UI.Components
             var statsTextGO = new GameObject("StatsText");
             statsTextGO.transform.SetParent(tooltipGO.transform, false);
             var statsTextRT = statsTextGO.AddComponent<RectTransform>();
-            statsTextRT.anchorMin = new Vector2(0, 0);
-            statsTextRT.anchorMax = new Vector2(1, 0.5f);
-            statsTextRT.offsetMin = new Vector2(5, 3);
+            statsTextRT.anchorMin = new Vector2(0, 0.16f);
+            statsTextRT.anchorMax = new Vector2(1, 0.66f);
+            statsTextRT.offsetMin = new Vector2(5, 0);
             statsTextRT.offsetMax = new Vector2(-5, 0);
             var statsText = statsTextGO.AddComponent<Text>();
-            statsText.text = "PTS: 0  REB: 0  AST: 0";
+            statsText.text = "PTS 0  REB 0  AST 0\nFG 0-0  MIN 0  PF 0";
             statsText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             statsText.fontSize = 10;
             statsText.alignment = TextAnchor.MiddleLeft;
             statsText.color = new Color(0.8f, 0.8f, 0.8f);
+            statsText.verticalOverflow = VerticalWrapMode.Overflow;
 
             // Energy bar background
             var energyBGGO = new GameObject("EnergyBG");
             energyBGGO.transform.SetParent(tooltipGO.transform, false);
             var energyBGRT = energyBGGO.AddComponent<RectTransform>();
-            energyBGRT.anchorMin = new Vector2(0.7f, 0.1f);
-            energyBGRT.anchorMax = new Vector2(0.95f, 0.4f);
+            energyBGRT.anchorMin = new Vector2(0.05f, 0.05f);
+            energyBGRT.anchorMax = new Vector2(0.95f, 0.14f);
             energyBGRT.offsetMin = Vector2.zero;
             energyBGRT.offsetMax = Vector2.zero;
             var energyBG = energyBGGO.AddComponent<Image>();

@@ -171,15 +171,20 @@ namespace NBAHeadCoach.Core.Simulation
 
         /// <summary>
         /// Determines the best shot type based on player attributes and situation.
+        /// attacksRight selects the shooter's actual basket — classifying against the wrong
+        /// end typed every away-team rim attack as a jumper. rng keeps the decision on the
+        /// caller's seeded stream.
         /// </summary>
         public static ShotType DetermineShotType(
             Player shooter,
             CourtPosition position,
             float defenderDistance,
-            bool isFastBreak)
+            bool isFastBreak,
+            bool attacksRight,
+            System.Random rng)
         {
-            CourtZone zone = position.GetZone(true); // Static method - assumes right side for shot type
-            
+            CourtZone zone = position.GetZone(attacksRight);
+
             // At the rim
             if (zone == CourtZone.RestrictedArea)
             {
@@ -190,12 +195,12 @@ namespace NBAHeadCoach.Core.Simulation
                     return ShotType.Dunk;
                 return ShotType.Layup;
             }
-            
+
             // In the paint
             if (zone == CourtZone.Paint)
             {
                 if (shooter.Finishing_PostMoves >= 70)
-                    return UnityEngine.Random.value > 0.5f ? ShotType.Hookshot : ShotType.Layup;
+                    return rng.NextDouble() > 0.5 ? ShotType.Hookshot : ShotType.Layup;
                 if (shooter.Shot_Close >= 70)
                     return ShotType.Floater;
                 return ShotType.Layup;

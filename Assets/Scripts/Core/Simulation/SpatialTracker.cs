@@ -96,7 +96,8 @@ namespace NBAHeadCoach.Core.Simulation
             var shots = GetPlayerShots(playerId);
             foreach (var shot in shots)
             {
-                var zone = shot.Position.GetZone(true);
+                // Shot positions live in the shooter's attacking half — sign of X picks the basket.
+                var zone = shot.Position.GetZone(shot.Position.X >= 0f);
                 result[zone].Attempts++;
                 if (shot.Made)
                 {

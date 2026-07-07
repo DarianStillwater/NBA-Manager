@@ -149,6 +149,7 @@ namespace NBAHeadCoach.UI.Match
             var homeLineup = _homeTeam.StartingLineupIds?.ToList() ?? new System.Collections.Generic.List<string>();
             var awayLineup = _awayTeam.StartingLineupIds?.ToList() ?? new System.Collections.Generic.List<string>();
             _courtView.Initialize(_homeTeam, _awayTeam, homeLineup, awayLineup);
+            _courtView.RefreshPlayerStats(_simController.LiveBoxScore);   // tooltips start at zeros
 
             // Auto-start simulation
             _simController.StartSimulation();
@@ -333,6 +334,7 @@ namespace NBAHeadCoach.UI.Match
             MkCtrlBtn(parent, "TIMEOUT", 80, () => _simController?.CallTimeout());
             MkCtrlBtn(parent, "SUBS", 60, ShowSubstitutionOverlay);
             MkCtrlBtn(parent, "STRATEGY", 80, ShowStrategyOverlay);
+            MkCtrlBtn(parent, "BOX SCORE", 88, ShowBoxScoreOverlay);
             _speedLabel = MkText(CreateRT(parent, "SpLbl"), "2x", 11, FontStyle.Normal, UITheme.TextSecondary, TextAnchor.MiddleCenter);
             _speedLabel.gameObject.AddComponent<LayoutElement>().preferredWidth = 40;
         }
@@ -548,6 +550,10 @@ namespace NBAHeadCoach.UI.Match
         {
             _homePossessionDot.SetActive(homeHasBall);
             _awayPossessionDot.SetActive(!homeHasBall);
+
+            // Refresh dot tooltips here: this fires only AFTER the possession finished
+            // presenting, so hover stats never reveal a play before it's shown.
+            _courtView?.RefreshPlayerStats(_simController?.LiveBoxScore);
         }
 
         private void OnGameComplete(BoxScore boxScore)
@@ -687,9 +693,47 @@ namespace NBAHeadCoach.UI.Match
                 brow.gameObject.AddComponent<Button>().onClick.AddListener(() => {
                     if (selectedOut == null) return;
                     _simController?.MakeSubstitution(selectedOut, capturedBid);
+                    _courtView?.RefreshPlayerStats(_simController?.LiveBoxScore);
                     DismissOverlay();
                 });
             }
+        }
+
+        private void ShowBoxScoreOverlay()
+        {
+            var live = _simController?.LiveBoxScore;
+            if (live == null) return;
+
+            var panel = CreateOverlay("BOX SCORE");   // pauses; CLOSE resumes
+
+            var host = CreateRT(panel, "Body");
+            host.gameObject.AddComponent<LayoutElement>().flexibleHeight = 1;
+            var scroll = UIBuilder.FixedArea(host, spacing: 0, padding: 2);
+            var vlg = scroll.GetComponent<VerticalLayoutGroup>();
+            if (vlg != null) { vlg.spacing = 0; vlg.padding = new RectOffset(4, 4, 2, 2); }
+
+            // The current five always render (zeros at tip-off); bench shows with floor time.
+            var onCourt = new HashSet<string>(
+                _simController.CurrentHomeLineup.Concat(_simController.CurrentAwayLineup));
+            Func<PlayerGameStats, bool> include =
+                s => s != null && (s.SecondsPlayed > 0.01f || onCourt.Contains(s.PlayerId));
+
+            var first = _playerIsHome ? _homeTeam : _awayTeam;
+            var second = _playerIsHome ? _awayTeam : _homeTeam;
+
+            AddBoxScoreTeamLabel(scroll, first, UITheme.AccentPrimary);
+            BoxScoreTable.Build(scroll, first, live, UITheme.AccentPrimary, include);
+            AddBoxScoreTeamLabel(scroll, second, UITheme.AccentSecondary);
+            BoxScoreTable.Build(scroll, second, live, UITheme.AccentSecondary, include);
+        }
+
+        private static void AddBoxScoreTeamLabel(RectTransform scroll, Team team, Color color)
+        {
+            var row = CreateRT(scroll, "TeamLbl");
+            row.gameObject.AddComponent<LayoutElement>().preferredHeight = 26;
+            row.gameObject.AddComponent<Image>().color = UITheme.FMCardHeaderBg;
+            var t = MkText(row, $"{team.City} {team.Name}".ToUpper(), 12, FontStyle.Bold, color, TextAnchor.MiddleLeft);
+            t.GetComponent<RectTransform>().offsetMin = new Vector2(10, 0);
         }
 
         private void ShowStrategyOverlay()

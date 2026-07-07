@@ -136,7 +136,7 @@ namespace NBAHeadCoach.Core
                     ? $"{actor} rebounds and pushes!"
                     : $"{actor} pulls down the rebound.",
 
-                EventType.Turnover => GetTurnoverDescription(actor),
+                EventType.Turnover => GetTurnoverDescription(evt, actor),
 
                 EventType.Foul => $"Foul called on {defender}.",
 
@@ -241,7 +241,7 @@ namespace NBAHeadCoach.Core
         private static string GenerateMadeShotDescription(PossessionEvent evt, string actor, PlayByPlayContext context)
         {
             string shotDesc = GetShotTypeDescription(evt.ShotType);
-            string locationDesc = GetLocationDescription(evt.ActorPosition);
+            string locationDesc = GetLocationDescription(evt.ActorPosition, context.HomeOnOffense);
             string contestDesc = evt.ContestLevel > 0.6f ? " over the defender" : "";
 
             if (evt.IsFastBreak)
@@ -283,11 +283,13 @@ namespace NBAHeadCoach.Core
             };
         }
 
-        private static string GetLocationDescription(CourtPosition pos)
+        private static string GetLocationDescription(CourtPosition pos, bool attacksRight)
         {
             if (pos.X == 0 && pos.Y == 0) return "";
 
-            var zone = pos.GetZone(true);
+            // Distance words must come from the shooter's ACTUAL basket — the old
+            // hardcoded home basket made every away-team shot read "from deep".
+            var zone = pos.GetZone(attacksRight);
             var side = pos.GetSide();
 
             string sideStr = side switch
@@ -298,6 +300,10 @@ namespace NBAHeadCoach.Core
                 _ => ""
             };
 
+            // GetZone never returns Corner — detect corner threes explicitly.
+            if (zone == CourtZone.ThreePoint && Mathf.Abs(pos.Y) > 20f)
+                return pos.Y < 0f ? "from the left corner" : "from the right corner";
+
             return zone switch
             {
                 CourtZone.RestrictedArea => "at the rim",
@@ -305,7 +311,6 @@ namespace NBAHeadCoach.Core
                 CourtZone.ShortMidRange => "from the elbow",
                 CourtZone.LongMidRange => $"from mid-range {sideStr}",
                 CourtZone.ThreePoint => $"from deep {sideStr}",
-                CourtZone.Corner => side == CourtSide.Left ? "from the left corner" : "from the right corner",
                 _ => ""
             };
         }
@@ -399,16 +404,33 @@ namespace NBAHeadCoach.Core
 
         #region Other Descriptions
 
-        private static string GetTurnoverDescription(string actor)
+        /// <summary>Turnover wording comes from the DECIDED kind (never independent RNG),
+        /// so the ticker always describes the exact play the choreography stages.</summary>
+        private static string GetTurnoverDescription(PossessionEvent evt, string actor)
         {
-            var phrases = new[]
+            if (evt.ViolationDetail != null)
             {
-                $"Turnover by {actor}.",
-                $"{actor} gives it away.",
-                $"{actor} with the costly turnover.",
-                $"Loose ball! {actor} loses it."
+                return evt.ViolationDetail.ViolationType switch
+                {
+                    ViolationType.Traveling => $"Traveling on {actor}. Turnover.",
+                    ViolationType.Backcourt => $"Backcourt violation on {actor}. Turnover.",
+                    ViolationType.ThreeSecond => $"3-second violation on {actor}. Turnover.",
+                    ViolationType.ShotClock => "Shot clock violation. Turnover.",
+                    ViolationType.OutOfBounds => $"{actor} steps out of bounds. Turnover.",
+                    ViolationType.DoubleDribble => $"Double dribble on {actor}. Turnover.",
+                    _ => $"{actor} turns it over."
+                };
+            }
+
+            return evt.Turnover switch
+            {
+                TurnoverKind.BadPass => $"{actor} throws it away.",
+                TurnoverKind.LostHandle => $"{actor} loses the handle.",
+                TurnoverKind.OffensiveFoul => $"Offensive foul on {actor}. Turnover.",
+                TurnoverKind.Traveled => $"Traveling on {actor}. Turnover.",
+                TurnoverKind.OutOfBounds => $"{actor} loses it out of bounds.",
+                _ => evt.Description ?? $"Turnover by {actor}."
             };
-            return phrases[_rng.Next(phrases.Length)];
         }
 
         private static string GetDribbleDescription(string actor, CourtPosition pos)

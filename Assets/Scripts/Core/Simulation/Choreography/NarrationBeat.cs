@@ -23,6 +23,7 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
         ReboundScramble,
         StealJump,
         OobTurnover,
+        LooseBallTurnover,
         Violation,
         FreeThrowSetup,
         FreeThrowAttempt
@@ -50,5 +51,11 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
         public float ContestLevel;
         public bool Made;
         public bool IsThree;
+
+        /// <summary>Actual FG points on a made RimResult (score tags use this, never a guess).</summary>
+        public int PointsScored;
+
+        /// <summary>Decided turnover kind on OobTurnover/LooseBallTurnover/Violation beats.</summary>
+        public TurnoverKind? Turnover;
     }
 }

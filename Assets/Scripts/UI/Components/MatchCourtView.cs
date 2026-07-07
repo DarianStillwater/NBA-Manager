@@ -222,6 +222,18 @@ namespace NBAHeadCoach.UI.Components
             }
         }
 
+        /// <summary>Push live box-score stats into every dot's hover tooltip.</summary>
+        public void RefreshPlayerStats(BoxScore live)
+        {
+            if (live == null) return;
+            var db = GameManager.Instance?.PlayerDatabase;
+            foreach (var kvp in _playerDots)
+            {
+                if (kvp.Value == null) continue;
+                kvp.Value.UpdateFromPlayer(db?.GetPlayer(kvp.Key), live.GetPlayerStats(kvp.Key));
+            }
+        }
+
         /// <summary>Dim the court and show the fast-forward badge during skips.</summary>
         public void SetFastForward(bool on)
         {

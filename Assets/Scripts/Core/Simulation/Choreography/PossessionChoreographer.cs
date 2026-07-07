@@ -58,6 +58,11 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
         private CourtPosition[] _ftCrashSpots;
         private bool[] _ftLaneDefender;
 
+        // Loose-ball turnover: from _looseBallT the fumbling handler's defender breaks off
+        // man-tracking and sprints to scoop the ball at _reboundSpot.
+        private float _looseBallT = -1f;
+        private int _looseBallDefIdx = -1;
+
         public PossessionChoreographer(System.Random rng)
         {
             _rng = rng ?? new System.Random();
@@ -90,6 +95,8 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
             _ftDefSpots = null;
             _ftCrashSpots = null;
             _ftLaneDefender = null;
+            _looseBallT = -1f;
+            _looseBallDefIdx = -1;
             _action = ActionLibrary.Choose(script, _rng);
 
             BuildOffenseAndBall();
@@ -405,10 +412,22 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
 
         private void BuildHandoff(int handler, float actionStart)
         {
-            // Dribble to the hand-off spot just outside where the shooter will catch.
+            // Dribble to the hand-off spot just outside where the shooter will catch; the
+            // shooter cuts in to meet him there. The Handoff beat is emitted by
+            // BuildShotSequence AT the exchange — narrating it here (on arrival) called the
+            // hand-off seconds before the ball actually moved.
             var spot = FormationLibrary.Clamp(new CourtPosition(_s.ShotPosition.X - 2f * M, _s.ShotPosition.Y));
             float t1 = Glide(handler, actionStart + 0.2f, spot, PlayerAction.Dribbling);
-            Beat(t1, NarrationBeatKind.Handoff, handler, _s.ShooterIndex);
+
+            float ts = t1;
+            if (_s.ShooterIndex >= 0 && _s.ShooterIndex != handler)
+            {
+                var meet = FormationLibrary.Clamp(new CourtPosition(spot.X + 1.5f * M, spot.Y + 1f));
+                ts = Glide(_s.ShooterIndex, actionStart + 0.2f, meet, PlayerAction.Cutting);
+            }
+
+            _action.HandoffT = Math.Max(t1, ts) + 0.1f;
+            _action.HandoffSpot = spot;
         }
 
         private void BuildIsolation(int handler, float actionStart, float actionEnd)
@@ -513,7 +532,28 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
             int shooter = _s.ShooterIndex;
 
             // Decided pass to the shooter (the assist) — shooter catches at/near the shot spot
-            if (_s.BallHandlerPassedToShooter && holder != shooter)
+            if (_s.BallHandlerPassedToShooter && holder != shooter &&
+                _action.Action == OffensiveAction.DribbleHandoff && _action.HandoffT > 0f)
+            {
+                // Dribble hand-off: the decided assist IS the exchange — one short pass at the
+                // meeting spot, called once, exactly when the ball changes hands.
+                float exch = Math.Max(Math.Min(_action.HandoffT, shotReleaseT - windup - 0.5f), _phaseMarks[2].t);
+                var from = _offense[holder].PositionAt(exch);
+                var to = _offense[shooter].PositionAt(exch + 0.2f);
+
+                _offense[holder].Stamp(exch, PlayerAction.Passing, _s.Offense[shooter].PlayerId);
+                EndHeldAt(exch);
+                _ball.Add(new PassSegment(exch, exch + 0.2f, from, to, PassStyle.Chest));
+                _offense[shooter].Stamp(exch + 0.2f, PlayerAction.Catching);
+                Beat(exch, NarrationBeatKind.Handoff, holder, shooter);   // the ONLY call for this pass
+
+                // Shooter works to the shot spot with the ball; handler clears out.
+                _offense[shooter].Add(shotReleaseT - 0.15f, _s.ShotPosition, PlayerAction.Dribbling);
+                AddHeldFromTo(exch + 0.2f, shotReleaseT, shooter, dribbled: true);
+                Glide(holder, exch + 0.3f, FormationLibrary.Clamp(
+                    new CourtPosition(_s.ShotPosition.X - 8f * M, -_s.ShotPosition.Y * 0.5f)), PlayerAction.Running);
+            }
+            else if (_s.BallHandlerPassedToShooter && holder != shooter)
             {
                 float passT = Math.Max(actionEnd - 0.6f, _phaseMarks[2].t);
                 // Shooter relocates to the catch spot just before the pass
@@ -568,10 +608,11 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
             bool blocked = _s.Ending == ScriptEnding.BlockedShot;
 
             // The windup call ("Pull-up from the elbow...") — held until the result lands.
+            // IsThree uses THE scoring definition, so "from deep" is said only when it pays 3.
             var windupBeat = Beat(shotReleaseT - windup, NarrationBeatKind.ShotWindup, shooter);
             windupBeat.ShotType = _s.ShotType;
             windupBeat.ContestLevel = _s.ContestLevel;
-            windupBeat.IsThree = _s.ShotPosition.DistanceTo(new CourtPosition(_rimX, 0f)) > 22f;
+            windupBeat.IsThree = _s.ShotPosition.IsThreePointShot(_s.OffenseAttacksRight);
 
             if (blocked)
             {
@@ -625,6 +666,7 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
                 resultBeat.ShotType = _s.ShotType;
                 resultBeat.Made = made;
                 resultBeat.IsThree = windupBeat.IsThree;
+                if (made) resultBeat.PointsScored = FgPointsFromEvents();
 
                 if (made)
                 {
@@ -653,6 +695,21 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
             // Free throws appended after the live resolution
             if (_s.FreeThrows != null && _s.FreeThrows.Attempts > 0)
                 BuildFreeThrows();
+        }
+
+        /// <summary>Actual FG points for the made shot — read from the decided event so score
+        /// tags never guess. Falls back to the unified is-three rule (identical by construction).</summary>
+        private int FgPointsFromEvents()
+        {
+            if (_s.Events != null)
+            {
+                for (int i = 0; i < _s.Events.Count; i++)
+                {
+                    if (_s.Events[i].Type == EventType.Shot && _s.Events[i].Outcome == EventOutcome.Success)
+                        return _s.Events[i].PointsScored;
+                }
+            }
+            return _s.ShotPosition.IsThreePointShot(_s.OffenseAttacksRight) ? 3 : 2;
         }
 
         /// <summary>Rebound narration beat (defense flag flips the roster lookup downstream).</summary>
@@ -718,12 +775,47 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
                     _ball.Add(new DeadSegment(interceptT, interceptT + 0.8f, midpoint));
                     _reboundSpot = midpoint; // defense converges here
                     _totalT = interceptT + 0.8f;
-                    Beat(interceptT, NarrationBeatKind.StealJump, holder);
+                    // The decided stealer is the SHOOTER'S DEFENDER (event actor) — not the passer.
+                    var stealBeat = Beat(interceptT, NarrationBeatKind.StealJump, shooter);
+                    stealBeat.ActorIsDefense = true;
+                    break;
+                }
+                case ScriptEnding.Turnover when _s.Turnover == TurnoverKind.LostHandle:
+                {
+                    // Lost handle: the ball squirts loose along the floor and the handler's
+                    // defender breaks off to scoop it up.
+                    float t0 = Math.Max(endT - 0.8f, 0.5f);
+                    EndHeldAt(t0);
+                    var from = _offense[holder].PositionAt(t0);
+                    var spot = NearPoint(from, 7f);
+                    float dur = BallFlight.PassDuration(from, spot);
+                    _offense[holder].Stamp(t0, PlayerAction.Idle);
+                    _ball.Add(new PassSegment(t0, t0 + dur, from, spot, PassStyle.Bounce));
+                    _ball.Add(new DeadSegment(t0 + dur, t0 + dur + 1.0f, spot));
+                    _reboundSpot = spot;
+                    _looseBallT = t0;
+                    _looseBallDefIdx = holder;   // his man reacts first
+                    _totalT = t0 + dur + 1.0f;
+                    var lbBeat = Beat(t0 + dur + 0.4f, NarrationBeatKind.LooseBallTurnover, holder);
+                    lbBeat.Turnover = _s.Turnover;
+                    break;
+                }
+                case ScriptEnding.Turnover when _s.Turnover == TurnoverKind.Traveled ||
+                                                _s.Turnover == TurnoverKind.OffensiveFoul:
+                {
+                    // Whistle: play freezes, ball goes dead in the handler's hands.
+                    EndHeldAt(endT - 0.3f);
+                    var pos = _offense[holder].PositionAt(endT - 0.3f);
+                    _ball.Add(new DeadSegment(endT - 0.3f, endT + 0.7f, pos));
+                    _offense[holder].Stamp(endT - 0.3f, PlayerAction.Idle);
+                    _totalT = endT + 0.7f;
+                    var whistleBeat = Beat(endT - 0.3f, NarrationBeatKind.Violation, holder);
+                    whistleBeat.Turnover = _s.Turnover;
                     break;
                 }
                 case ScriptEnding.Turnover:
                 {
-                    // Errant pass / lost handle: the ball sails out of bounds off the nearest line.
+                    // Errant pass: the ball sails out of bounds off the nearest line.
                     float throwT = Math.Max(endT - 0.5f, 0.5f);
                     EndHeldAt(throwT);
                     var from = _offense[holder].PositionAt(throwT);
@@ -733,7 +825,8 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
                     _ball.Add(new PassSegment(throwT, arriveT, from, oob));
                     _ball.Add(new DeadSegment(arriveT, arriveT + 0.8f, oob));
                     _totalT = arriveT + 0.8f;
-                    Beat(arriveT, NarrationBeatKind.OobTurnover, holder);
+                    var oobBeat = Beat(arriveT, NarrationBeatKind.OobTurnover, holder);
+                    oobBeat.Turnover = _s.Turnover;
                     break;
                 }
                 default: // Violation: whistle, dead ball in place
@@ -1131,7 +1224,13 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
                 CourtPosition target;
                 float speed = DefenseSpeed;
 
-                if (defenseRebounds && i == _s.RebounderIndex)
+                if (_looseBallT >= 0f && t >= _looseBallT && i == _looseBallDefIdx)
+                {
+                    // Loose-ball turnover: this defender breaks off and scoops it up.
+                    target = _reboundSpot;
+                    speed = DefenseSprint;
+                }
+                else if (defenseRebounds && i == _s.RebounderIndex)
                 {
                     target = _reboundSpot;
                     speed = DefenseSprint;
@@ -1205,6 +1304,8 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
                 if (_ftLaneDefender != null && _ftLaneDefender[i]) return PlayerAction.BoxingOut;
                 return PlayerAction.Defending;
             }
+
+            if (_looseBallT >= 0f && t >= _looseBallT && i == _looseBallDefIdx) return PlayerAction.Rebounding;
 
             int man = _defPlan[i].ManIndex;
             if (IsContestMoment(t) && man == _s.ShooterIndex) return PlayerAction.Contesting;

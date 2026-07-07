@@ -229,10 +229,13 @@ namespace NBAHeadCoach.Core.Simulation
                 }
                 else
                 {
-                    // Check for defensive foul before shot
+                    // Check for defensive foul before shot. Decided ONCE — the shot event
+                    // reuses this exact type so script (choreography/narration) and event
+                    // (ticker/marker/stats) can never disagree.
                     var shotType = ShotCalculator.DetermineShotType(
                         shooter, _offensePositions[shooterIndex],
-                        _offensePositions[shooterIndex].DistanceTo(_defensePositions[shooterIndex]), false);
+                        _offensePositions[shooterIndex].DistanceTo(_defensePositions[shooterIndex]),
+                        false, _isOffenseHome, _random);
 
                     _script.ShotType = shotType;
 
@@ -253,7 +256,7 @@ namespace NBAHeadCoach.Core.Simulation
                     }
                     else
                     {
-                        var shotEvent = ExecuteShot(shooter, shooterIndex, endGameClock, quarter, possessionClock);
+                        var shotEvent = ExecuteShot(shooter, shooterIndex, shotType, endGameClock, quarter, possessionClock);
                         result.Events.Add(shotEvent);
                         _script.ContestLevel = shotEvent.ContestLevel;
 
@@ -533,10 +536,24 @@ namespace NBAHeadCoach.Core.Simulation
             CourtPosition newPos;
             if (roll < threeWeight)
             {
-                // Three-point zone — pick a spot on the arc
+                // Three-point zone — pick a spot ACTUALLY behind the arc, with margin over
+                // the GetZone thresholds (23.75 ft / 22 ft corner) so points always award 3.
                 float[] yOptions = { -22f, -16f, 0f, 16f, 22f };
                 float y = yOptions[_random.Next(yOptions.Length)];
-                float x = Mathf.Abs(y) > 20f ? 42f : (28f + (float)_random.NextDouble() * 4f);
+                float r = (float)_random.NextDouble();
+                float x;
+                if (Mathf.Abs(y) > 20f)
+                {
+                    // Corner three: on the baseline lane, 22.1-22.8 ft from the rim
+                    x = 42f;
+                    y = Mathf.Sign(y) * (22.1f + r * 0.7f);
+                }
+                else
+                {
+                    // Top/wing three on the arc: 24.2-26.2 ft out
+                    float dist = 24.2f + r * 2.0f;
+                    x = 42f - Mathf.Sqrt(dist * dist - y * y);
+                }
                 newPos = new CourtPosition(x * xMult, y);
             }
             else if (roll < threeWeight + midWeight)
@@ -557,10 +574,13 @@ namespace NBAHeadCoach.Core.Simulation
 
             _offensePositions[shooterIndex] = newPos;
 
-            // Defender tracks the shooter (with some lag — not perfectly on them)
-            float defTrack = 0.6f + (float)_random.NextDouble() * 0.3f; // 60-90% tracking
+            // Defender closes out to a bounded contest gap (0.5-5 ft) no matter how far the
+            // shooter relocated — the old proportional lag left deep threes wide open by
+            // construction (bigger relocation ⇒ bigger leftover gap ⇒ +open bonus every time).
+            float trail = 0.5f + (float)_random.NextDouble() * 4.5f;
+            float gap = _defensePositions[shooterIndex].DistanceTo(newPos);
             _defensePositions[shooterIndex] = _defensePositions[shooterIndex].MoveTowards(newPos,
-                _defensePositions[shooterIndex].DistanceTo(newPos) * defTrack);
+                Mathf.Max(0f, gap - trail));
         }
 
         /// <summary>
@@ -589,14 +609,11 @@ namespace NBAHeadCoach.Core.Simulation
         /// <summary>
         /// Executes a shot attempt.
         /// </summary>
-        private PossessionEvent ExecuteShot(Player shooter, int shooterIndex, float gameClock, int quarter, float possessionClock)
+        private PossessionEvent ExecuteShot(Player shooter, int shooterIndex, ShotType shotType, float gameClock, int quarter, float possessionClock)
         {
             var position = _offensePositions[shooterIndex];
             var defender = _defensePlayers[shooterIndex];
             float defenderDistance = position.DistanceTo(_defensePositions[shooterIndex]);
-
-            // Determine shot type and zone
-            var shotType = ShotCalculator.DetermineShotType(shooter, position, defenderDistance, false);
 
             // Calculate shot probability
             float shotProb = ShotCalculator.CalculateShotProbability(
@@ -682,7 +699,7 @@ namespace NBAHeadCoach.Core.Simulation
                     DefenderPlayerId = defender.PlayerId,
                     Outcome = EventOutcome.Fail,
                     ShotType = shotType,
-                    ContestLevel = 1f - (defenderDistance / 6f)
+                    ContestLevel = 1f - Mathf.Clamp01(defenderDistance / 6f)
                 };
             }
 
@@ -733,9 +750,15 @@ namespace NBAHeadCoach.Core.Simulation
         /// </summary>
         private PossessionEvent CreateTurnoverEvent(float gameClock, int quarter)
         {
-            // Determine type of turnover
+            // Determine type of turnover — ONE decided draw (same order/count as before).
+            // The kind drives both the choreographed visual and the ticker wording,
+            // so what's described is always exactly what's shown.
             string[] turnoverTypes = { "Bad pass", "Lost handle", "Offensive foul", "Traveled", "Out of bounds" };
-            string description = turnoverTypes[_random.Next(turnoverTypes.Length)];
+            TurnoverKind[] kinds = { TurnoverKind.BadPass, TurnoverKind.LostHandle,
+                TurnoverKind.OffensiveFoul, TurnoverKind.Traveled, TurnoverKind.OutOfBounds };
+            int pick = _random.Next(turnoverTypes.Length);
+
+            _script.Turnover = kinds[pick];
 
             return new PossessionEvent
             {
@@ -744,7 +767,8 @@ namespace NBAHeadCoach.Core.Simulation
                 Quarter = quarter,
                 ActorPlayerId = _offensePlayers[_ballHandlerIndex].PlayerId,
                 ActorPosition = _offensePositions[_ballHandlerIndex],
-                Description = description,
+                Description = turnoverTypes[pick],
+                Turnover = kinds[pick],
                 Outcome = EventOutcome.Fail
             };
         }

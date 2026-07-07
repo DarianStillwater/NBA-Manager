@@ -79,6 +79,10 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
         public ScriptEnding Ending;
         public int PointsScored;
 
+        // Decided turnover kind (Ending == Turnover) — the choreographer stages the
+        // matching visual (OOB sail / loose-ball scoop / whistle dead-ball).
+        public TurnoverKind? Turnover;
+
         // Rebound decisions (valid for MissedShot / BlockedShot / ShootingFoulMissed last-FT-miss)
         public int RebounderIndex = -1;
         public bool RebounderIsDefense;
