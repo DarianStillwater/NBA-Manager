@@ -363,6 +363,10 @@ namespace NBAHeadCoach.Core.Manager
             var players = gm.PlayerDatabase.GetAllPlayers();
             var inbox = InboxService.Instance;
 
+            // Close the financial books while final records are still on the teams
+            try { gm.FinanceSystem?.ProcessSeasonEnd(gm); }
+            catch (Exception ex) { Debug.LogWarning($"[Offseason] Finance close failed: {ex.Message}"); }
+
             // Snapshot stats for next season's Most Improved comparison
             AwardManager.StorePreviousSeasonStats(players);
 

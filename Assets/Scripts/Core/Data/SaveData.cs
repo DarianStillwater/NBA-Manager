@@ -89,6 +89,9 @@ namespace NBAHeadCoach.Core.Data
         [Header("Offseason")]
         public OffseasonSaveData Offseason;
 
+        [Header("Finances")]
+        public FinanceSaveData FinancesData;
+
         /// <summary>
         /// Create a display-friendly summary of the save
         /// </summary>

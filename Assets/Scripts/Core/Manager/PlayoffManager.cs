@@ -167,7 +167,9 @@ namespace NBAHeadCoach.Core.Manager
             return (null, null);
         }
 
-        private IEnumerable<PlayoffSeries> AllSeries()
+        /// <summary>Every series in the bracket — season-close consumers
+        /// (finance, awards) need the playoff field.</summary>
+        public IEnumerable<PlayoffSeries> AllSeries()
         {
             if (_currentBracket == null) yield break;
 

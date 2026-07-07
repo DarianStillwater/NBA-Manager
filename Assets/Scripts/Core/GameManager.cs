@@ -80,6 +80,8 @@ namespace NBAHeadCoach.Core
         public TradeDeskSystem TradeDesk => _tradeDesk;
         private InSeasonFreeAgencySystem _inSeasonSigning;
         public InSeasonFreeAgencySystem InSeasonSigning => _inSeasonSigning;
+        private FinanceSystem _financeSystem;
+        public FinanceSystem FinanceSystem => _financeSystem;
         private FreeAgentManager _freeAgentManager;
         public FreeAgentManager FreeAgents => _freeAgentManager;
         private DraftSystem _draftSystem;
@@ -372,6 +374,12 @@ namespace NBAHeadCoach.Core
             Systems.Register(_tradeOfferGenerator);   // also ISaveSection (incoming offers)
             Systems.Register(_tradeDesk);             // AI-AI trades + deadline frenzy
             Systems.Register(_inSeasonSigning);       // in-season FA wire
+
+            // Economy: owners, revenue, payroll, luxury-tax conversations.
+            // Constructed here because it hooks the completion pipeline above.
+            _financeSystem = FinanceSystem.CreateDefault(this);
+            _financeSystem.HookGameRevenue(GameCompletion);
+            Systems.Register(_financeSystem);
             Systems.Register(_personnelManager);      // also ISaveSection (unified careers)
             Systems.Register(_jobMarketManager);
             Systems.Register(_mentorshipManager);
@@ -632,6 +640,18 @@ namespace NBAHeadCoach.Core
 
             // Initialize season stats for all players (must be after rosters are loaded)
             SeasonController.InitializePlayerSeasonStats(_currentSeason);
+
+            // New-game-only system initialization (owners/finances, future systems).
+            // NEVER runs on load — that's the whole point of the interface.
+            var newGameCtx = new NewGameContext(teamId, _currentSeason, difficulty);
+            foreach (var initializable in Systems.NewGameInitializables)
+            {
+                try { initializable.InitializeForNewGame(newGameCtx); }
+                catch (Exception ex)
+                {
+                    Debug.LogError($"[GameManager] New-game init failed for {initializable.SystemId}: {ex.Message}");
+                }
+            }
 
             // Fire event
             OnNewGameStarted?.Invoke();
@@ -1063,6 +1083,7 @@ namespace NBAHeadCoach.Core
             // season is ARCHIVED first: game logs cleared, YearsPro++, per-season
             // counters reset — then the new season initializes on top.
             SeasonController.TransitionToNewSeason(_currentSeason);
+            _financeSystem?.OnNewSeason(_currentSeason);
             OnSeasonChanged?.Invoke(_currentSeason);
 
             ChangeState(GameState.Playing);
