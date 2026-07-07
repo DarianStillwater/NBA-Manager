@@ -10,8 +10,16 @@ namespace NBAHeadCoach.Core.Manager
     /// Central registry for tracking draft pick ownership across all teams.
     /// Handles pick transfers, Stepien Rule validation, and pick projections.
     /// </summary>
-    public class DraftPickRegistry
+    public class DraftPickRegistry : ISaveSection
     {
+        public string SystemId => "DraftPicks";
+        public void WriteSave(Data.SaveData data) => data.DraftPickRegistryData = CreateSaveData();
+        public void ReadSave(Data.SaveData data, in SaveReadContext ctx)
+        {
+            // Null slice = legacy save; GameManager re-derives via InitializeForSeason.
+            if (data.DraftPickRegistryData != null) RestoreFromSave(data.DraftPickRegistryData);
+        }
+
         // Key format: "{OriginalTeamId}_{Year}_{Round}" e.g., "LAL_2025_1"
         private Dictionary<string, DraftPick> _allPicks = new Dictionary<string, DraftPick>();
 

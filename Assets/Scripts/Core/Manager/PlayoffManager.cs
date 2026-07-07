@@ -10,8 +10,15 @@ namespace NBAHeadCoach.Core.Manager
     /// Manages the NBA Playoff tournament including Play-In, bracket progression, and Finals.
     /// Singleton that coordinates with SeasonController and GameManager.
     /// </summary>
-    public class PlayoffManager
+    public class PlayoffManager : ISaveSection
     {
+        public string SystemId => "Playoffs";
+        public void WriteSave(Data.SaveData data) => data.PlayoffData = CreateSaveData();
+        public void ReadSave(Data.SaveData data, in SaveReadContext ctx)
+        {
+            if (data.PlayoffData != null) RestoreFromSave(data.PlayoffData);
+        }
+
         public static PlayoffManager Instance { get; private set; }
 
         #region State

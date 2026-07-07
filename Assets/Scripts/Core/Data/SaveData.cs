@@ -13,7 +13,15 @@ namespace NBAHeadCoach.Core.Data
     [Serializable]
     public class SaveData
     {
-        public const string CURRENT_VERSION = "1.0.0";
+        public const string CURRENT_VERSION = "1.1.0";
+
+        /// <summary>
+        /// v1.0.x saves predate save-section ownership: no contracts, no team
+        /// strategy/lineup/coach state, no difficulty, no transactions. Sections
+        /// treat legacy slices as "derive like a new game" fallbacks.
+        /// </summary>
+        public static bool IsLegacyVersion(string version) =>
+            string.IsNullOrEmpty(version) || version.StartsWith("1.0");
 
         [Header("Metadata")]
         public string SaveVersion = CURRENT_VERSION;
@@ -146,10 +154,19 @@ namespace NBAHeadCoach.Core.Data
         public int PlayoffWins;
         public int PlayoffLosses;
         public List<string> RosterPlayerIds = new List<string>();
-        public List<int> StartingLineupIndices = new List<int>();
+        public List<int> StartingLineupIndices = new List<int>(); // legacy shape, superseded by StartingLineupPlayerIds
         public float SalaryCap;
         public float TotalSalary;
         public string HeadCoachId;
+
+        // v1.1: the state a load used to silently regenerate. JsonUtility creates
+        // default instances for absent object fields on legacy saves, so the bool
+        // flag — not null checks — is the legacy detector.
+        public bool HasExtendedState;
+        public List<string> StartingLineupPlayerIds = new List<string>(); // 5 positional slots, "" = unset
+        public TeamStrategy OffensiveStrategy;
+        public TeamStrategy DefensiveStrategy;
+        public AI.AICoachPersonality CoachPersonality;
 
         public static TeamSaveState CreateFrom(Team team)
         {
@@ -163,8 +180,20 @@ namespace NBAHeadCoach.Core.Data
                 PlayoffWins = team.PlayoffWins,
                 PlayoffLosses = team.PlayoffLosses,
                 RosterPlayerIds = new List<string>(),
-                StartingLineupIndices = new List<int>(team.StartingLineup ?? new int[5])
+                StartingLineupIndices = new List<int>(team.StartingLineup ?? new int[5]),
+                HasExtendedState = true,
+                OffensiveStrategy = team.OffensiveStrategy,
+                DefensiveStrategy = team.DefensiveStrategy,
+                CoachPersonality = team.CoachPersonality
             };
+
+            // Positional 5-slot lineup by player ID (indices break when rosters change)
+            for (int i = 0; i < 5; i++)
+            {
+                string id = team.StartingLineupIds != null && i < team.StartingLineupIds.Length
+                    ? team.StartingLineupIds[i] : null;
+                state.StartingLineupPlayerIds.Add(id ?? "");
+            }
 
             if (team.Roster != null)
             {
@@ -185,7 +214,24 @@ namespace NBAHeadCoach.Core.Data
             team.Losses = Losses;
             team.PlayoffWins = PlayoffWins;
             team.PlayoffLosses = PlayoffLosses;
-            // Roster restoration would need PlayerDatabase lookup
+
+            if (!HasExtendedState) return; // legacy save: caller derives coach/lineup
+
+            if (RosterPlayerIds != null && RosterPlayerIds.Count > 0)
+                team.RosterPlayerIds = new List<string>(RosterPlayerIds);
+
+            if (StartingLineupPlayerIds != null && StartingLineupPlayerIds.Count > 0)
+            {
+                for (int i = 0; i < 5; i++)
+                {
+                    team.StartingLineupIds[i] = i < StartingLineupPlayerIds.Count
+                        ? StartingLineupPlayerIds[i] : "";
+                }
+            }
+
+            if (OffensiveStrategy != null) team.OffensiveStrategy = OffensiveStrategy;
+            if (DefensiveStrategy != null) team.DefensiveStrategy = DefensiveStrategy;
+            if (CoachPersonality != null) team.CoachPersonality = CoachPersonality;
         }
     }
 
@@ -539,6 +585,80 @@ namespace NBAHeadCoach.Core.Data
         public bool HasPlayerOption;
         public bool HasTeamOption;
         public int OptionYear;
+
+        // v1.1: full Contract round-trip (extensions, re-signings, and trade-driven
+        // changes were previously lost — contracts re-derived from base JSON on load)
+        public ContractType Type = ContractType.Standard;
+        public long CurrentYearSalary;
+        public int YearsRemaining;
+        public long GuaranteedMoney;
+        public float AnnualRaisePercent;
+        public string SignedDateStr;    // ISO — JsonUtility can't roundtrip DateTime
+        public string GuaranteeDateStr; // ISO
+        public long PartialGuaranteeAmount;
+        public bool HasNoTradeClause;
+        public float TradeKickerPercent;
+        public int ConsecutiveSeasonsWithTeam;
+        public int TwoWayNBAGamesPlayed;
+        public List<ContractIncentive> Incentives = new List<ContractIncentive>();
+
+        public static ContractSaveState CreateFrom(Contract c)
+        {
+            if (c == null) return null;
+            return new ContractSaveState
+            {
+                PlayerId = c.PlayerId,
+                TeamId = c.TeamId,
+                YearsRemaining = c.YearsRemaining,
+                HasPlayerOption = c.HasPlayerOption,
+                HasTeamOption = c.HasTeamOption,
+                OptionYear = c.OptionYear,
+                Type = c.Type,
+                CurrentYearSalary = c.CurrentYearSalary,
+                GuaranteedMoney = c.GuaranteedMoney,
+                AnnualRaisePercent = c.AnnualRaisePercent,
+                SignedDateStr = c.SignedDate.ToString("o"),
+                GuaranteeDateStr = c.GuaranteeDate.ToString("o"),
+                PartialGuaranteeAmount = c.PartialGuaranteeAmount,
+                HasNoTradeClause = c.HasNoTradeClause,
+                TradeKickerPercent = c.TradeKickerPercent,
+                ConsecutiveSeasonsWithTeam = c.ConsecutiveSeasonsWithTeam,
+                TwoWayNBAGamesPlayed = c.TwoWayNBAGamesPlayed,
+                Incentives = c.Incentives != null
+                    ? new List<ContractIncentive>(c.Incentives)
+                    : new List<ContractIncentive>()
+            };
+        }
+
+        public Contract ToContract()
+        {
+            var c = new Contract
+            {
+                PlayerId = PlayerId,
+                TeamId = TeamId,
+                YearsRemaining = YearsRemaining,
+                HasPlayerOption = HasPlayerOption,
+                HasTeamOption = HasTeamOption,
+                OptionYear = OptionYear,
+                Type = Type,
+                CurrentYearSalary = CurrentYearSalary,
+                GuaranteedMoney = GuaranteedMoney,
+                AnnualRaisePercent = AnnualRaisePercent,
+                PartialGuaranteeAmount = PartialGuaranteeAmount,
+                HasNoTradeClause = HasNoTradeClause,
+                TradeKickerPercent = TradeKickerPercent,
+                ConsecutiveSeasonsWithTeam = ConsecutiveSeasonsWithTeam,
+                TwoWayNBAGamesPlayed = TwoWayNBAGamesPlayed,
+                Incentives = Incentives != null
+                    ? new System.Collections.Generic.List<ContractIncentive>(Incentives)
+                    : new System.Collections.Generic.List<ContractIncentive>()
+            };
+            if (!string.IsNullOrEmpty(SignedDateStr) && DateTime.TryParse(SignedDateStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out var signed))
+                c.SignedDate = signed;
+            if (!string.IsNullOrEmpty(GuaranteeDateStr) && DateTime.TryParse(GuaranteeDateStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out var guarantee))
+                c.GuaranteeDate = guarantee;
+            return c;
+        }
     }
 
     /// <summary>
@@ -579,6 +699,7 @@ namespace NBAHeadCoach.Core.Data
     {
         public string TransactionId;
         public DateTime Date;
+        public string DateStr; // ISO — JsonUtility can't roundtrip DateTime
         public TransactionType Type;
         public List<string> TeamIds = new List<string>();
         public List<string> PlayerIds = new List<string>();

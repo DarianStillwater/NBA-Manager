@@ -195,8 +195,27 @@ namespace NBAHeadCoach.Core
             _currentGameIndex = saveData.CurrentGameIndex;
             _completedGames = saveData.CompletedGames ?? new List<GameResult>();
 
-            // Regenerate schedule (or load from save)
+            // Regenerate schedule (deterministic: seeded by season, so EventIds match)
             GenerateSchedule();
+
+            // Re-mark completed games on the regenerated schedule — otherwise the
+            // Schedule panel loses W/L results and GetNextGame re-offers played games.
+            if (_completedGames.Count > 0)
+            {
+                var byId = new Dictionary<string, CalendarEvent>();
+                foreach (var evt in _schedule)
+                    if (!string.IsNullOrEmpty(evt.EventId)) byId[evt.EventId] = evt;
+
+                foreach (var played in _completedGames)
+                {
+                    if (played?.GameId != null && byId.TryGetValue(played.GameId, out var evt))
+                    {
+                        evt.IsCompleted = true;
+                        evt.HomeScore = played.HomeScore;
+                        evt.AwayScore = played.AwayScore;
+                    }
+                }
+            }
 
             // Rebuild standings from completed games
             RebuildStandings();

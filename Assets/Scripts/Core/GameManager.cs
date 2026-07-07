@@ -42,6 +42,8 @@ namespace NBAHeadCoach.Core
         [SerializeField] private int _currentSeason;
         [SerializeField] private DateTime _currentDate;
         [SerializeField] private UserRoleConfiguration _userRoleConfig;
+        private DifficultySettings _difficulty = new DifficultySettings();
+        public DifficultySettings Difficulty => _difficulty;
 
         public UnifiedCareerProfile Career => _career;
         public string PlayerTeamId => _playerTeamId;
@@ -79,6 +81,8 @@ namespace NBAHeadCoach.Core
         private OffseasonManager _offseasonManager;
         private PlayerDevelopmentManager _developmentManager;
         private JobSecurityManager _jobSecurityManager;
+        private TransactionLog _transactionLog;
+        public TransactionLog Transactions => _transactionLog;
         private AllStarManager _allStarManager;
         private PersonnelManager _personnelManager;
         public PersonnelManager PersonnelManager => _personnelManager;
@@ -272,6 +276,7 @@ namespace NBAHeadCoach.Core
             _freeAgentManager = new FreeAgentManager(_salaryCapManager, PlayerDatabase);
             _jobSecurityManager = new JobSecurityManager();
             _developmentManager = new PlayerDevelopmentManager();
+            _transactionLog = new TransactionLog();
 
             // Initialize Trade & AI Systems
             _draftPickRegistry = new DraftPickRegistry();
@@ -324,11 +329,20 @@ namespace NBAHeadCoach.Core
 
             Systems.Register(SeasonController);
             Systems.Register(new LeagueGameSimSystem(this));
-            Systems.Register(_tradeOfferGenerator);
-            Systems.Register(_personnelManager);
+            Systems.Register(_tradeOfferGenerator);   // also ISaveSection (incoming offers)
+            Systems.Register(_personnelManager);      // also ISaveSection (unified careers)
             Systems.Register(_jobMarketManager);
             Systems.Register(_mentorshipManager);
             Systems.Register(_mediaManager);
+
+            // Save-section-only systems (no daily tick yet). Registration order is the
+            // save read/write order.
+            Systems.Register(_salaryCapManager);
+            Systems.Register(_injuryManager);
+            Systems.Register(_playoffManager);
+            Systems.Register(_personalityManager);
+            Systems.Register(_draftPickRegistry);
+            Systems.Register(_transactionLog);
         }
 
         private IEnumerator LoadGameData()
@@ -478,6 +492,7 @@ namespace NBAHeadCoach.Core
             string fullName = $"{firstName} {lastName}";
             var team = GetTeam(teamId);
             _playerTeamId = teamId;
+            _difficulty = difficulty ?? new DifficultySettings();
 
             // Initialize season
             _currentSeason = DateTime.Now.Year;
@@ -831,58 +846,63 @@ namespace NBAHeadCoach.Core
                 }
             }
 
+            // Restore difficulty (legacy saves carry defaults)
+            _difficulty = data.Difficulty ?? new DifficultySettings();
+
             // Initialize season controller with saved calendar
             SeasonController.RestoreFromSave(data.CalendarData);
 
-            // Restore playoff state
-            if (data.PlayoffData != null)
+            // Each registered save section reads its own slice (registration order).
+            var readCtx = new SaveReadContext(
+                data.SaveVersion, SaveData.IsLegacyVersion(data.SaveVersion), _currentSeason);
+            if (Systems != null)
             {
-                _playoffManager?.RestoreFromSave(data.PlayoffData);
+                foreach (var section in Systems.SaveSections)
+                {
+                    try { section.ReadSave(data, readCtx); }
+                    catch (Exception ex)
+                    {
+                        Debug.LogError($"[GameManager] Save section {section.SystemId} failed to read: {ex}");
+                    }
+                }
             }
 
-            // Restore injury manager state (recent injury records)
-            if (data.InjuryData != null)
+            // Legacy fallback: no saved pick registry -> derive league defaults
+            if (data.DraftPickRegistryData == null && _draftPickRegistry != null && _allTeams.Count > 0)
             {
-                _injuryManager?.RestoreFromSave(data.InjuryData);
-            }
-
-            // Restore personality data
-            if (data.PersonalityData != null)
-            {
-                _personalityManager?.LoadSaveData(data.PersonalityData);
-            }
-
-            // Restore Unified Careers
-            if (data.UnifiedCareers != null)
-            {
-                PersonnelManager.Instance?.LoadSaveData(data.UnifiedCareers);
-            }
-
-            // Restore draft pick registry
-            if (data.DraftPickRegistryData != null)
-            {
-                _draftPickRegistry?.RestoreFromSave(data.DraftPickRegistryData);
-            }
-            else if (_draftPickRegistry != null && _allTeams.Count > 0)
-            {
-                // Initialize with defaults if no saved data
                 _draftPickRegistry.InitializeForSeason(_currentSeason, _allTeams);
             }
 
-            // Restore incoming trade offers
-            if (data.IncomingOffersData != null)
-            {
-                _tradeOfferGenerator?.RestoreFromSave(data.IncomingOffersData);
-            }
-
-            // Initialize contracts (from JSON data for players without saved contracts)
+            // Legacy fallback: derive contracts from base JSON for players without
+            // saved contracts (v1.1 saves restore them via the SalaryCap section,
+            // so this creates nothing on modern saves)
             InitializePlayerContracts();
 
             // Set up trade systems with loaded player team
             SetupTradeSystemsForTeam(_playerTeamId);
 
-            // Ensure all teams have valid lineups and strategies after restore
-            InitializeAllTeamCoaches();
+            // Legacy fallback ONLY: teams from v1.0 saves carry no coach/lineup state.
+            // v1.1 saves round-trip strategy/lineup/personality via TeamSaveState —
+            // re-randomizing them on every load was the old "my tactics reset" bug.
+            var coachRng = new System.Random();
+            foreach (var team in _allTeams)
+            {
+                if (team == null) continue;
+                bool hasLineup = team.StartingLineupIds != null &&
+                                 System.Array.Exists(team.StartingLineupIds, id => !string.IsNullOrEmpty(id));
+                if (team.CoachPersonality == null)
+                {
+                    team.CoachPersonality = AI.AICoachPersonality.GenerateRandom(coachRng);
+                    team.AutoSetStrategy(team.CoachPersonality);
+                    team.AutoSetStartingLineup(team.CoachPersonality);
+                }
+                else if (!hasLineup)
+                {
+                    // Restored coach/strategy but no usable lineup — fill the five
+                    // without touching the restored strategy.
+                    team.AutoSetStartingLineup(team.CoachPersonality);
+                }
+            }
 
             // Ensure all players have season stats initialized
             SeasonController.InitializePlayerSeasonStats(_currentSeason);
@@ -893,13 +913,14 @@ namespace NBAHeadCoach.Core
         /// </summary>
         public SaveData CreateSaveData()
         {
-            return new SaveData
+            var data = new SaveData
             {
                 SaveVersion = SaveData.CURRENT_VERSION,
                 SaveTimestamp = DateTime.Now,
                 SaveTimestampStr = DateTime.Now.ToString("o"),
                 Career = _career,
                 PlayerTeamId = _playerTeamId,
+                Difficulty = _difficulty,
                 UserRoleConfig = _userRoleConfig,
                 Preferences = Preferences ?? new GamePreferences(),
                 CurrentSeason = _currentSeason,
@@ -907,14 +928,23 @@ namespace NBAHeadCoach.Core
                 CurrentDateStr = _currentDate.ToString("o"),
                 TeamStates = CreateTeamStates(),
                 PlayerStates = CreatePlayerStates(),
-                CalendarData = SeasonController.CreateCalendarSaveData(),
-                PlayoffData = _playoffManager?.CreateSaveData(),
-                InjuryData = _injuryManager?.CreateSaveState(),
-                PersonalityData = _personalityManager?.CreateSaveData(),
-                UnifiedCareers = PersonnelManager.Instance?.GetSaveData(),
-                DraftPickRegistryData = _draftPickRegistry?.CreateSaveData(),
-                IncomingOffersData = _tradeOfferGenerator?.CreateSaveData()
+                CalendarData = SeasonController.CreateCalendarSaveData()
             };
+
+            // Each registered save section writes its own slice.
+            if (Systems != null)
+            {
+                foreach (var section in Systems.SaveSections)
+                {
+                    try { section.WriteSave(data); }
+                    catch (Exception ex)
+                    {
+                        Debug.LogError($"[GameManager] Save section {section.SystemId} failed to write: {ex}");
+                    }
+                }
+            }
+
+            return data;
         }
 
         private List<TeamSaveState> CreateTeamStates()
@@ -1115,6 +1145,25 @@ namespace NBAHeadCoach.Core
         {
             // Generate trade announcement
             _tradeAnnouncementSystem?.GenerateAnnouncement(proposal);
+
+            // Record in transaction history
+            if (_transactionLog != null && proposal != null)
+            {
+                var teamIds = new List<string>();
+                var playerIds = new List<string>();
+                foreach (var asset in proposal.AllAssets)
+                {
+                    if (!string.IsNullOrEmpty(asset.SendingTeamId) && !teamIds.Contains(asset.SendingTeamId))
+                        teamIds.Add(asset.SendingTeamId);
+                    if (asset.Type == TradeAssetType.Player && !string.IsNullOrEmpty(asset.PlayerId))
+                        playerIds.Add(asset.PlayerId);
+                }
+                var names = playerIds
+                    .Select(id => PlayerDatabase?.GetPlayer(id)?.FullName)
+                    .Where(n => !string.IsNullOrEmpty(n));
+                _transactionLog.Add(TransactionType.Trade, _currentDate, teamIds, playerIds,
+                    $"Trade between {string.Join("/", teamIds)}: {string.Join(", ", names)}");
+            }
 
             // Check if player team's captain was traded away
             if (string.IsNullOrEmpty(_playerTeamId)) return;

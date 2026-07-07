@@ -9,8 +9,15 @@ namespace NBAHeadCoach.Core.Manager
     /// <summary>
     /// Manages all injury-related logic including generation, recovery, and load management.
     /// </summary>
-    public class InjuryManager
+    public class InjuryManager : ISaveSection
     {
+        public string SystemId => "InjuryManager";
+        public void WriteSave(Data.SaveData data) => data.InjuryData = CreateSaveState();
+        public void ReadSave(Data.SaveData data, in SaveReadContext ctx)
+        {
+            if (data.InjuryData != null) RestoreFromSave(data.InjuryData);
+        }
+
         public static InjuryManager Instance { get; private set; }
 
         // ==================== EVENTS ====================

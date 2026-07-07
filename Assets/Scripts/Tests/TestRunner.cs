@@ -56,6 +56,8 @@ namespace NBAHeadCoach.Tests
             RunTest<RegistryOrderTest>("System Registry Order");
             RunTest<GameCompletionParityTest>("Game Completion Parity");
             RunTest<EnergyCarryoverTest>("Energy Carryover");
+            RunTest<SaveRoundTripTest>("Save Round Trip");
+            RunTest<LegacySaveLoadTest>("Legacy Save Load");
 
             // Summary
             Debug.Log("\n" + new string('=', 70));
