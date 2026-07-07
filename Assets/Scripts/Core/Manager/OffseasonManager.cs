@@ -387,11 +387,23 @@ namespace NBAHeadCoach.Core.Manager
                 dev.SetPlayerDatabase(gm.PlayerDatabase);
                 dev.SetCurrentSeason(_seasonLabel);
                 int developed = 0, declined = 0;
+                var coachingByTeam = new Dictionary<string, float>();
+                float CoachingFor(string teamId)
+                {
+                    if (string.IsNullOrEmpty(teamId)) return 0.5f;
+                    if (!coachingByTeam.TryGetValue(teamId, out float q))
+                    {
+                        q = PersonnelManager.Instance?.GetDevelopmentQuality(teamId) ?? 0.5f;
+                        coachingByTeam[teamId] = q;
+                    }
+                    return q;
+                }
                 foreach (var p in players)
                 {
                     if (p == null || p.RetirementYear > 0) continue;
-                    var grow = dev.ProcessSeasonDevelopment(p, p.MinutesPlayedThisSeason, 0.55f);
-                    var off = dev.ProcessOffseasonDevelopment(p, 0.55f, 0.5f);
+                    float coaching = CoachingFor(p.TeamId);
+                    var grow = dev.ProcessSeasonDevelopment(p, p.MinutesPlayedThisSeason, coaching);
+                    var off = dev.ProcessOffseasonDevelopment(p, coaching, 0.5f);
                     if (grow?.HasChanges == true || off?.HasChanges == true) developed++;
                     var age = dev.ApplyAgingEffects(p);
                     if (age?.HasChanges == true) declined++;

@@ -563,9 +563,13 @@ namespace NBAHeadCoach.Core
             if (string.IsNullOrEmpty(teamId)) return 1f;
 
             var team = _gameManager.GetTeam(teamId);
-            if (team?.TrainingFacility == null) return 1f;
+            float facility = team?.TrainingFacility != null
+                ? team.TrainingFacility.InjuryRecoveryMultiplier
+                : 1f;
 
-            return team.TrainingFacility.InjuryRecoveryMultiplier;
+            // Better staff gets players back faster — up to +20% at quality 100.
+            int staffQuality = Manager.PersonnelManager.Instance?.GetStaffQuality(teamId) ?? 0;
+            return facility * (1f + staffQuality / 100f * 0.2f);
         }
 
         /// <summary>

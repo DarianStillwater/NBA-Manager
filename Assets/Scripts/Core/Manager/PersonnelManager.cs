@@ -12,7 +12,7 @@ namespace NBAHeadCoach.Core.Manager
     /// Replaces CoachingStaffManager, ScoutingManager, and UnifiedCareerManager.
     /// This is the SINGLE source of truth for all career profiles and team assignments.
     /// </summary>
-    public class PersonnelManager : IDailyTickable, ISaveSection
+    public class PersonnelManager : IDailyTickable, ISaveSection, INewGameInitializable
     {
         public string SystemId => "Personnel";
         public int TickOrder => Manager.TickOrder.Personnel;
@@ -200,7 +200,9 @@ namespace NBAHeadCoach.Core.Manager
             var profile = GetProfile(profileId);
             if (profile == null) return (false, "Profile not found.");
 
-            if (profile.IsEmployed())
+            // Track-based IsEmployed() is true for market candidates too —
+            // only a profile actually attached to a team is off-limits.
+            if (profile.IsEmployed() && !string.IsNullOrEmpty(profile.CurrentTeamId))
                 return (false, "Person is already employed by another team.");
 
             // Check staff limits
@@ -238,7 +240,8 @@ namespace NBAHeadCoach.Core.Manager
         {
             var profile = GetProfile(profileId);
             if (profile == null) return (false, "Profile not found.");
-            if (!profile.IsEmployed()) return (false, "Person is not currently employed.");
+            if (!profile.IsEmployed() || string.IsNullOrEmpty(profile.CurrentTeamId))
+                return (false, "Person is not currently employed.");
 
             string teamId = profile.CurrentTeamId;
             
@@ -709,11 +712,34 @@ namespace NBAHeadCoach.Core.Manager
             if (_profilesById.ContainsKey(profile.ProfileId)) return;
             allProfiles.Add(profile);
             _profilesById[profile.ProfileId] = profile;
-            if (!profile.IsEmployed() && profile.CurrentTrack != UnifiedCareerTrack.Retired)
+            // "Employed" means actually on a team's payroll. IsEmployed() alone is
+            // track-based and true for generated candidates, which kept the hiring
+            // pool permanently empty.
+            bool onATeam = profile.IsEmployed() && !string.IsNullOrEmpty(profile.CurrentTeamId);
+            if (onATeam)
+            {
+                // Employed profiles must land in the team-staff index or
+                // GetTeamStaff/GetHeadCoach/quality helpers never see them.
+                if (!_teamStaffs.TryGetValue(profile.CurrentTeamId, out var staff))
+                {
+                    staff = new List<UnifiedCareerProfile>();
+                    _teamStaffs[profile.CurrentTeamId] = staff;
+                }
+                if (!staff.Contains(profile)) staff.Add(profile);
+            }
+            else if (profile.CurrentTrack != UnifiedCareerTrack.Retired)
+            {
                 _unemployedPool.Add(profile);
+            }
         }
 
         // ==================== POOL GENERATION ====================
+
+        /// <summary>New game only: stock the hiring market with candidates.</summary>
+        public void InitializeForNewGame(in NewGameContext ctx)
+        {
+            GenerateFreeAgentPool();
+        }
 
         public void GenerateFreeAgentPool(int coachCount = BASE_COACH_POOL_SIZE, int scoutCount = BASE_SCOUT_POOL_SIZE)
         {

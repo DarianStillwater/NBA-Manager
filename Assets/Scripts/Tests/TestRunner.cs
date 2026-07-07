@@ -64,6 +64,7 @@ namespace NBAHeadCoach.Tests
             RunTest<OffseasonEngineTest>("Offseason Engine");
             RunTest<TradeDeskTest>("Trade Desk");
             RunTest<FinanceFlowTest>("Finance Flow");
+            RunTest<StaffEffectsTest>("Staff Effects");
 
             // Summary
             Debug.Log("\n" + new string('=', 70));
