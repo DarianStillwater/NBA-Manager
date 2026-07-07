@@ -194,13 +194,127 @@ namespace NBAHeadCoach.Core.Manager
 
         public string SystemId => "AllStar";
 
+        /// <summary>The finalized rosters for the current season's weekend.</summary>
+        public AllStarWeekendSummary CurrentWeekend { get; private set; }
+
         /// <summary>
-        /// Phase rail: Phase 1 (awards/all-star feature) announces selections and
-        /// stages the break from here.
+        /// Phase rail: when the All-Star break begins, run the full selection
+        /// (fan/player/media voting -> starters -> reserves) and announce it.
         /// </summary>
         public void OnSeasonPhaseChanged(Data.SeasonPhase oldPhase, Data.SeasonPhase newPhase, System.DateTime date)
         {
-            // TODO(Phase 1): announce All-Star selections when the break begins.
+            if (newPhase != Data.SeasonPhase.AllStarBreak) return;
+
+            var gm = GameManager.Instance;
+            if (gm?.PlayerDatabase == null) return;
+
+            RunSelections(gm.CurrentSeason, date, gm.PlayerDatabase.GetAllPlayers(),
+                id => gm.GetTeam(id)?.Conference);
+        }
+
+        /// <summary>
+        /// Run the complete All-Star selection for a season: build the voting pool
+        /// from eligible players, simulate the three voting bodies, finalize the
+        /// starters (2 backcourt + 3 frontcourt per conference), pick reserves, and
+        /// announce the rosters. Idempotent per season.
+        /// </summary>
+        public AllStarWeekendSummary RunSelections(int season, DateTime date,
+            List<Data.Player> players, Func<string, string> conferenceOf)
+        {
+            if (CurrentWeekend != null && CurrentWeekend.Season == season) return CurrentWeekend;
+            if (players == null || conferenceOf == null) return null;
+
+            var eligible = players
+                .Where(p => p?.CurrentSeasonStats != null && p.CurrentSeasonStats.GamesPlayed >= 15)
+                .ToList();
+            if (eligible.Count < 24)
+            {
+                Debug.LogWarning($"[AllStarManager] Only {eligible.Count} eligible players — skipping selections");
+                return null;
+            }
+
+            currentSeason = season;
+            votingOpen = true;
+            allVotes.Clear();
+            votingReturns.Clear();
+
+            foreach (var p in eligible)
+            {
+                string conf = conferenceOf(p.TeamId) ?? "";
+                allVotes.Add(new AllStarVote
+                {
+                    PlayerId = p.PlayerId,
+                    PlayerName = p.FullName,
+                    TeamId = p.TeamId,
+                    Position = p.Position == Data.Position.PointGuard || p.Position == Data.Position.ShootingGuard
+                        ? AllStarPosition.Backcourt
+                        : AllStarPosition.Frontcourt,
+                    Conference = conf.StartsWith("East") ? "East" : "West"
+                });
+            }
+
+            var snapshots = eligible
+                .Select(p => PlayerSeasonStats.FromSeasonStats(p.PlayerId, p.CurrentSeasonStats))
+                .ToList();
+            var popularity = eligible.ToDictionary(p => p.PlayerId,
+                p => Mathf.Clamp01(p.OverallRating / 100f));
+            var advanced = eligible.ToDictionary(p => p.PlayerId,
+                p => p.CurrentSeasonStats.PPG);
+
+            SimulateFanVoting(snapshots, popularity);
+            SimulatePlayerVoting(snapshots);
+            SimulateMediaVoting(snapshots, advanced);
+
+            var summary = FinalizeStarters();
+            SelectReserves(summary);
+            CurrentWeekend = summary;
+            if (historicalWeekends.All(w => w.Season != season))
+                historicalWeekends.Add(summary);
+
+            // Persist the selections — they feed the season's award record
+            AwardsStore.Instance?.RecordAllStars(season,
+                summary.EastStarters.Concat(summary.WestStarters)
+                    .Concat(summary.EastReserves).Concat(summary.WestReserves)
+                    .Select(v => v.PlayerId));
+
+            AnnounceSelections(summary);
+            return summary;
+        }
+
+        private void AnnounceSelections(AllStarWeekendSummary summary)
+        {
+            var inbox = InboxService.Instance;
+            if (inbox == null || summary == null) return;
+
+            string Names(IEnumerable<AllStarVote> votes) =>
+                string.Join(", ", votes.Select(v => v.PlayerName));
+
+            inbox.Publish(InboxMessageType.League, "League Office",
+                $"{summary.Season} All-Star rosters announced",
+                $"EAST starters: {Names(summary.EastStarters)}\n" +
+                $"WEST starters: {Names(summary.WestStarters)}\n" +
+                $"East reserves: {Names(summary.EastReserves)}\n" +
+                $"West reserves: {Names(summary.WestReserves)}");
+
+            // Player-team selections get their own high-priority message
+            string pid = GameManager.Instance?.PlayerTeamId;
+            if (string.IsNullOrEmpty(pid)) return;
+
+            var ours = summary.EastStarters.Concat(summary.WestStarters)
+                .Concat(summary.EastReserves).Concat(summary.WestReserves)
+                .Where(v => v.TeamId == pid)
+                .ToList();
+            if (ours.Count > 0)
+            {
+                inbox.Publish(InboxMessageType.League, "League Office",
+                    ours.Count == 1
+                        ? $"{ours[0].PlayerName} named an All-Star!"
+                        : $"{ours.Count} of your players named All-Stars!",
+                    Names(ours),
+                    highPriority: true,
+                    deepLinkPanelId: "Roster",
+                    deepLinkPayload: ours[0].PlayerId);
+            }
         }
 
         [Header("Current Season Data")]

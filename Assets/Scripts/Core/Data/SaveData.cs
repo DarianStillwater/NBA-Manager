@@ -66,7 +66,8 @@ namespace NBAHeadCoach.Core.Data
         public List<TransactionRecord> Transactions = new List<TransactionRecord>();
 
         [Header("Awards")]
-        public Dictionary<int, SeasonAwards> AwardsHistory = new Dictionary<int, SeasonAwards>();
+        public Dictionary<int, SeasonAwards> AwardsHistory = new Dictionary<int, SeasonAwards>(); // dead: Dictionary never serializes under JsonUtility
+        public List<SeasonAwards> AwardsHistoryList = new List<SeasonAwards>();
 
         [Header("Former Player Careers")]
         public FormerPlayerCareerSaveData FormerPlayerCareers;
@@ -732,13 +733,18 @@ namespace NBAHeadCoach.Core.Data
         public string RoyId;
         public string SixthManId;
         public string MipId;
-        public string CotyId;
+        public string CotyId; // team id of the Coach of the Year's team
         public List<string> AllNbaFirst = new List<string>();
         public List<string> AllNbaSecond = new List<string>();
         public List<string> AllNbaThird = new List<string>();
         public List<string> AllDefenseFirst = new List<string>();
         public List<string> AllDefenseSecond = new List<string>();
         public List<string> AllStars = new List<string>();
+
+        // Season finale
+        public string FinalsMvpId;
+        public string ChampionTeamId;
+        public string RunnerUpTeamId;
     }
 
     /// <summary>

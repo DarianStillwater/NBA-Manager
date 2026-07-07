@@ -60,6 +60,7 @@ namespace NBAHeadCoach.Tests
             RunTest<LegacySaveLoadTest>("Legacy Save Load");
             RunTest<InboxServiceTest>("Inbox Service");
             RunTest<PlayoffFlowTest>("Playoff Flow");
+            RunTest<AwardsAllStarTest>("Awards & All-Star");
 
             // Summary
             Debug.Log("\n" + new string('=', 70));

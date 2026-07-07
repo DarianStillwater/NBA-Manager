@@ -85,6 +85,8 @@ namespace NBAHeadCoach.Core
         public TransactionLog Transactions => _transactionLog;
         private InboxService _inboxService;
         public InboxService Inbox => _inboxService;
+        private AwardsStore _awardsStore;
+        public AwardsStore Awards => _awardsStore;
         private AllStarManager _allStarManager;
         private PersonnelManager _personnelManager;
         public PersonnelManager PersonnelManager => _personnelManager;
@@ -280,6 +282,7 @@ namespace NBAHeadCoach.Core
             _developmentManager = new PlayerDevelopmentManager();
             _transactionLog = new TransactionLog();
             _inboxService = new InboxService();
+            _awardsStore = new AwardsStore();
 
             // Initialize Trade & AI Systems
             _draftPickRegistry = new DraftPickRegistry();
@@ -312,6 +315,12 @@ namespace NBAHeadCoach.Core
             if (SeasonController != null)
             {
                 SeasonController.OnPhaseChanged += OnSeasonPhaseChangedHandler;
+            }
+
+            // Champion crowned -> vote and announce the season's awards
+            if (_playoffManager != null)
+            {
+                _playoffManager.OnNBAChampion += OnChampionCrownedHandler;
             }
 
             RegisterSystems();
@@ -351,9 +360,10 @@ namespace NBAHeadCoach.Core
             Systems.Register(_draftPickRegistry);
             Systems.Register(_transactionLog);
             Systems.Register(_inboxService);
+            Systems.Register(_awardsStore);
 
-            // Phase rails: no behavior yet — Phase 1 (playoffs/all-star) and Phase 2
-            // (offseason) hang their orchestration from these listeners.
+            // Phase rails: OffseasonManager stays a stub until Phase 2; AllStarManager
+            // runs the All-Star selections when the break begins.
             Systems.Register(_offseasonManager);
             Systems.Register(_allStarManager);
         }
@@ -1154,6 +1164,55 @@ namespace NBAHeadCoach.Core
         /// <summary>
         /// Handle trade execution - check if captain was traded away.
         /// </summary>
+        /// <summary>
+        /// Season finale: the champion is crowned, so the season's awards are voted
+        /// on regular-season stats, recorded, and announced.
+        /// </summary>
+        private void OnChampionCrownedHandler(string championId, string runnerUpId)
+        {
+            try
+            {
+                var players = PlayerDatabase?.GetAllPlayers();
+                if (players == null || _allTeams == null || _allTeams.Count == 0) return;
+
+                var teams = _allTeams.Where(t => t != null).ToDictionary(t => t.TeamId, t => t);
+                var results = AwardManager.VoteSeasonAwards(_currentSeason, players, teams);
+                string cotyTeamId = AwardManager.VoteCoachOfYear(_currentSeason, teams);
+                var champTeam = GetTeam(championId);
+                var finalsMvp = AwardManager.VoteFinalsMVP(_currentSeason, champTeam?.Roster, championId);
+
+                _awardsStore?.RecordSeasonAwards(_currentSeason, results, cotyTeamId,
+                    finalsMvp?.PlayerId, championId, runnerUpId);
+
+                if (_inboxService != null)
+                {
+                    if (finalsMvp != null)
+                        _inboxService.Publish(InboxMessageType.League, "League Office",
+                            $"{finalsMvp.FullName} named Finals MVP",
+                            $"{finalsMvp.FullName} of the {champTeam?.Name} takes home the Finals MVP trophy.");
+
+                    if (results?.MVP != null)
+                        _inboxService.Publish(InboxMessageType.League, "League Office",
+                            $"{results.MVP.FullName} wins MVP",
+                            $"{results.MVP.FullName} is the {_currentSeason} Most Valuable Player " +
+                            $"({results.MVP.CurrentSeasonStats?.PPG:0.0} PPG).",
+                            highPriority: results.MVP.TeamId == _playerTeamId);
+
+                    string Line(string label, Player p) =>
+                        p != null ? $"{label}: {p.FullName}\n" : "";
+                    _inboxService.Publish(InboxMessageType.League, "League Office",
+                        $"{_currentSeason} season awards announced",
+                        Line("DPOY", results?.DPOY) + Line("Rookie of the Year", results?.ROTY) +
+                        Line("Sixth Man", results?.SixthMan) + Line("Most Improved", results?.MIP) +
+                        $"Coach of the Year: {GetTeam(cotyTeamId)?.Name ?? cotyTeamId}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[GameManager] Awards ceremony failed: {ex}");
+            }
+        }
+
         private void OnTradeExecutedHandler(TradeProposal proposal)
         {
             // Generate trade announcement
