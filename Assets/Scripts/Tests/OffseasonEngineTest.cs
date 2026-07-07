@@ -23,6 +23,7 @@ namespace NBAHeadCoach.Tests
             TestFreeAgencySigning();
             TestLottery();
             TestFullDraft();
+            TestManualPickAndPrune();
             TestRetirementEvaluation();
 
             return (_passed, _failed);
@@ -144,6 +145,35 @@ namespace NBAHeadCoach.Tests
             float topAvg = (float)results.Take(10).Average(r => r.DraftedPlayer.OverallRating);
             float botAvg = (float)results.Skip(50).Average(r => r.DraftedPlayer.OverallRating);
             AssertGreaterThan(topAvg, botAvg, "Draft order reflects talent");
+        }
+
+        private void TestManualPickAndPrune()
+        {
+            var cap = new SalaryCapManager();
+            var db = new PlayerDatabase();
+            var draft = new DraftSystem(cap, db, seed: 7);
+            var prospects = draft.GenerateDraftClass(2027);
+            var teamIds = Enumerable.Range(1, 30).Select(i => $"M{i:00}").ToList();
+            draft.SetDraftOrder(teamIds, teamIds);
+
+            // The user-pick primitive: pick a SPECIFIC prospect, not best-available
+            var target = prospects.OrderBy(p => p.MockDraftPosition).Skip(4).First();
+            var selection = draft.MakePick(1, teamIds[0], target.ProspectId);
+            Assert(selection?.DraftedPlayer != null, "Manual pick drafts the chosen prospect");
+            AssertEqual(target.ProspectId, selection.Prospect.ProspectId, "Chosen prospect selected");
+            Assert(draft.GetProspect(target.ProspectId) == null, "Chosen prospect leaves the pool");
+
+            // AI continues around the manual pick without re-drafting him
+            var next = draft.AISelectPick(2, teamIds[1]);
+            Assert(next?.Prospect?.ProspectId != target.ProspectId, "AI cannot re-draft a taken prospect");
+
+            // Mid-draft load reconciliation: prune prospects whose player already exists
+            var draftB = new DraftSystem(new SalaryCapManager(), db, seed: 7);
+            draftB.GenerateDraftClass(2027);
+            int before = draftB.GetProspects().Count;
+            int pruned = draftB.RemoveProspects(p => db.GetPlayer($"draft_2027_{p.ProspectId}") != null);
+            AssertEqual(2, pruned, "Regenerated class prunes the two already-drafted prospects");
+            AssertEqual(before - 2, draftB.GetProspects().Count, "Pool shrinks by the pruned count");
         }
 
         private void TestRetirementEvaluation()

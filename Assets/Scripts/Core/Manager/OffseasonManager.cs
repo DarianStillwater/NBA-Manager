@@ -270,6 +270,27 @@ namespace NBAHeadCoach.Core.Manager
         private bool _campDone;
         private System.Random _rng = new System.Random();
 
+        // Draft-night state (interactive: the night halts while you're on the clock)
+        private DraftSystem _draft;
+        private bool _draftStarted;
+        private bool _onTheClock;
+        private int _nextPick = 1;
+        private DateTime _draftDay;
+        private List<string> _draftOrder1 = new List<string>();
+        private List<string> _draftOrder2 = new List<string>();
+        private readonly List<string> _playerPickResults = new List<string>();
+
+        // ==================== PUBLIC STATE (Front Office panel) ====================
+
+        public bool EngineActive => _engineActive;
+        public int OffseasonCalendarYear => _calendarYear;
+        public bool DraftActive => _engineActive && _draftStarted && !_draftDone;
+        public bool PlayerOnClock => DraftActive && _onTheClock;
+        public int NextPickNumber => _nextPick;
+        public DraftSystem DraftBoard => _draft;
+        public bool FreeAgencySigningOpen => _engineActive && _freeAgencyOpen && !_campDone;
+        public bool ReSignWindowOpen => _engineActive && _postSeasonDone && !_campDone;
+
         /// <summary>
         /// Start the real offseason. Called by GameManager right after the champion
         /// is crowned and the season's awards are voted.
@@ -303,7 +324,14 @@ namespace NBAHeadCoach.Core.Manager
                 if (!_postSeasonDone) { RunPostSeason(gm); _postSeasonDone = true; }
 
                 if (!_draftDone && date >= new DateTime(_calendarYear, 6, 22))
-                { RunDraft(gm); _draftDone = true; }
+                {
+                    if (!_draftStarted) StartDraftNight(gm, date);
+                    // Advancing past draft night with a pick pending = the clock ran
+                    // out; the war room picks best-available and the night resumes.
+                    if (_onTheClock && date.Date > _draftDay.Date)
+                        AutoPickPending(gm);
+                    if (!_onTheClock) ContinueDraft(gm);
+                }
 
                 if (_draftDone && !_freeAgencyOpen && date >= new DateTime(_calendarYear, 7, 6))
                 { _freeAgencyOpen = true; OpenFreeAgency(gm); }
@@ -459,16 +487,16 @@ namespace NBAHeadCoach.Core.Manager
         }
 
         /// <summary>
-        /// Draft night, auto-resolved: lottery for the 14 non-playoff teams, pick
-        /// ownership from the registry, a fresh 120-prospect class, and 60 AI picks.
+        /// Draft night: lottery for the 14 non-playoff teams, pick ownership from
+        /// the registry, a fresh 120-prospect class. AI teams pick automatically;
+        /// the night HALTS when your pick comes up — pick from the Front Office
+        /// panel, or advance the day and the war room takes best-available.
         /// </summary>
-        private void RunDraft(GameManager gm)
+        private void StartDraftNight(GameManager gm, DateTime date)
         {
-            var draft = gm.DraftSystem;
-            if (draft == null) return;
-
-            draft.SetPlayerDatabase(gm.PlayerDatabase);
-            draft.GenerateDraftClass(_calendarYear);
+            _draft = new DraftSystem(gm.SalaryCapManager, gm.PlayerDatabase,
+                seed: _seasonLabel * 17 + 3);
+            _draft.GenerateDraftClass(_calendarYear);
 
             // Draft order: worst record first; lottery shuffles the 14 non-playoff teams
             var bracket = PlayoffManager.Instance?.CurrentBracket;
@@ -489,7 +517,7 @@ namespace NBAHeadCoach.Core.Manager
             List<string> slotOrder;
             if (lotteryTeams.Count == 14)
             {
-                var lottery = draft.RunLottery(lotteryTeams, _rng);
+                var lottery = _draft.RunLottery(lotteryTeams, _rng);
                 slotOrder = lottery.Select(r => r.TeamId).Concat(playoffByRecord).ToList();
             }
             else
@@ -503,46 +531,202 @@ namespace NBAHeadCoach.Core.Manager
                     gm.DraftPickRegistry?.GetPick(original, _calendarYear, round)?.CurrentOwnerId ?? original)
                 .ToList();
 
-            var firstRound = OwnersFor(1);
-            var secondRound = OwnersFor(2);
-            draft.SetDraftOrder(firstRound, secondRound);
+            _draftOrder1 = OwnersFor(1);
+            _draftOrder2 = OwnersFor(2);
+            _draft.SetDraftOrder(_draftOrder1, _draftOrder2);
 
+            _draftStarted = true;
+            _draftDay = date;
+            _nextPick = 1;
+            _onTheClock = false;
+            _playerPickResults.Clear();
+
+            int playerPickCount = _draftOrder1.Concat(_draftOrder2)
+                .Count(id => id == gm.PlayerTeamId);
+            InboxService.Instance?.Publish(InboxMessageType.League, "League Office",
+                $"{_calendarYear} Draft night is HERE",
+                playerPickCount > 0
+                    ? $"You hold {playerPickCount} pick(s) tonight. The board is live in the Front Office."
+                    : "You hold no picks this year — watch the board in the Front Office.",
+                highPriority: playerPickCount > 0,
+                deepLinkPanelId: "FrontOffice");
+        }
+
+        /// <summary>Run AI picks until the player is on the clock or the draft ends.</summary>
+        private void ContinueDraft(GameManager gm)
+        {
+            if (_draft == null || _draftDone) return;
             var inbox = InboxService.Instance;
             string pid = gm.PlayerTeamId;
-            var playerPicks = new List<string>();
 
-            for (int pick = 1; pick <= 60; pick++)
+            while (_nextPick <= 60)
             {
-                string teamId = draft.GetTeamAtPick(pick);
-                if (string.IsNullOrEmpty(teamId)) continue;
+                string teamId = _draft.GetTeamAtPick(_nextPick);
+                if (string.IsNullOrEmpty(teamId)) { _nextPick++; continue; }
 
-                var selection = draft.AISelectPick(pick, teamId);
-                var drafted = selection?.DraftedPlayer;
-                if (drafted == null) continue;
-
-                // DraftSystem adds to a throwaway roster list — the ID list is the authority
-                var team = gm.GetTeam(teamId);
-                if (team != null && !team.RosterPlayerIds.Contains(drafted.PlayerId))
-                    team.RosterPlayerIds.Add(drafted.PlayerId);
-
-                if (teamId == pid)
-                    playerPicks.Add($"#{pick}: {drafted.FullName} ({drafted.Position})");
-                else if (pick <= 5)
+                if (teamId == pid && !string.IsNullOrEmpty(pid))
+                {
+                    _onTheClock = true;
                     inbox?.Publish(InboxMessageType.League, "League Office",
-                        $"Draft: {gm.GetTeam(teamId)?.Name ?? teamId} select {drafted.FullName} at #{pick}",
-                        $"{drafted.FullName} goes #{pick} overall.");
+                        $"You're ON THE CLOCK at pick #{_nextPick}",
+                        "Make your selection in the Front Office. Advancing the day lets the war room pick best-available.",
+                        highPriority: true,
+                        deepLinkPanelId: "FrontOffice");
+                    return;
+                }
+
+                DoAIPick(gm, _nextPick, teamId);
+                _nextPick++;
             }
 
+            FinishDraft(gm);
+        }
+
+        /// <summary>Your selection from the Front Office board while on the clock.</summary>
+        public bool SubmitPlayerPick(GameManager gm, string prospectId)
+        {
+            if (!PlayerOnClock || gm == null || _draft == null) return false;
+
+            var selection = _draft.MakePick(_nextPick, gm.PlayerTeamId, prospectId);
+            var drafted = selection?.DraftedPlayer;
+            if (drafted == null) return false;
+
+            SyncDraftedPlayer(gm, gm.PlayerTeamId, drafted);
+            _playerPickResults.Add($"#{_nextPick}: {drafted.FullName} ({drafted.Position})");
+            InboxService.Instance?.Publish(InboxMessageType.League, "League Office",
+                $"With pick #{_nextPick}, you select {drafted.FullName}!",
+                $"{drafted.FullName} ({drafted.Position}) joins the franchise on a rookie-scale deal.",
+                highPriority: true,
+                deepLinkPanelId: "Roster",
+                deepLinkPayload: drafted.PlayerId);
+
+            _nextPick++;
+            _onTheClock = false;
+            ContinueDraft(gm);
+            return true;
+        }
+
+        private void AutoPickPending(GameManager gm)
+        {
+            if (!_onTheClock || _draft == null) return;
+            var selection = _draft.AISelectPick(_nextPick, gm.PlayerTeamId);
+            var drafted = selection?.DraftedPlayer;
+            if (drafted != null)
+            {
+                SyncDraftedPlayer(gm, gm.PlayerTeamId, drafted);
+                _playerPickResults.Add($"#{_nextPick}: {drafted.FullName} ({drafted.Position}) [auto]");
+                InboxService.Instance?.Publish(InboxMessageType.League, "War Room",
+                    $"Clock expired — {drafted.FullName} selected at #{_nextPick}",
+                    "The war room went best-available when the clock ran out.",
+                    highPriority: true);
+            }
+            _nextPick++;
+            _onTheClock = false;
+        }
+
+        private void DoAIPick(GameManager gm, int pick, string teamId)
+        {
+            var selection = _draft.AISelectPick(pick, teamId);
+            var drafted = selection?.DraftedPlayer;
+            if (drafted == null) return;
+
+            SyncDraftedPlayer(gm, teamId, drafted);
+
+            if (pick <= 5)
+                InboxService.Instance?.Publish(InboxMessageType.League, "League Office",
+                    $"Draft: {gm.GetTeam(teamId)?.Name ?? teamId} select {drafted.FullName} at #{pick}",
+                    $"{drafted.FullName} goes #{pick} overall.");
+        }
+
+        private static void SyncDraftedPlayer(GameManager gm, string teamId, Data.Player drafted)
+        {
+            // DraftSystem adds to a throwaway roster list — the ID list is the authority
+            var team = gm.GetTeam(teamId);
+            if (team != null && !team.RosterPlayerIds.Contains(drafted.PlayerId))
+                team.RosterPlayerIds.Add(drafted.PlayerId);
+        }
+
+        private void FinishDraft(GameManager gm)
+        {
+            _draftDone = true;
+            _onTheClock = false;
             gm.DraftPickRegistry?.ProcessDraftCompletion(_calendarYear);
 
-            inbox?.Publish(InboxMessageType.League, "League Office",
+            InboxService.Instance?.Publish(InboxMessageType.League, "League Office",
                 $"{_calendarYear} NBA Draft complete",
-                playerPicks.Count > 0
-                    ? $"Your selections:\n{string.Join("\n", playerPicks)}"
+                _playerPickResults.Count > 0
+                    ? $"Your selections:\n{string.Join("\n", _playerPickResults)}"
                     : "Your team made no selections this year.",
-                highPriority: playerPicks.Count > 0);
+                highPriority: _playerPickResults.Count > 0);
 
             Debug.Log($"[Offseason] Draft complete ({_calendarYear})");
+        }
+
+        // ==================== PLAYER-DRIVEN FREE AGENCY ====================
+
+        /// <summary>Asking price for a free agent (shown on the Front Office market).</summary>
+        public long EstimateMarketSalary(Data.Player p) => MarketSalary(p);
+
+        /// <summary>
+        /// Sign a free agent to YOUR team from the Front Office panel. Own free
+        /// agents can re-sign from June (Bird rights, before the market opens);
+        /// everyone else once free agency opens July 6. Tries Bird rights, then cap
+        /// space, then a minimum deal.
+        /// </summary>
+        public bool SignFreeAgentToPlayerTeam(GameManager gm, string playerId, int years, out string failReason)
+        {
+            failReason = "";
+            var fam = gm?.FreeAgents;
+            var player = gm?.PlayerDatabase?.GetPlayer(playerId);
+            var team = gm?.GetPlayerTeam();
+            if (fam == null || player == null || team == null) { failReason = "Unavailable."; return false; }
+
+            var fa = fam.GetFreeAgents().FirstOrDefault(f => f.PlayerId == playerId);
+            if (fa == null) { failReason = "No longer a free agent."; return false; }
+
+            bool ownFreeAgent = fa.PreviousTeamId == team.TeamId;
+            if (!ownFreeAgent && !FreeAgencySigningOpen)
+            { failReason = "The market opens July 6 — only your own free agents can re-sign now."; return false; }
+            if (team.RosterPlayerIds.Count >= 15)
+            { failReason = "Roster is full (15)."; return false; }
+
+            long ask = MarketSalary(player);
+            years = Mathf.Clamp(years, 1, 4);
+
+            var methods = ownFreeAgent
+                ? new[] { SigningMethod.BirdRights, SigningMethod.CapSpace, SigningMethod.MinimumSalary }
+                : new[] { SigningMethod.CapSpace, SigningMethod.MinimumSalary };
+
+            foreach (var method in methods)
+            {
+                var offer = new SigningOffer
+                {
+                    AnnualSalary = method == SigningMethod.MinimumSalary ? 1_200_000L : ask,
+                    Years = years,
+                    Method = method,
+                    PlayerYearsExperience = player.YearsPro
+                };
+
+                var check = fam.CanSign(team.TeamId, playerId, offer);
+                if (!check.IsValid) { failReason = check.Reason; continue; }
+
+                if (fam.ExecuteSigning(team.TeamId, playerId, offer))
+                {
+                    if (!team.RosterPlayerIds.Contains(playerId))
+                        team.RosterPlayerIds.Add(playerId);
+
+                    InboxService.Instance?.Publish(InboxMessageType.League, "League Office",
+                        ownFreeAgent
+                            ? $"{player.FullName} re-signs with {team.Name}"
+                            : $"{player.FullName} signs with {team.Name}",
+                        $"{years} years, ${offer.AnnualSalary * years / 1_000_000f:0.0}M total.",
+                        highPriority: true);
+                    return true;
+                }
+            }
+
+            if (string.IsNullOrEmpty(failReason)) failReason = "Signing failed validation.";
+            return false;
         }
 
         private void OpenFreeAgency(GameManager gm)
@@ -761,6 +945,12 @@ namespace NBAHeadCoach.Core.Manager
                 FreeAgencyOpen = _freeAgencyOpen,
                 SummerDone = _summerDone,
                 CampDone = _campDone,
+                DraftStarted = _draftStarted,
+                OnTheClock = _onTheClock,
+                NextPick = _nextPick,
+                DraftDayStr = _draftDay.Year > 1 ? _draftDay.ToString("o") : "",
+                DraftOrder1 = new List<string>(_draftOrder1),
+                DraftOrder2 = new List<string>(_draftOrder2),
                 FreeAgentPool = GameManager.Instance?.FreeAgents?.GetFreeAgents()?
                     .Select(fa => new Data.FreeAgentRecord
                     {
@@ -790,12 +980,37 @@ namespace NBAHeadCoach.Core.Manager
             _campDone = s.CampDone;
             _rng = new System.Random(_seasonLabel * 31 + 7);
 
-            var fam = GameManager.Instance?.FreeAgents;
+            var gm = GameManager.Instance;
+
+            var fam = gm?.FreeAgents;
             if (fam != null && s.FreeAgentPool != null)
             {
                 foreach (var record in s.FreeAgentPool)
                     fam.AddFreeAgent(record.PlayerId, FreeAgentType.Unrestricted,
                         record.PreviousTeamId, record.ConsecutiveSeasons);
+            }
+
+            // Mid-draft-night load: regenerate the class from the deterministic seed,
+            // prune prospects already drafted before the save, restore the order.
+            _draftStarted = s.DraftStarted && !s.DraftDone;
+            _onTheClock = s.OnTheClock;
+            _nextPick = Math.Max(1, s.NextPick);
+            _draftOrder1 = s.DraftOrder1 ?? new List<string>();
+            _draftOrder2 = s.DraftOrder2 ?? new List<string>();
+            if (!string.IsNullOrEmpty(s.DraftDayStr) &&
+                DateTime.TryParse(s.DraftDayStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out var dd))
+                _draftDay = dd;
+
+            if (_draftStarted && gm != null)
+            {
+                _draft = new DraftSystem(gm.SalaryCapManager, gm.PlayerDatabase,
+                    seed: _seasonLabel * 17 + 3);
+                _draft.GenerateDraftClass(_calendarYear);
+                int pruned = _draft.RemoveProspects(p =>
+                    gm.PlayerDatabase.GetPlayer($"draft_{_calendarYear}_{p.ProspectId}") != null);
+                if (_draftOrder1.Count > 0)
+                    _draft.SetDraftOrder(_draftOrder1, _draftOrder2);
+                Debug.Log($"[Offseason] Mid-draft load: resumed at pick {_nextPick}, pruned {pruned} drafted prospects");
             }
         }
 

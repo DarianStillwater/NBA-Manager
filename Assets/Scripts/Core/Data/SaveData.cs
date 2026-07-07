@@ -766,6 +766,15 @@ namespace NBAHeadCoach.Core.Data
         public bool SummerDone;
         public bool CampDone;
         public List<FreeAgentRecord> FreeAgentPool = new List<FreeAgentRecord>();
+
+        // Mid-draft-night state (the class regenerates deterministically from the
+        // seed; already-drafted prospects are pruned by checking the player DB)
+        public bool DraftStarted;
+        public bool OnTheClock;
+        public int NextPick = 1;
+        public string DraftDayStr;
+        public List<string> DraftOrder1 = new List<string>();
+        public List<string> DraftOrder2 = new List<string>();
     }
 
     [Serializable]

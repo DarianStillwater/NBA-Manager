@@ -61,6 +61,13 @@ namespace NBAHeadCoach.Core.Manager
         }
 
         public List<DraftProspect> GetProspects() => _prospects.ToList();
+
+        /// <summary>
+        /// Prune prospects from the pool (mid-draft load reconciliation: prospects
+        /// whose drafted player already exists must not be draftable again).
+        /// </summary>
+        public int RemoveProspects(Func<DraftProspect, bool> predicate) =>
+            _prospects.RemoveAll(p => predicate(p));
         
         public DraftProspect GetProspect(string prospectId) => 
             _prospects.FirstOrDefault(p => p.ProspectId == prospectId);
