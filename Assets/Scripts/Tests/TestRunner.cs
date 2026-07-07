@@ -54,6 +54,7 @@ namespace NBAHeadCoach.Tests
             RunTest<PlaybackDeciderTest>("Playback Decider");
             RunTest<ChoreographyTest>("Possession Choreography");
             RunTest<RegistryOrderTest>("System Registry Order");
+            RunTest<GameCompletionParityTest>("Game Completion Parity");
 
             // Summary
             Debug.Log("\n" + new string('=', 70));

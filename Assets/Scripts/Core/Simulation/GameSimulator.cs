@@ -112,7 +112,8 @@ namespace NBAHeadCoach.Core.Simulation
 
         /// <summary>
         /// Creates GameLog entries for all players and adds them to their career stats.
-        /// Call this after SimulateGame to record the game in player histories.
+        /// Delegating wrapper over GameStatRecorder (the shared implementation all sim
+        /// paths use) — kept for existing call sites and tests.
         /// </summary>
         public void RecordGameToPlayerStats(
             GameResult result,
@@ -121,117 +122,8 @@ namespace NBAHeadCoach.Core.Simulation
             bool isPlayoff = false,
             int playoffRound = 0)
         {
-            // Process home team players
-            RecordTeamGameLogs(
-                result.BoxScore.HomeTeamId,
-                result.BoxScore.AwayTeamId,
-                result,
-                gameId,
-                gameDate,
-                isHome: true,
-                isPlayoff,
-                playoffRound
-            );
-
-            // Process away team players
-            RecordTeamGameLogs(
-                result.BoxScore.AwayTeamId,
-                result.BoxScore.HomeTeamId,
-                result,
-                gameId,
-                gameDate,
-                isHome: false,
-                isPlayoff,
-                playoffRound
-            );
-        }
-
-        private void RecordTeamGameLogs(
-            string teamId,
-            string opponentTeamId,
-            GameResult result,
-            string gameId,
-            DateTime gameDate,
-            bool isHome,
-            bool isPlayoff,
-            int playoffRound)
-        {
-            int teamScore = isHome ? result.HomeScore : result.AwayScore;
-            int opponentScore = isHome ? result.AwayScore : result.HomeScore;
-            bool wasOvertime = result.WentToOvertime;
-            int overtimePeriods = result.Quarters - 4;
-
-            // Get the player stats list for this team
-            var playerStatsList = isHome
-                ? result.BoxScore.HomePlayerStats
-                : result.BoxScore.AwayPlayerStats;
-
-            // Also check the dictionary for any players not in the lists
-            var allPlayerIds = new HashSet<string>();
-            foreach (var ps in playerStatsList)
-            {
-                allPlayerIds.Add(ps.PlayerId);
-            }
-            foreach (var kvp in result.BoxScore.PlayerStats)
-            {
-                allPlayerIds.Add(kvp.Key);
-            }
-
-            // Get active lineup for this team to determine starters
-            var team = isHome ? _homeTeam : _awayTeam;
-            var starterIds = team?.StartingLineupIds ?? Array.Empty<string>();
-
-            foreach (var playerId in allPlayerIds)
-            {
-                var player = _playerDatabase?.GetPlayer(playerId);
-                if (player == null || player.TeamId != teamId) continue;
-
-                var stats = result.BoxScore.PlayerStats.TryGetValue(playerId, out var ps)
-                    ? ps
-                    : playerStatsList.FirstOrDefault(p => p.PlayerId == playerId);
-
-                if (stats == null) continue;
-
-                // Skip players who didn't play (0 minutes)
-                if (stats.Minutes <= 0) continue;
-
-                bool started = starterIds.Contains(playerId);
-
-                var gameLog = GameLog.Create(
-                    gameId: gameId,
-                    date: gameDate,
-                    opponentTeamId: opponentTeamId,
-                    isHome: isHome,
-                    isPlayoff: isPlayoff,
-                    playoffRound: playoffRound,
-                    minutes: stats.Minutes,
-                    started: started,
-                    points: stats.Points,
-                    fgm: stats.FieldGoalsMade,
-                    fga: stats.FieldGoalAttempts,
-                    threePm: stats.ThreePointMade,
-                    threePa: stats.ThreePointAttempts,
-                    ftm: stats.FreeThrowsMade,
-                    fta: stats.FreeThrowAttempts,
-                    orb: stats.OffensiveRebounds,
-                    drb: stats.DefensiveRebounds,
-                    assists: stats.Assists,
-                    steals: stats.Steals,
-                    blocks: stats.Blocks,
-                    turnovers: stats.Turnovers,
-                    fouls: stats.PersonalFouls,
-                    plusMinus: stats.PlusMinus,
-                    teamScore: teamScore,
-                    opponentScore: opponentScore,
-                    wasOvertime: wasOvertime,
-                    overtimePeriods: overtimePeriods > 0 ? overtimePeriods : 0
-                );
-
-                // Add to player's current season stats (auto-create if missing)
-                if (player.CurrentSeasonStats == null)
-                    player.StartNewSeason(System.DateTime.Now.Year, player.TeamId);
-                player.CurrentSeasonStats?.AddGameFromLog(gameLog);
-            }
+            GameStatRecorder.Record(result, gameId, gameDate, _playerDatabase,
+                _homeTeam, _awayTeam, isPlayoff, playoffRound);
         }
 
         /// <summary>

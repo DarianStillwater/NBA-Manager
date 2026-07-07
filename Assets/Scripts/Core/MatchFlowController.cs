@@ -273,10 +273,8 @@ namespace NBAHeadCoach.Core
         {
             _currentPhase = MatchPhase.PostGame;
 
-            // Record the result in season controller
-            int homeScore = result.HomeScore;
-            int awayScore = result.AwayScore;
-            _gameManager.SeasonController.RecordGameResult(_currentGame, homeScore, awayScore);
+            // AutonomousGameResult carries no box score — standings only.
+            _gameManager.GameCompletion.CompleteScoreOnly(_currentGame, result.HomeScore, result.AwayScore);
 
             // Fire events
             OnAutonomousGameCompleted?.Invoke(result);
@@ -297,28 +295,28 @@ namespace NBAHeadCoach.Core
         {
             _currentPhase = MatchPhase.PostGame;
 
-            // Determine scores based on home/away
             int homeScore = result.HomeScore;
             int awayScore = result.AwayScore;
 
-            // Record the result
-            _gameManager.SeasonController.RecordGameResult(_currentGame, homeScore, awayScore);
-
-            // Update player stats
-            UpdatePlayerStats(result);
+            // All domain effects (season stats, standings, league aggregates, morale)
+            // run through the shared pipeline — identical to auto-sim and quick-sim.
+            _gameManager.GameCompletion.Complete(new Simulation.GameCompletionContext(
+                _currentGame,
+                new Simulation.GameResult
+                {
+                    HomeTeamId = result.HomeTeamId,
+                    AwayTeamId = result.AwayTeamId,
+                    HomeScore = homeScore,
+                    AwayScore = awayScore,
+                    BoxScore = result,
+                    Quarters = 4
+                },
+                Simulation.GameSource.InteractiveMatch,
+                _gameManager.PlayerTeamId,
+                _currentGame?.IsPlayoffGame ?? false));
 
             // Check for injuries
             ProcessInjuries(result);
-
-            // Post-game morale for both teams
-            _gameManager.ProcessPostGameMorale(new Simulation.GameResult
-            {
-                HomeTeamId = result.HomeTeamId,
-                AwayTeamId = result.AwayTeamId,
-                HomeScore = homeScore,
-                AwayScore = awayScore,
-                BoxScore = result
-            }, _currentGame?.IsPlayoffGame ?? false);
 
             // Fire event
             OnMatchCompleted?.Invoke(result);
@@ -392,12 +390,6 @@ namespace NBAHeadCoach.Core
             if (_matchResult == null) return "";
 
             return $"{_matchResult.AwayTeam?.Name} {_matchResult.AwayScore} @ {_matchResult.HomeTeam?.Name} {_matchResult.HomeScore}";
-        }
-
-        private void UpdatePlayerStats(BoxScore result)
-        {
-            // Update career/season stats for all players who played
-            // This would integrate with the player stats system
         }
 
         private void ProcessInjuries(BoxScore result)

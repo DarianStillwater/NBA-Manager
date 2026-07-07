@@ -430,11 +430,9 @@ namespace NBAHeadCoach.UI.GamePanels
                 var awayTeam = isHome ? oppTeam : playerTeam;
                 var simulator = new NBAHeadCoach.Core.Simulation.GameSimulator(gm.PlayerDatabase);
                 var result = simulator.SimulateGame(homeTeam, awayTeam);
-                simulator.RecordGameToPlayerStats(result, gameEvent.EventId, gameEvent.Date);
-                gm?.SeasonController?.RecordGameResult(gameEvent, result.HomeScore, result.AwayScore);
-                gm?.LeagueStats?.AddGameResult(result.BoxScore);
-                gm?.LeagueStats?.Recalculate();
-                gm?.ProcessPostGameMorale(result, gameEvent.IsPlayoffGame);
+                gm?.GameCompletion?.Complete(new NBAHeadCoach.Core.Simulation.GameCompletionContext(
+                    gameEvent, result, NBAHeadCoach.Core.Simulation.GameSource.QuickSim,
+                    gm.PlayerTeamId, gameEvent.IsPlayoffGame));
                 var postGame = new PostGameGamePanel(_shell);
                 postGame.SetResult(result, isHome);
                 _shell?.RegisterPanel("PostGame", postGame);

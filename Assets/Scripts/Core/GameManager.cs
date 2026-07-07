@@ -218,6 +218,12 @@ namespace NBAHeadCoach.Core
         /// </summary>
         public GameSystemRegistry Systems { get; private set; }
 
+        /// <summary>
+        /// THE post-game processor — every sim path (league auto-sim, quick-sim,
+        /// interactive match) records completed games through this pipeline.
+        /// </summary>
+        public Simulation.GameCompletionPipeline GameCompletion { get; private set; }
+
         private void Initialize()
         {
             Debug.Log("[GameManager] Initializing...");
@@ -312,6 +318,8 @@ namespace NBAHeadCoach.Core
         /// </summary>
         private void RegisterSystems()
         {
+            GameCompletion = Simulation.GameCompletionPipeline.CreateDefault(this);
+
             Systems = new GameSystemRegistry();
 
             Systems.Register(SeasonController);

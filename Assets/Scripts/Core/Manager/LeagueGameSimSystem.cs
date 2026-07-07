@@ -58,10 +58,9 @@ namespace NBAHeadCoach.Core.Manager
                 try
                 {
                     var result = simulator.SimulateGame(homeTeam, awayTeam);
-                    simulator.RecordGameToPlayerStats(result, game.EventId, game.Date);
-                    season.RecordGameResult(game, result.HomeScore, result.AwayScore);
-                    _gm.LeagueStats.AddGameResult(result.BoxScore);
-                    _gm.ProcessPostGameMorale(result, game.IsPlayoffGame);
+                    _gm.GameCompletion.Complete(new Simulation.GameCompletionContext(
+                        game, result, Simulation.GameSource.LeagueAutoSim,
+                        _gm.PlayerTeamId, game.IsPlayoffGame), deferAggregates: true);
                 }
                 catch (Exception ex)
                 {
@@ -70,27 +69,12 @@ namespace NBAHeadCoach.Core.Manager
                     int homeScore = UnityEngine.Random.Range(90, 120);
                     int awayScore = UnityEngine.Random.Range(90, 120);
                     if (homeScore == awayScore) homeScore += 2; // no ties
-                    season.RecordGameResult(game, homeScore, awayScore);
+                    _gm.GameCompletion.CompleteScoreOnly(game, homeScore, awayScore);
                 }
             }
 
-            // Recalculate league averages and advanced stats for all players
-            _gm.LeagueStats.Recalculate();
-            RecalculateAllAdvancedStats();
-        }
-
-        /// <summary>
-        /// Recalculate advanced stats for all players who have played games.
-        /// </summary>
-        private void RecalculateAllAdvancedStats()
-        {
-            var allPlayers = _gm.PlayerDatabase?.GetAllPlayers();
-            if (allPlayers == null) return;
-            foreach (var player in allPlayers)
-            {
-                if (player.CurrentSeasonStats != null && player.CurrentSeasonStats.GamesPlayed > 0)
-                    _gm.LeagueStats.CalculatePlayerAdvancedStats(player.CurrentSeasonStats);
-            }
+            // Recalculate league averages and advanced stats once for the whole day
+            _gm.GameCompletion.FinishBatch();
         }
     }
 }
