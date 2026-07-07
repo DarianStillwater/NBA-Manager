@@ -11,8 +11,12 @@ namespace NBAHeadCoach.Core.Manager
     /// Generates incoming trade offers from AI teams to the player's team.
     /// Offers are rare (1-2 per week) and based on FO personality.
     /// </summary>
-    public class AITradeOfferGenerator
+    public class AITradeOfferGenerator : IDailyTickable
     {
+        public string SystemId => "TradeOffers";
+        public int TickOrder => Manager.TickOrder.TradeOffers;
+        public void DailyTick(in DailyTickContext ctx) => ProcessDailyOffers();
+
         private PlayerDatabase _playerDatabase;
         private SalaryCapManager _capManager;
         private PlayerValueCalculator _valueCalculator;

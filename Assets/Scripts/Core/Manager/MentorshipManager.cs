@@ -10,8 +10,18 @@ namespace NBAHeadCoach.Core.Manager
     /// Manages the mentorship system including assignments, organic formations,
     /// session processing, and development bonuses.
     /// </summary>
-    public class MentorshipManager
+    public class MentorshipManager : IDailyTickable
     {
+        public string SystemId => "Mentorship";
+        public int TickOrder => Manager.TickOrder.Mentorship;
+
+        /// <summary>Weekly system: sessions run on Mondays only.</summary>
+        public void DailyTick(in DailyTickContext ctx)
+        {
+            if (ctx.Date.DayOfWeek == DayOfWeek.Monday)
+                ProcessWeeklyUpdate();
+        }
+
         // ==================== SINGLETON ====================
         private static MentorshipManager _instance;
         public static MentorshipManager Instance => _instance;

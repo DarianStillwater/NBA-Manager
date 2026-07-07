@@ -12,8 +12,12 @@ namespace NBAHeadCoach.Core.Manager
     /// Replaces CoachingStaffManager, ScoutingManager, and UnifiedCareerManager.
     /// This is the SINGLE source of truth for all career profiles and team assignments.
     /// </summary>
-    public class PersonnelManager
+    public class PersonnelManager : IDailyTickable
     {
+        public string SystemId => "Personnel";
+        public int TickOrder => Manager.TickOrder.Personnel;
+        public void DailyTick(in DailyTickContext ctx) => ProcessDailyWork(ctx.PlayerTeamId, ctx.Date);
+
         public static PersonnelManager Instance { get; private set; }
 
         // Limits

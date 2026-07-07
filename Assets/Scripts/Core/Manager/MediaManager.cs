@@ -12,8 +12,12 @@ namespace NBAHeadCoach.Core.Manager
     /// Manages media interactions including press conferences, interviews,
     /// and their consequences on morale, reputation, and relationships.
     /// </summary>
-    public class MediaManager
+    public class MediaManager : IDailyTickable
     {
+        public string SystemId => "Media";
+        public int TickOrder => Manager.TickOrder.Media;
+        public void DailyTick(in DailyTickContext ctx) => ProcessDailyReputation();
+
         public static MediaManager Instance { get; private set; }
 
         #region Configuration

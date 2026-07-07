@@ -11,8 +11,12 @@ namespace NBAHeadCoach.Core
     /// <summary>
     /// Controls season progression, calendar advancement, and event triggering
     /// </summary>
-    public class SeasonController
+    public class SeasonController : IDailyTickable
     {
+        public string SystemId => "SeasonCalendar";
+        public int TickOrder => Manager.TickOrder.SeasonCalendar;
+        public void DailyTick(in DailyTickContext ctx) => AdvanceDay();
+
         private GameManager _gameManager;
         private SeasonCalendar _playerCalendar;
         private LeagueCalendar _leagueCalendar;

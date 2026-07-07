@@ -309,32 +309,18 @@ namespace NBAHeadCoach.Core
         /// <summary>
         /// Register every live system with the registry. Runs after ALL constructions —
         /// constructor order above carries event subscriptions and must not change.
-        /// Adapters are migration scaffolding: they wrap the exact calls the old
-        /// hand-written AdvanceDay made, and are replaced by native IDailyTickable
-        /// implementations as each manager adopts the lifecycle contract.
         /// </summary>
         private void RegisterSystems()
         {
             Systems = new GameSystemRegistry();
 
-            Systems.Register(new DailyTickAdapter("SeasonCalendar", TickOrder.SeasonCalendar,
-                _ => SeasonController.AdvanceDay()));
-            Systems.Register(new DailyTickAdapter("LeagueSim", TickOrder.LeagueSim,
-                ctx => SimulateLeagueGamesForDate(ctx.Date)));
-            Systems.Register(new DailyTickAdapter("TradeOffers", TickOrder.TradeOffers,
-                _ => _tradeOfferGenerator?.ProcessDailyOffers()));
-            Systems.Register(new DailyTickAdapter("Personnel", TickOrder.Personnel,
-                ctx => _personnelManager?.ProcessDailyWork(ctx.PlayerTeamId, ctx.Date)));
-            Systems.Register(new DailyTickAdapter("JobMarket", TickOrder.JobMarket,
-                ctx => _jobMarketManager?.AdvanceDay(ctx.Date)));
-            Systems.Register(new DailyTickAdapter("Mentorship", TickOrder.Mentorship,
-                ctx =>
-                {
-                    if (ctx.Date.DayOfWeek == DayOfWeek.Monday)
-                        _mentorshipManager?.ProcessWeeklyUpdate();
-                }));
-            Systems.Register(new DailyTickAdapter("Media", TickOrder.Media,
-                _ => _mediaManager?.ProcessDailyReputation()));
+            Systems.Register(SeasonController);
+            Systems.Register(new LeagueGameSimSystem(this));
+            Systems.Register(_tradeOfferGenerator);
+            Systems.Register(_personnelManager);
+            Systems.Register(_jobMarketManager);
+            Systems.Register(_mentorshipManager);
+            Systems.Register(_mediaManager);
         }
 
         private IEnumerator LoadGameData()
@@ -958,61 +944,6 @@ namespace NBAHeadCoach.Core
         }
 
         /// <summary>
-        /// Simulates all non-player league games scheduled for a given date.
-        /// Uses full game simulation for realistic stats and standings updates.
-        /// </summary>
-        private void SimulateLeagueGamesForDate(DateTime date)
-        {
-            if (SeasonController == null || _allTeams == null || _allTeams.Count == 0) return;
-
-            // Get all games for today from the master schedule (league-wide)
-            var todaysGames = SeasonController.Schedule?
-                .Where(g => g.Date.Date == date.Date && !g.IsCompleted && g.Type == Data.CalendarEventType.Game)
-                .ToList();
-
-            if (todaysGames == null || todaysGames.Count == 0) return;
-
-            string playerTeamId = PlayerTeamId;
-            var simulator = new Simulation.GameSimulator(PlayerDatabase);
-
-            // Only skip the player's NEXT game (the one they'll manually play/sim)
-            var nextPlayerGame = SeasonController.GetNextGame();
-
-            foreach (var game in todaysGames)
-            {
-                // Only skip the specific game the player is about to play
-                if (nextPlayerGame != null && game.EventId == nextPlayerGame.EventId)
-                    continue;
-
-                var homeTeam = GetTeam(game.HomeTeamId);
-                var awayTeam = GetTeam(game.AwayTeamId);
-                if (homeTeam == null || awayTeam == null) continue;
-
-                try
-                {
-                    var result = simulator.SimulateGame(homeTeam, awayTeam);
-                    simulator.RecordGameToPlayerStats(result, game.EventId, game.Date);
-                    SeasonController.RecordGameResult(game, result.HomeScore, result.AwayScore);
-                    LeagueStats.AddGameResult(result.BoxScore);
-                    ProcessPostGameMorale(result, game.IsPlayoffGame);
-                }
-                catch (System.Exception ex)
-                {
-                    // Fallback: random result if simulation fails
-                    Debug.LogWarning($"[GameManager] League sim failed for {game.AwayTeamId}@{game.HomeTeamId}: {ex.Message}");
-                    int homeScore = UnityEngine.Random.Range(90, 120);
-                    int awayScore = UnityEngine.Random.Range(90, 120);
-                    if (homeScore == awayScore) homeScore += 2; // no ties
-                    SeasonController.RecordGameResult(game, homeScore, awayScore);
-                }
-            }
-
-            // Recalculate league averages and advanced stats for all players
-            LeagueStats.Recalculate();
-            RecalculateAllAdvancedStats();
-        }
-
-        /// <summary>
         /// Apply post-game morale processing for both teams of a completed simulated game.
         /// Safe to call from any sim path (league auto-sim, quick sim, interactive match).
         /// </summary>
@@ -1024,20 +955,6 @@ namespace NBAHeadCoach.Core
             var awayTeam = GetTeam(result.AwayTeamId);
             if (homeTeam != null) _moraleChemistryManager.ProcessGameResult(result, homeTeam, isPlayoff);
             if (awayTeam != null) _moraleChemistryManager.ProcessGameResult(result, awayTeam, isPlayoff);
-        }
-
-        /// <summary>
-        /// Recalculate advanced stats for all players who have played games.
-        /// </summary>
-        private void RecalculateAllAdvancedStats()
-        {
-            var allPlayers = PlayerDatabase?.GetAllPlayers();
-            if (allPlayers == null) return;
-            foreach (var player in allPlayers)
-            {
-                if (player.CurrentSeasonStats != null && player.CurrentSeasonStats.GamesPlayed > 0)
-                    LeagueStats.CalculatePlayerAdvancedStats(player.CurrentSeasonStats);
-            }
         }
 
         /// <summary>

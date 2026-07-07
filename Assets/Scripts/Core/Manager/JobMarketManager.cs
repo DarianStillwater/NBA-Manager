@@ -10,8 +10,12 @@ namespace NBAHeadCoach.Core.Manager
     /// Manages job market, firings, and career transitions.
     /// Handles the job search phase when user is fired.
     /// </summary>
-    public class JobMarketManager
+    public class JobMarketManager : IDailyTickable
     {
+        public string SystemId => "JobMarket";
+        public int TickOrder => Manager.TickOrder.JobMarket;
+        public void DailyTick(in DailyTickContext ctx) => AdvanceDay(ctx.Date);
+
         private static JobMarketManager _instance;
         public static JobMarketManager Instance => _instance;
 
