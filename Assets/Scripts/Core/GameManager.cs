@@ -351,6 +351,11 @@ namespace NBAHeadCoach.Core
             Systems.Register(_draftPickRegistry);
             Systems.Register(_transactionLog);
             Systems.Register(_inboxService);
+
+            // Phase rails: no behavior yet — Phase 1 (playoffs/all-star) and Phase 2
+            // (offseason) hang their orchestration from these listeners.
+            Systems.Register(_offseasonManager);
+            Systems.Register(_allStarManager);
         }
 
         private IEnumerator LoadGameData()

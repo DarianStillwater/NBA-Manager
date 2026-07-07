@@ -416,6 +416,21 @@ namespace NBAHeadCoach.Core
                 _currentPhase = newPhase;
                 OnPhaseChanged?.Invoke(_currentPhase);
 
+                // Fan out to registered phase listeners — the rail playoffs/offseason
+                // orchestration hangs from. One failing listener must not block others.
+                var listeners = _gameManager?.Systems?.PhaseListeners;
+                if (listeners != null)
+                {
+                    foreach (var listener in listeners)
+                    {
+                        try { listener.OnSeasonPhaseChanged(oldPhase, newPhase, CurrentDate); }
+                        catch (Exception ex)
+                        {
+                            Debug.LogError($"[SeasonController] {listener.SystemId} phase handler failed: {ex}");
+                        }
+                    }
+                }
+
                 Debug.Log($"[SeasonController] Phase changed: {oldPhase} → {_currentPhase}");
 
                 // Entering the playoffs: seed and initialize the bracket from final standings

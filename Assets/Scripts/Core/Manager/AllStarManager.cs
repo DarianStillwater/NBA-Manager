@@ -188,9 +188,20 @@ namespace NBAHeadCoach.Core.Manager
     /// Manages All-Star voting, selection, and weekend events
     /// Fan votes (50%), Player votes (25%), Media votes (25%)
     /// </summary>
-    public class AllStarManager
+    public class AllStarManager : ISeasonPhaseListener
     {
         public static AllStarManager Instance { get; private set; }
+
+        public string SystemId => "AllStar";
+
+        /// <summary>
+        /// Phase rail: Phase 1 (awards/all-star feature) announces selections and
+        /// stages the break from here.
+        /// </summary>
+        public void OnSeasonPhaseChanged(Data.SeasonPhase oldPhase, Data.SeasonPhase newPhase, System.DateTime date)
+        {
+            // TODO(Phase 1): announce All-Star selections when the break begins.
+        }
 
         [Header("Current Season Data")]
         [SerializeField] private int currentSeason;

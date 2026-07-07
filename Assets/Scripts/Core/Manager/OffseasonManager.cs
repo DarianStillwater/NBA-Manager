@@ -240,9 +240,20 @@ namespace NBAHeadCoach.Core.Manager
     /// <summary>
     /// Manages entire offseason progression: Draft, Free Agency, Extensions
     /// </summary>
-    public class OffseasonManager
+    public class OffseasonManager : ISeasonPhaseListener
     {
         public static OffseasonManager Instance { get; private set; }
+
+        public string SystemId => "Offseason";
+
+        /// <summary>
+        /// Phase rail: Phase 2 (offseason feature) drives the draft -> free agency ->
+        /// re-sign -> camp -> rollover state machine from here.
+        /// </summary>
+        public void OnSeasonPhaseChanged(Data.SeasonPhase oldPhase, Data.SeasonPhase newPhase, System.DateTime date)
+        {
+            // TODO(Phase 2): begin offseason stage transitions on entry.
+        }
 
         [Header("Current Offseason State")]
         [SerializeField] private int currentSeason;

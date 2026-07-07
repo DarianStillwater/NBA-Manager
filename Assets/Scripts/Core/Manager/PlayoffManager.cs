@@ -10,9 +10,19 @@ namespace NBAHeadCoach.Core.Manager
     /// Manages the NBA Playoff tournament including Play-In, bracket progression, and Finals.
     /// Singleton that coordinates with SeasonController and GameManager.
     /// </summary>
-    public class PlayoffManager : ISaveSection
+    public class PlayoffManager : ISaveSection, ISeasonPhaseListener
     {
         public string SystemId => "Playoffs";
+
+        /// <summary>
+        /// Phase rail: Phase 1 (playoffs feature) schedules series games and drives
+        /// round advancement from here. Seeding itself is triggered by
+        /// SeasonController.BeginPlayoffs today.
+        /// </summary>
+        public void OnSeasonPhaseChanged(Data.SeasonPhase oldPhase, Data.SeasonPhase newPhase, System.DateTime date)
+        {
+            // TODO(Phase 1): schedule play-in + first-round CalendarEvents on entry.
+        }
         public void WriteSave(Data.SaveData data) => data.PlayoffData = CreateSaveData();
         public void ReadSave(Data.SaveData data, in SaveReadContext ctx)
         {
