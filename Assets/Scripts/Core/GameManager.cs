@@ -76,10 +76,13 @@ namespace NBAHeadCoach.Core
         private RosterManager _rosterManager;
         private TradeSystem _tradeSystem;
         private FreeAgentManager _freeAgentManager;
+        public FreeAgentManager FreeAgents => _freeAgentManager;
         private DraftSystem _draftSystem;
         public DraftSystem DraftSystem => _draftSystem;
         private OffseasonManager _offseasonManager;
+        public OffseasonManager Offseason => _offseasonManager;
         private PlayerDevelopmentManager _developmentManager;
+        public PlayerDevelopmentManager Development => _developmentManager;
         private JobSecurityManager _jobSecurityManager;
         private TransactionLog _transactionLog;
         public TransactionLog Transactions => _transactionLog;
@@ -1025,7 +1028,7 @@ namespace NBAHeadCoach.Core
         {
             _currentSeason++;
             _currentDate = new DateTime(_currentSeason, 10, 21);
-            
+
             if (_career != null)
             {
                 _career.CurrentAge++;
@@ -1033,7 +1036,10 @@ namespace NBAHeadCoach.Core
                     _career.CurrentContract.CurrentYear++;
             }
 
-            SeasonController.InitializeSeason(_currentSeason);
+            // TransitionToNewSeason (not InitializeSeason directly) so the completed
+            // season is ARCHIVED first: game logs cleared, YearsPro++, per-season
+            // counters reset — then the new season initializes on top.
+            SeasonController.TransitionToNewSeason(_currentSeason);
             OnSeasonChanged?.Invoke(_currentSeason);
 
             ChangeState(GameState.Playing);
@@ -1183,6 +1189,10 @@ namespace NBAHeadCoach.Core
 
                 _awardsStore?.RecordSeasonAwards(_currentSeason, results, cotyTeamId,
                     finalsMvp?.PlayerId, championId, runnerUpId);
+
+                // The season is over — hand off to the offseason engine
+                _offseasonManager?.SetSeasonClosingData(results);
+                _offseasonManager?.BeginOffseason(_currentSeason, _currentDate);
 
                 if (_inboxService != null)
                 {

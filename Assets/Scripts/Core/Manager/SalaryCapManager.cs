@@ -65,6 +65,47 @@ namespace NBAHeadCoach.Core.Manager
         }
 
         /// <summary>
+        /// Removes a contract (retirement, waive, expiry).
+        /// </summary>
+        public bool RemoveContract(string playerId)
+        {
+            return _contracts.Remove(playerId);
+        }
+
+        /// <summary>
+        /// Advances every contract by one season at the offseason boundary: the final
+        /// year burns off (expired contracts are removed and returned — those players
+        /// hit free agency), remaining years roll salary by the annual raise, and
+        /// Bird-rights seasons accrue. Nothing in the codebase did this before —
+        /// contracts were effectively frozen in year one forever.
+        /// </summary>
+        public List<Contract> AdvanceContractYears()
+        {
+            var expired = new List<Contract>();
+
+            foreach (var contract in _contracts.Values.ToList())
+            {
+                contract.YearsRemaining--;
+
+                if (contract.YearsRemaining <= 0)
+                {
+                    expired.Add(contract);
+                    _contracts.Remove(contract.PlayerId);
+                    continue;
+                }
+
+                if (contract.AnnualRaisePercent > 0f)
+                {
+                    contract.CurrentYearSalary =
+                        (long)(contract.CurrentYearSalary * (1f + contract.AnnualRaisePercent / 100f));
+                }
+                contract.ConsecutiveSeasonsWithTeam++;
+            }
+
+            return expired;
+        }
+
+        /// <summary>
         /// Gets all contracts for a team.
         /// </summary>
         public List<Contract> GetTeamContracts(string teamId)

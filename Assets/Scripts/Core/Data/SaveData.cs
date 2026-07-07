@@ -86,6 +86,9 @@ namespace NBAHeadCoach.Core.Data
         [Header("Inbox")]
         public List<InboxMessage> Inbox = new List<InboxMessage>();
 
+        [Header("Offseason")]
+        public OffseasonSaveData Offseason;
+
         /// <summary>
         /// Create a display-friendly summary of the save
         /// </summary>
@@ -745,6 +748,32 @@ namespace NBAHeadCoach.Core.Data
         public string FinalsMvpId;
         public string ChampionTeamId;
         public string RunnerUpTeamId;
+    }
+
+    /// <summary>
+    /// Offseason engine progress — which stages have run this summer, plus the
+    /// free-agent pool (FreeAgentManager itself is not persisted).
+    /// </summary>
+    [Serializable]
+    public class OffseasonSaveData
+    {
+        public bool EngineActive;
+        public int SeasonLabel;
+        public int CalendarYear;
+        public bool PostSeasonDone;
+        public bool DraftDone;
+        public bool FreeAgencyOpen;
+        public bool SummerDone;
+        public bool CampDone;
+        public List<FreeAgentRecord> FreeAgentPool = new List<FreeAgentRecord>();
+    }
+
+    [Serializable]
+    public class FreeAgentRecord
+    {
+        public string PlayerId;
+        public string PreviousTeamId;
+        public int ConsecutiveSeasons;
     }
 
     /// <summary>

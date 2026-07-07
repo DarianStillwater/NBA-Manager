@@ -61,6 +61,10 @@ namespace NBAHeadCoach.Core.Data
             get
             {
                 DateTime referenceDate = GameManager.Instance?.CurrentDate ?? DateTime.Now;
+                // A not-yet-started game clock (year 1) would compute age 0 for
+                // everyone — all age-dependent logic (development phases, retirement)
+                // would silently misfire. Fall back to the wall clock.
+                if (referenceDate.Year <= 1) referenceDate = DateTime.Now;
                 int age = referenceDate.Year - BirthDate.Year;
                 // Adjust if birthday hasn't occurred yet this year
                 if (BirthDate.Date > referenceDate.AddYears(-age))

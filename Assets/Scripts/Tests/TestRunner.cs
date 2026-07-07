@@ -61,6 +61,7 @@ namespace NBAHeadCoach.Tests
             RunTest<InboxServiceTest>("Inbox Service");
             RunTest<PlayoffFlowTest>("Playoff Flow");
             RunTest<AwardsAllStarTest>("Awards & All-Star");
+            RunTest<OffseasonEngineTest>("Offseason Engine");
 
             // Summary
             Debug.Log("\n" + new string('=', 70));

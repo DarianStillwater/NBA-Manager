@@ -240,19 +240,563 @@ namespace NBAHeadCoach.Core.Manager
     /// <summary>
     /// Manages entire offseason progression: Draft, Free Agency, Extensions
     /// </summary>
-    public class OffseasonManager : ISeasonPhaseListener
+    public class OffseasonManager : ISeasonPhaseListener, IDailyTickable, ISaveSection
     {
         public static OffseasonManager Instance { get; private set; }
 
         public string SystemId => "Offseason";
+        public int TickOrder => Manager.TickOrder.Offseason;
 
         /// <summary>
-        /// Phase rail: Phase 2 (offseason feature) drives the draft -> free agency ->
-        /// re-sign -> camp -> rollover state machine from here.
+        /// Activation happens when the champion is crowned (GameManager hands the
+        /// season's closing data to BeginOffseason); nothing to do on phase entry.
         /// </summary>
         public void OnSeasonPhaseChanged(Data.SeasonPhase oldPhase, Data.SeasonPhase newPhase, System.DateTime date)
         {
-            // TODO(Phase 2): begin offseason stage transitions on entry.
+        }
+
+        // ==================== ORCHESTRATION (the real offseason) ====================
+        // Date-driven, flag-idempotent stage runner. Each stage runs once when the
+        // calendar reaches it; a mid-offseason load self-heals because unfinished
+        // stages simply run on the next tick.
+
+        private bool _engineActive;
+        private int _seasonLabel;      // the season that just ended (e.g. 2025 = Oct 25–Jun 26)
+        private int _calendarYear;     // the summer's calendar year (seasonLabel + 1)
+        private bool _postSeasonDone;
+        private bool _draftDone;
+        private bool _freeAgencyOpen;
+        private bool _summerDone;
+        private bool _campDone;
+        private System.Random _rng = new System.Random();
+
+        /// <summary>
+        /// Start the real offseason. Called by GameManager right after the champion
+        /// is crowned and the season's awards are voted.
+        /// </summary>
+        public void BeginOffseason(int seasonLabel, DateTime seasonEndDate)
+        {
+            _engineActive = true;
+            _seasonLabel = seasonLabel;
+            _calendarYear = seasonLabel + 1;
+            _postSeasonDone = _draftDone = _freeAgencyOpen = _summerDone = _campDone = false;
+            _rng = new System.Random(seasonLabel * 31 + 7);
+
+            StartOffseason(_calendarYear, seasonEndDate); // legacy calendar/date bookkeeping
+
+            InboxService.Instance?.Publish(InboxMessageType.League, "League Office",
+                $"The {_seasonLabel} season is in the books",
+                $"Draft night: Jun 22 · Free agency opens: Jul 6 · Camp: late Sep · New season: Oct 21.");
+
+            Debug.Log($"[Offseason] Engine started for summer {_calendarYear}");
+        }
+
+        public void DailyTick(in DailyTickContext ctx)
+        {
+            if (!_engineActive) return;
+            var gm = ctx.Game;
+            if (gm == null) return;
+            var date = ctx.Date;
+
+            try
+            {
+                if (!_postSeasonDone) { RunPostSeason(gm); _postSeasonDone = true; }
+
+                if (!_draftDone && date >= new DateTime(_calendarYear, 6, 22))
+                { RunDraft(gm); _draftDone = true; }
+
+                if (_draftDone && !_freeAgencyOpen && date >= new DateTime(_calendarYear, 7, 6))
+                { _freeAgencyOpen = true; OpenFreeAgency(gm); }
+
+                if (_freeAgencyOpen && !_campDone)
+                    RunDailyFreeAgency(gm, date);
+
+                if (!_summerDone && date >= new DateTime(_calendarYear, 7, 12))
+                { RunSummerLeague(gm); _summerDone = true; }
+
+                if (!_campDone && date >= new DateTime(_calendarYear, 9, 27))
+                { RunRosterCompliance(gm); _campDone = true; }
+
+                if (_campDone && date >= new DateTime(_calendarYear, 10, 21))
+                    Rollover(gm);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[Offseason] Stage processing failed: {ex}");
+            }
+        }
+
+        /// <summary>
+        /// Immediately after the season: archive history, run development/aging,
+        /// evaluate retirements, advance contracts, and build the free-agent pool.
+        /// </summary>
+        private void RunPostSeason(GameManager gm)
+        {
+            var players = gm.PlayerDatabase.GetAllPlayers();
+            var inbox = InboxService.Instance;
+
+            // Snapshot stats for next season's Most Improved comparison
+            AwardManager.StorePreviousSeasonStats(players);
+
+            // League history archive (champion, standings, leaders)
+            var awards = gm.Awards?.GetForSeason(gm.CurrentSeason);
+            try
+            {
+                gm.HistoryManager?.ArchiveSeason(_seasonLabel, gm.AllTeams, players,
+                    _lastVotingResults, awards?.ChampionTeamId, awards?.FinalsMvpId,
+                    PlayoffManager.Instance?.CurrentBracket);
+            }
+            catch (Exception ex) { Debug.LogWarning($"[Offseason] History archive failed: {ex.Message}"); }
+
+            // Development: season growth from minutes, offseason programs, then aging
+            var dev = gm.Development;
+            if (dev != null)
+            {
+                dev.SetPlayerDatabase(gm.PlayerDatabase);
+                dev.SetCurrentSeason(_seasonLabel);
+                int developed = 0, declined = 0;
+                foreach (var p in players)
+                {
+                    if (p == null || p.RetirementYear > 0) continue;
+                    var grow = dev.ProcessSeasonDevelopment(p, p.MinutesPlayedThisSeason, 0.55f);
+                    var off = dev.ProcessOffseasonDevelopment(p, 0.55f, 0.5f);
+                    if (grow?.HasChanges == true || off?.HasChanges == true) developed++;
+                    var age = dev.ApplyAgingEffects(p);
+                    if (age?.HasChanges == true) declined++;
+                }
+                Debug.Log($"[Offseason] Development: {developed} improved, {declined} declined");
+            }
+
+            // Retirements
+            var retiredIds = EvaluateAndApplyRetirements(gm);
+
+            // Contract advancement -> expiring players hit free agency
+            var expired = gm.SalaryCapManager.AdvanceContractYears();
+            int toMarket = 0;
+            foreach (var contract in expired)
+            {
+                if (retiredIds.Contains(contract.PlayerId)) continue;
+                var player = gm.PlayerDatabase.GetPlayer(contract.PlayerId);
+                if (player == null) continue;
+
+                gm.FreeAgents?.AddFreeAgent(contract.PlayerId, FreeAgentType.Unrestricted,
+                    contract.TeamId, contract.ConsecutiveSeasonsWithTeam);
+                RemoveFromRoster(gm, contract.TeamId, contract.PlayerId);
+                player.TeamId = "";
+                toMarket++;
+            }
+
+            inbox?.Publish(InboxMessageType.League, "League Office",
+                $"Free-agent class takes shape: {toMarket} players hit the market",
+                "Contracts have expired across the league. Free agency opens July 6.");
+        }
+
+        private HashSet<string> EvaluateAndApplyRetirements(GameManager gm)
+        {
+            var retired = new HashSet<string>();
+            var rm = gm.RetirementManager;
+            if (rm == null) return retired;
+
+            var candidates = gm.PlayerDatabase.GetAllPlayers()
+                .Where(p => p != null && p.RetirementYear == 0 && p.Age >= 33 &&
+                            !string.IsNullOrEmpty(p.TeamId))
+                .ToList();
+            if (candidates.Count == 0) return retired;
+
+            Action<RetirementAnnouncement> collector = a => { if (a != null) retired.Add(a.PlayerId); };
+            rm.OnRetirementAnnounced += collector;
+            try
+            {
+                rm.EvaluateRetirements(candidates.Select(p => ToCareerData(gm, p)).ToList());
+            }
+            finally
+            {
+                rm.OnRetirementAnnounced -= collector;
+            }
+
+            foreach (var pid in retired)
+            {
+                var player = gm.PlayerDatabase.GetPlayer(pid);
+                if (player == null) continue;
+
+                player.RetirementYear = _seasonLabel;
+                RemoveFromRoster(gm, player.TeamId, pid);
+                gm.SalaryCapManager.RemoveContract(pid);
+                string teamName = gm.GetTeam(player.TeamId)?.Name ?? "the league";
+                player.TeamId = "";
+
+                InboxService.Instance?.Publish(InboxMessageType.League, "League Office",
+                    $"{player.FullName} announces retirement",
+                    $"After {player.YearsPro} seasons and {player.CareerPoints:N0} career points, " +
+                    $"{player.FullName} of the {teamName} is calling it a career.",
+                    highPriority: player.OverallRating >= 85);
+            }
+
+            if (retired.Count > 0)
+                Debug.Log($"[Offseason] {retired.Count} player(s) retired");
+            return retired;
+        }
+
+        private PlayerCareerData ToCareerData(GameManager gm, Data.Player p)
+        {
+            return new PlayerCareerData
+            {
+                PlayerId = p.PlayerId,
+                FullName = p.FullName,
+                Age = p.Age,
+                SeasonsPlayed = p.SeasonsPlayed,
+                GamesPlayed = p.CareerStats?.Sum(s => s.GamesPlayed) ?? 0,
+                CareerPoints = p.CareerPoints,
+                CareerRebounds = p.CareerRebounds,
+                CareerAssists = p.CareerAssists,
+                CurrentTeamId = p.TeamId,
+                CurrentRating = p.OverallRating,
+                PeakRating = Math.Max(p.OverallRating, p.HiddenPotential),
+                CareerInjuries = p.InjuryHistoryList?.Count ?? 0,
+                BasketballIQ = p.BasketballIQ,
+                Leadership = p.Leadership
+            };
+        }
+
+        /// <summary>
+        /// Draft night, auto-resolved: lottery for the 14 non-playoff teams, pick
+        /// ownership from the registry, a fresh 120-prospect class, and 60 AI picks.
+        /// </summary>
+        private void RunDraft(GameManager gm)
+        {
+            var draft = gm.DraftSystem;
+            if (draft == null) return;
+
+            draft.SetPlayerDatabase(gm.PlayerDatabase);
+            draft.GenerateDraftClass(_calendarYear);
+
+            // Draft order: worst record first; lottery shuffles the 14 non-playoff teams
+            var bracket = PlayoffManager.Instance?.CurrentBracket;
+            var playoffTeams = new HashSet<string>();
+            if (bracket != null)
+            {
+                foreach (var seed in (bracket.Eastern?.Seeds ?? new string[0])) if (!string.IsNullOrEmpty(seed)) playoffTeams.Add(seed);
+                foreach (var seed in (bracket.Western?.Seeds ?? new string[0])) if (!string.IsNullOrEmpty(seed)) playoffTeams.Add(seed);
+            }
+
+            var byRecord = gm.AllTeams.Where(t => t != null)
+                .OrderBy(t => t.Wins).ThenBy(t => t.TeamId).ToList();
+            var lotteryTeams = byRecord.Where(t => !playoffTeams.Contains(t.TeamId))
+                .Select(t => t.TeamId).ToList();
+            var playoffByRecord = byRecord.Where(t => playoffTeams.Contains(t.TeamId))
+                .Select(t => t.TeamId).ToList();
+
+            List<string> slotOrder;
+            if (lotteryTeams.Count == 14)
+            {
+                var lottery = draft.RunLottery(lotteryTeams, _rng);
+                slotOrder = lottery.Select(r => r.TeamId).Concat(playoffByRecord).ToList();
+            }
+            else
+            {
+                slotOrder = byRecord.Select(t => t.TeamId).ToList(); // degenerate fallback
+            }
+
+            // Pick ownership: a traded pick belongs to its current owner
+            List<string> OwnersFor(int round) => slotOrder
+                .Select(original =>
+                    gm.DraftPickRegistry?.GetPick(original, _calendarYear, round)?.CurrentOwnerId ?? original)
+                .ToList();
+
+            var firstRound = OwnersFor(1);
+            var secondRound = OwnersFor(2);
+            draft.SetDraftOrder(firstRound, secondRound);
+
+            var inbox = InboxService.Instance;
+            string pid = gm.PlayerTeamId;
+            var playerPicks = new List<string>();
+
+            for (int pick = 1; pick <= 60; pick++)
+            {
+                string teamId = draft.GetTeamAtPick(pick);
+                if (string.IsNullOrEmpty(teamId)) continue;
+
+                var selection = draft.AISelectPick(pick, teamId);
+                var drafted = selection?.DraftedPlayer;
+                if (drafted == null) continue;
+
+                // DraftSystem adds to a throwaway roster list — the ID list is the authority
+                var team = gm.GetTeam(teamId);
+                if (team != null && !team.RosterPlayerIds.Contains(drafted.PlayerId))
+                    team.RosterPlayerIds.Add(drafted.PlayerId);
+
+                if (teamId == pid)
+                    playerPicks.Add($"#{pick}: {drafted.FullName} ({drafted.Position})");
+                else if (pick <= 5)
+                    inbox?.Publish(InboxMessageType.League, "League Office",
+                        $"Draft: {gm.GetTeam(teamId)?.Name ?? teamId} select {drafted.FullName} at #{pick}",
+                        $"{drafted.FullName} goes #{pick} overall.");
+            }
+
+            gm.DraftPickRegistry?.ProcessDraftCompletion(_calendarYear);
+
+            inbox?.Publish(InboxMessageType.League, "League Office",
+                $"{_calendarYear} NBA Draft complete",
+                playerPicks.Count > 0
+                    ? $"Your selections:\n{string.Join("\n", playerPicks)}"
+                    : "Your team made no selections this year.",
+                highPriority: playerPicks.Count > 0);
+
+            Debug.Log($"[Offseason] Draft complete ({_calendarYear})");
+        }
+
+        private void OpenFreeAgency(GameManager gm)
+        {
+            int poolSize = gm.FreeAgents?.GetFreeAgents()?.Count ?? 0;
+            InboxService.Instance?.Publish(InboxMessageType.League, "League Office",
+                "Free agency is OPEN",
+                $"{poolSize} free agents are on the market.");
+        }
+
+        /// <summary>
+        /// AI signings, a few per day: best available free agents pick the team with
+        /// the most cap room that has a roster spot. Your team only auto-signs cheap
+        /// depth if the roster is short (full FA control arrives with the FA screen).
+        /// </summary>
+        private void RunDailyFreeAgency(GameManager gm, DateTime date)
+        {
+            var fam = gm.FreeAgents;
+            if (fam == null) return;
+
+            var pool = fam.GetFreeAgents();
+            if (pool == null || pool.Count == 0) return;
+
+            int signingsToday = Math.Max(2, pool.Count / 12);
+
+            var ranked = pool
+                .Select(fa => new { fa, player = gm.PlayerDatabase.GetPlayer(fa.PlayerId) })
+                .Where(x => x.player != null && x.player.RetirementYear == 0)
+                .OrderByDescending(x => x.player.OverallRating)
+                .ToList();
+
+            foreach (var entry in ranked.Take(signingsToday))
+            {
+                var player = entry.player;
+
+                var suitors = gm.AllTeams.Where(t =>
+                        t != null &&
+                        t.RosterPlayerIds.Count < 15 &&
+                        (t.TeamId != gm.PlayerTeamId || t.RosterPlayerIds.Count < 13))
+                    .OrderByDescending(t => gm.SalaryCapManager.GetCapSpace(t.TeamId))
+                    .ToList();
+                if (suitors.Count == 0) return;
+
+                // Modest market randomness: one of the top three cap-space teams
+                var team = suitors[Math.Min(_rng.Next(3), suitors.Count - 1)];
+
+                long ask = MarketSalary(player);
+                long capSpace = gm.SalaryCapManager.GetCapSpace(team.TeamId);
+                var offer = new SigningOffer
+                {
+                    AnnualSalary = Math.Min(ask, Math.Max(capSpace, 1_200_000L)),
+                    Years = player.OverallRating >= 80 ? 3 + _rng.Next(2) : 1 + _rng.Next(3),
+                    Method = capSpace >= ask ? SigningMethod.CapSpace : SigningMethod.MinimumSalary,
+                    PlayerYearsExperience = player.YearsPro
+                };
+                if (offer.Method == SigningMethod.MinimumSalary) offer.AnnualSalary = 1_200_000L;
+
+                if (fam.ExecuteSigning(team.TeamId, player.PlayerId, offer))
+                {
+                    if (!team.RosterPlayerIds.Contains(player.PlayerId))
+                        team.RosterPlayerIds.Add(player.PlayerId);
+
+                    bool notable = player.OverallRating >= 80 || team.TeamId == gm.PlayerTeamId;
+                    if (notable)
+                        InboxService.Instance?.Publish(InboxMessageType.League, "League Office",
+                            $"{player.FullName} signs with {team.Name}",
+                            $"{offer.Years} years, ${offer.AnnualSalary * offer.Years / 1_000_000f:0.0}M total.",
+                            highPriority: team.TeamId == gm.PlayerTeamId);
+                }
+            }
+        }
+
+        private long MarketSalary(Data.Player p)
+        {
+            int r = p.OverallRating;
+            if (r >= 90) return 45_000_000L;
+            if (r >= 85) return 32_000_000L;
+            if (r >= 80) return 22_000_000L;
+            if (r >= 75) return 12_000_000L;
+            if (r >= 70) return 6_000_000L;
+            if (r >= 65) return 3_000_000L;
+            return 1_200_000L;
+        }
+
+        private void RunSummerLeague(GameManager gm)
+        {
+            try
+            {
+                var sl = gm.SummerLeagueManager;
+                if (sl == null) return;
+                sl.StartSummerLeague(_calendarYear);
+                var summary = sl.SkipSummerLeague();
+                if (summary != null)
+                    InboxService.Instance?.Publish(InboxMessageType.League, "League Office",
+                        "Summer League wraps up",
+                        "Rookies and young players got their reps in Las Vegas.");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[Offseason] Summer league skipped: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Camp-time roster compliance: trim to 15, fill to 13 with minimum signings,
+        /// and refresh every team's lineup for the new rosters.
+        /// </summary>
+        private void RunRosterCompliance(GameManager gm)
+        {
+            var fam = gm.FreeAgents;
+
+            foreach (var team in gm.AllTeams)
+            {
+                if (team == null) continue;
+
+                // Trim: waive lowest-rated until 15
+                while (team.RosterPlayerIds.Count > 15)
+                {
+                    var cut = team.RosterPlayerIds
+                        .Select(id => gm.PlayerDatabase.GetPlayer(id))
+                        .Where(p => p != null)
+                        .OrderBy(p => p.OverallRating)
+                        .FirstOrDefault();
+                    if (cut == null) break;
+
+                    team.RosterPlayerIds.Remove(cut.PlayerId);
+                    gm.SalaryCapManager.RemoveContract(cut.PlayerId);
+                    fam?.AddFreeAgent(cut.PlayerId, FreeAgentType.Unrestricted, team.TeamId, 0);
+                    cut.TeamId = "";
+                }
+
+                // Fill: sign best available to minimums until 13
+                while (team.RosterPlayerIds.Count < 13)
+                {
+                    var best = fam?.GetFreeAgents()?
+                        .Select(fa => gm.PlayerDatabase.GetPlayer(fa.PlayerId))
+                        .Where(p => p != null && p.RetirementYear == 0)
+                        .OrderByDescending(p => p.OverallRating)
+                        .FirstOrDefault();
+                    if (best == null) break;
+
+                    var offer = new SigningOffer
+                    {
+                        AnnualSalary = 1_200_000L,
+                        Years = 1,
+                        Method = SigningMethod.MinimumSalary,
+                        PlayerYearsExperience = best.YearsPro
+                    };
+                    if (fam.ExecuteSigning(team.TeamId, best.PlayerId, offer))
+                    {
+                        if (!team.RosterPlayerIds.Contains(best.PlayerId))
+                            team.RosterPlayerIds.Add(best.PlayerId);
+                    }
+                    else break;
+                }
+
+                // Rosters changed everywhere — refresh the five
+                if (team.CoachPersonality != null)
+                    team.AutoSetStartingLineup(team.CoachPersonality);
+            }
+
+            InboxService.Instance?.Publish(InboxMessageType.League, "League Office",
+                "Training camps open",
+                "Rosters are set league-wide. The new season tips off October 22.");
+        }
+
+        /// <summary>
+        /// Season rollover: archive stats (YearsPro++, logs cleared), fresh schedule,
+        /// reset records, clear the old bracket — year N+1 begins.
+        /// </summary>
+        private void Rollover(GameManager gm)
+        {
+            _engineActive = false;
+            offseasonActive = false;
+            currentPhase = OffseasonPhase.Complete;
+
+            PlayoffManager.Instance?.ResetForNewSeason();
+            gm.Development?.SetCurrentSeason(_seasonLabel + 1);
+            gm.StartNewSeason();
+
+            InboxService.Instance?.Publish(InboxMessageType.League, "League Office",
+                $"Welcome to the {_seasonLabel + 1} season!",
+                "Training camp is done and opening night is here. Good luck, coach.",
+                highPriority: true);
+
+            Debug.Log($"[Offseason] Rollover complete — season {_seasonLabel + 1} begins");
+        }
+
+        private static void RemoveFromRoster(GameManager gm, string teamId, string playerId)
+        {
+            var team = gm.GetTeam(teamId);
+            team?.RosterPlayerIds?.Remove(playerId);
+            if (team?.StartingLineupIds != null)
+            {
+                for (int i = 0; i < team.StartingLineupIds.Length; i++)
+                    if (team.StartingLineupIds[i] == playerId)
+                        team.StartingLineupIds[i] = "";
+            }
+        }
+
+        // The awards results from the season that just ended (for history archiving)
+        private AwardVotingResults _lastVotingResults;
+        public void SetSeasonClosingData(AwardVotingResults results) => _lastVotingResults = results;
+
+        // ==================== SAVE SECTION ====================
+
+        public void WriteSave(Data.SaveData data)
+        {
+            data.Offseason = new Data.OffseasonSaveData
+            {
+                EngineActive = _engineActive,
+                SeasonLabel = _seasonLabel,
+                CalendarYear = _calendarYear,
+                PostSeasonDone = _postSeasonDone,
+                DraftDone = _draftDone,
+                FreeAgencyOpen = _freeAgencyOpen,
+                SummerDone = _summerDone,
+                CampDone = _campDone,
+                FreeAgentPool = GameManager.Instance?.FreeAgents?.GetFreeAgents()?
+                    .Select(fa => new Data.FreeAgentRecord
+                    {
+                        PlayerId = fa.PlayerId,
+                        PreviousTeamId = fa.PreviousTeamId,
+                        ConsecutiveSeasons = 0
+                    }).ToList() ?? new List<Data.FreeAgentRecord>()
+            };
+        }
+
+        public void ReadSave(Data.SaveData data, in SaveReadContext ctx)
+        {
+            var s = data.Offseason;
+            if (s == null || !s.EngineActive)
+            {
+                _engineActive = false;
+                return;
+            }
+
+            _engineActive = true;
+            _seasonLabel = s.SeasonLabel;
+            _calendarYear = s.CalendarYear;
+            _postSeasonDone = s.PostSeasonDone;
+            _draftDone = s.DraftDone;
+            _freeAgencyOpen = s.FreeAgencyOpen;
+            _summerDone = s.SummerDone;
+            _campDone = s.CampDone;
+            _rng = new System.Random(_seasonLabel * 31 + 7);
+
+            var fam = GameManager.Instance?.FreeAgents;
+            if (fam != null && s.FreeAgentPool != null)
+            {
+                foreach (var record in s.FreeAgentPool)
+                    fam.AddFreeAgent(record.PlayerId, FreeAgentType.Unrestricted,
+                        record.PreviousTeamId, record.ConsecutiveSeasons);
+            }
         }
 
         [Header("Current Offseason State")]

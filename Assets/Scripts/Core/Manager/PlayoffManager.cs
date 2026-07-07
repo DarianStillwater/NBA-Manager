@@ -699,6 +699,16 @@ namespace NBAHeadCoach.Core.Manager
             Debug.Log("[PlayoffManager] Playoffs ended");
         }
 
+        /// <summary>
+        /// Clear the bracket at season rollover so the new season starts fresh
+        /// (April's phase flip re-seeds via BeginPlayoffs).
+        /// </summary>
+        public void ResetForNewSeason()
+        {
+            _currentBracket = null;
+            _isPlayoffsActive = false;
+        }
+
         #endregion
     }
 
