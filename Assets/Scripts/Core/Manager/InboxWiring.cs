@@ -16,9 +16,42 @@ namespace NBAHeadCoach.Core.Manager
             FinanceManager finance,
             TradeAnnouncementSystem tradeNews,
             MediaManager media,
-            InjuryManager injuries)
+            InjuryManager injuries,
+            PlayoffManager playoffs = null)
         {
             if (inbox == null) return;
+
+            string TeamName(string id) => gm?.GetTeam(id)?.Name ?? id;
+
+            if (playoffs != null)
+            {
+                playoffs.OnNBAChampion += (champ, runnerUp) =>
+                    inbox.Publish(InboxMessageType.League, "League Office",
+                        $"{TeamName(champ)} are NBA Champions!",
+                        $"The {TeamName(champ)} defeat the {TeamName(runnerUp)} to win the NBA Finals.",
+                        highPriority: true,
+                        deepLinkPanelId: "Playoffs");
+
+                playoffs.OnConferenceChampion += (team, conference) =>
+                    inbox.Publish(InboxMessageType.League, "League Office",
+                        $"{TeamName(team)} win the {conference} Conference",
+                        $"The {TeamName(team)} advance to the NBA Finals.",
+                        deepLinkPanelId: "Playoffs");
+
+                playoffs.OnSeriesCompleted += series =>
+                {
+                    string pid = gm?.PlayerTeamId;
+                    if (string.IsNullOrEmpty(pid)) return;
+                    if (series.HigherSeedTeamId != pid && series.LowerSeedTeamId != pid) return;
+
+                    bool won = series.WinnerTeamId == pid;
+                    inbox.Publish(InboxMessageType.League, "League Office",
+                        won ? "Series won — advancing!" : "Season over — eliminated",
+                        series.GetStatusString(TeamName),
+                        highPriority: true,
+                        deepLinkPanelId: "Playoffs");
+                };
+            }
 
             if (jobSecurity != null)
             {

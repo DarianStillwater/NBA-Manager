@@ -444,16 +444,25 @@ namespace NBAHeadCoach.Core
 
         private SeasonPhase DeterminePhase(DateTime date)
         {
-            // Check date ranges for each phase
+            // Playoffs run until the bracket completes — a long Finals can cross the
+            // draft date, and a Finals game must never be classified as offseason.
+            if (date >= _playoffsStart &&
+                PlayoffManager.Instance != null &&
+                PlayoffManager.Instance.IsPlayoffsActive &&
+                PlayoffManager.Instance.CurrentPhase != PlayoffPhase.Complete)
+                return SeasonPhase.Playoffs;
+
+            // Offseason windows belong to the summer AFTER this season
+            // (season year 2025 = Oct 2025 – Jun 2026; its offseason is summer 2026).
             if (date >= _draftDate && date < _freeAgencyStart)
                 return SeasonPhase.Draft;
-            if (date >= _freeAgencyStart && date < new DateTime(_currentSeason, 7, 7))
+            if (date >= _freeAgencyStart && date < new DateTime(_currentSeason + 1, 7, 7))
                 return SeasonPhase.FreeAgency;
-            if (date >= new DateTime(_currentSeason, 7, 7) && date < new DateTime(_currentSeason, 9, 27))
+            if (date >= new DateTime(_currentSeason + 1, 7, 7) && date < new DateTime(_currentSeason + 1, 9, 27))
                 return SeasonPhase.SummerLeague;
-            if (date >= new DateTime(_currentSeason, 9, 27) && date < new DateTime(_currentSeason, 10, 4))
+            if (date >= new DateTime(_currentSeason + 1, 9, 27) && date < new DateTime(_currentSeason + 1, 10, 4))
                 return SeasonPhase.TrainingCamp;
-            if (date >= new DateTime(_currentSeason, 10, 4) && date < new DateTime(_currentSeason, 10, 22))
+            if (date >= new DateTime(_currentSeason + 1, 10, 4) && date < new DateTime(_currentSeason + 1, 10, 22))
                 return SeasonPhase.Preseason;
             if (date >= _allStarBreak && date < _allStarBreak.AddDays(4))
                 return SeasonPhase.AllStarBreak;
@@ -615,6 +624,17 @@ namespace NBAHeadCoach.Core
         #region Game Management
 
         /// <summary>
+        /// Append events to the schedule (playoff rounds land here as the bracket
+        /// advances), keeping it date-sorted.
+        /// </summary>
+        public void AddScheduledEvents(IEnumerable<CalendarEvent> events)
+        {
+            if (events == null) return;
+            _schedule.AddRange(events.Where(e => e != null));
+            _schedule.Sort((a, b) => a.Date.CompareTo(b.Date));
+        }
+
+        /// <summary>
         /// Get the next scheduled game
         /// </summary>
         public CalendarEvent GetNextGame()
@@ -667,7 +687,11 @@ namespace NBAHeadCoach.Core
                 AwayTeamId = game.AwayTeamId,
                 HomeScore = homeScore,
                 AwayScore = awayScore,
-                IsPlayoff = _currentPhase == SeasonPhase.Playoffs
+                // The EVENT knows whether it's a playoff game — the date-derived phase
+                // lies when the Finals cross the draft date in June.
+                IsPlayoff = game.IsPlayoffGame,
+                PlayoffRound = game.PlayoffRound,
+                PlayoffGame = game.GameNumber
             };
 
             _completedGames.Add(result);

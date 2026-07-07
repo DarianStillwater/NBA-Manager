@@ -318,7 +318,7 @@ namespace NBAHeadCoach.Core
 
             // Bridge existing producer events into the inbox
             InboxWiring.Wire(this, _inboxService, _jobSecurityManager, _financeManager,
-                _tradeAnnouncementSystem, _mediaManager, _injuryManager);
+                _tradeAnnouncementSystem, _mediaManager, _injuryManager, _playoffManager);
 
             // Load player/team data
             StartCoroutine(LoadGameData());

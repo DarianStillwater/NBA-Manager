@@ -59,6 +59,7 @@ namespace NBAHeadCoach.Tests
             RunTest<SaveRoundTripTest>("Save Round Trip");
             RunTest<LegacySaveLoadTest>("Legacy Save Load");
             RunTest<InboxServiceTest>("Inbox Service");
+            RunTest<PlayoffFlowTest>("Playoff Flow");
 
             // Summary
             Debug.Log("\n" + new string('=', 70));

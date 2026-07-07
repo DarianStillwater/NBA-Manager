@@ -62,8 +62,9 @@ namespace NBAHeadCoach.Core.Manager
     /// </summary>
     public static class TickOrder
     {
-        public const int SeasonCalendar = 100; // phase check, injury recovery, energy recovery, morale decay
-        public const int LeagueSim      = 200; // simulate today's non-player games
+        public const int SeasonCalendar  = 100; // phase check, injury recovery, energy recovery, morale decay
+        public const int PlayoffSchedule = 150; // reconcile bracket + schedule playoff games BEFORE they're simmed
+        public const int LeagueSim       = 200; // simulate today's non-player games
         public const int TradeOffers    = 300;
         public const int Personnel      = 400;
         public const int JobMarket      = 500;

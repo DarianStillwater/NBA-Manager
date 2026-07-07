@@ -60,7 +60,7 @@ namespace NBAHeadCoach.Core.Manager
                     var result = simulator.SimulateGame(homeTeam, awayTeam);
                     _gm.GameCompletion.Complete(new Simulation.GameCompletionContext(
                         game, result, Simulation.GameSource.LeagueAutoSim,
-                        _gm.PlayerTeamId, game.IsPlayoffGame), deferAggregates: true);
+                        _gm.PlayerTeamId, game.IsPlayoffGame, game.PlayoffRound), deferAggregates: true);
                 }
                 catch (Exception ex)
                 {

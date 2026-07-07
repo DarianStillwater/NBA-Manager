@@ -432,7 +432,7 @@ namespace NBAHeadCoach.UI.GamePanels
                 var result = simulator.SimulateGame(homeTeam, awayTeam);
                 gm?.GameCompletion?.Complete(new NBAHeadCoach.Core.Simulation.GameCompletionContext(
                     gameEvent, result, NBAHeadCoach.Core.Simulation.GameSource.QuickSim,
-                    gm.PlayerTeamId, gameEvent.IsPlayoffGame));
+                    gm.PlayerTeamId, gameEvent.IsPlayoffGame, gameEvent.PlayoffRound));
                 var postGame = new PostGameGamePanel(_shell);
                 postGame.SetResult(result, isHome);
                 _shell?.RegisterPanel("PostGame", postGame);

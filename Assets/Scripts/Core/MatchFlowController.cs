@@ -313,7 +313,8 @@ namespace NBAHeadCoach.Core
                 },
                 Simulation.GameSource.InteractiveMatch,
                 _gameManager.PlayerTeamId,
-                _currentGame?.IsPlayoffGame ?? false));
+                _currentGame?.IsPlayoffGame ?? false,
+                _currentGame?.PlayoffRound ?? 0));
 
             // Fire event
             OnMatchCompleted?.Invoke(result);
