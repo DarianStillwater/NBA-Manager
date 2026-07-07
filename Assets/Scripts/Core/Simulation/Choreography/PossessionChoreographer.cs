@@ -19,12 +19,18 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
         public const float Tick = 0.2f;
         public const float FlightTick = 0.1f;
 
-        private const float RunSpeed = 18f;      // ft/s
-        private const float SprintSpeed = 27f;   // ft/s
-        private const float DefenseSpeed = 20f;  // ft/s
-        // Cap on authored off-ball movement speed. Smoothstep peaks at 1.5× average, so at a
-        // 0.2s tick this yields ≤ ~7.2 ft/tick — under the ChoreographyTest 8 ft playerJumps bound.
-        private const float SafeSpeed = 24f;     // ft/s
+        // Movement speeds (ft/s), tuned to real NBA motion. Authored legs are smoothstep-eased,
+        // which peaks at 1.5× the average leg speed — so averages are set at targetPeak/1.5
+        // (AdvanceAvg 18.5 ⇒ ~28 ft/s peak sprint; CutAvg 10 ⇒ 15 ft/s cuts). Worst case at the
+        // 0.2s tick is 5.6 ft/tick, under the ChoreographyTest 8 ft playerJumps bound.
+        // Defenders move via MoveTowards (no easing spike), so their values are true caps.
+        private const float AdvanceAvg = 18.5f;   // transition bring-up (peak ≈ 28)
+        private const float CutAvg = 10f;         // halfcourt cuts/screens/rolls (peak 15)
+        private const float RelocateAvg = 8f;     // off-ball spacing relocations (peak 12)
+        private const float JabAvg = 5.3f;        // iso jab steps (peak ≈ 8)
+        private const float SprintAvg = 16.5f;    // rim runs / hard cuts, Glide ceiling (peak ≈ 24.8)
+        private const float DefenseSpeed = 15f;   // base man-tracking, just under a cutting man
+        private const float DefenseSprint = 24f;  // contest/hedge/rebound bursts (4.8 ft/tick)
 
         private readonly System.Random _rng;
 
@@ -43,6 +49,15 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
         private DefenderAssignment[] _defPlan;   // per-defender assignment (sag/nav/help), decided once
         private List<NarrationBeat> _beats;      // timed narration moments for the radio bar
 
+        // Free-throw window state: while t >= _ftStartT the defense holds authored lane/arc
+        // spots instead of man-tracking; lane bodies crash from _ftCrashT on a final-attempt
+        // miss. All targets precomputed at build time — never per-tick RNG.
+        private float _ftStartT = -1f;
+        private float _ftCrashT = -1f;
+        private CourtPosition[] _ftDefSpots;
+        private CourtPosition[] _ftCrashSpots;
+        private bool[] _ftLaneDefender;
+
         public PossessionChoreographer(System.Random rng)
         {
             _rng = rng ?? new System.Random();
@@ -51,6 +66,10 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
         /// <summary>True length of the last choreographed timeline in seconds from possession start
         /// (includes the shot-resolution tail). Valid immediately after <see cref="Choreograph"/>.</summary>
         public float TotalSeconds => _totalT;
+
+        /// <summary>End of the LIVE action window (before the shot-resolution/FT tail) — the span
+        /// over which the game clock should tick during playback. Valid after <see cref="Choreograph"/>.</summary>
+        public float LiveSeconds => _liveEndT;
 
         /// <summary>Timed narration moments for the last choreographed possession (radio bar +
         /// ticker re-timing). Sorted ascending by T. Valid immediately after <see cref="Choreograph"/>.</summary>
@@ -66,6 +85,11 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
             _beats = new List<NarrationBeat>();
             _shotStartT = -1f;
             _heldBy = -1;
+            _ftStartT = -1f;
+            _ftCrashT = -1f;
+            _ftDefSpots = null;
+            _ftCrashSpots = null;
+            _ftLaneDefender = null;
             _action = ActionLibrary.Choose(script, _rng);
 
             BuildOffenseAndBall();
@@ -113,6 +137,22 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
             float shotFlight = hasShot ? BallFlight.ShotDuration(_s.ShotPosition, _rimX, _s.ShotType) : 0f;
             float windup = hasShot ? BallFlight.WindupFor(_s.ShotType) : 0f;
 
+            // ── Phase A/B spots (needed early: the advance window is distance-derived) ──
+            var startSpots = FormationLibrary.GetBackcourtSpots(_s.OffenseAttacksRight, false, _rng);
+            var formation = FormationLibrary.GetHalfCourtSpots(_s.OffenseStrategy, _s.OffenseAttacksRight, _rng);
+
+            // Cap the bring-up at a real sprint: arrival is derived from the actual distance, and
+            // the PRESENTATION window stretches to fit rather than speeding anyone up. The display
+            // clock maps Start→End proportionally over LiveSeconds, so game time stays honest.
+            float maxAdvanceDist = 0f;
+            for (int i = 0; i < 5; i++)
+            {
+                float d = startSpots[i].DistanceTo(formation[i]);
+                if (d > maxAdvanceDist) maxAdvanceDist = d;
+            }
+            advanceEnd = Math.Max(advanceEnd, maxAdvanceDist / AdvanceAvg);
+            duration = Math.Max(duration, advanceEnd + (hasShot ? 1.6f + windup + shotFlight : 1.0f));
+
             _liveEndT = duration;
             float shotReleaseT = duration - shotFlight;          // ball reaches rim at ~duration
             _shotStartT = hasShot ? shotReleaseT : -1f;
@@ -124,9 +164,6 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
             if (hasShot) _phaseMarks.Add((shotReleaseT - windup, PossessionPhase.Shot));
 
             // ── Phase A/B: backcourt → formation ──
-            var startSpots = FormationLibrary.GetBackcourtSpots(_s.OffenseAttacksRight, false, _rng);
-            var formation = FormationLibrary.GetHalfCourtSpots(_s.OffenseStrategy, _s.OffenseAttacksRight, _rng);
-
             for (int i = 0; i < 5; i++)
             {
                 _offense[i] = new Track(startSpots[i]);
@@ -382,7 +419,7 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
             for (int k = 0; k < 3 && t + 0.7f < actionEnd; k++)
             {
                 var jab = FormationLibrary.Jitter(iso, 2.5f, _rng);
-                t = Glide(handler, t, jab, PlayerAction.Dribbling, speed: 12f);
+                t = Glide(handler, t, jab, PlayerAction.Dribbling, speed: JabAvg);
                 t += 0.25f;
             }
         }
@@ -393,7 +430,7 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
             if (runner >= 0)
                 Glide(runner, actionStart,
                     FormationLibrary.Clamp(new CourtPosition((CourtGeometry.RimX - 5f) * M, _action.SideY * 3f)),
-                    PlayerAction.Sprinting);
+                    PlayerAction.Sprinting, SprintAvg);
         }
 
         // ── Continuous off-ball spacing so no one stands still ──
@@ -417,7 +454,12 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
                 {
                     var cur = _offense[i].PositionAt(t);
                     var next = FormationLibrary.Jitter(NearbySlot(cur, slots), 1.5f, _rng);
-                    float arrive = Glide(i, t, next, PlayerAction.Cutting);
+                    // The ARRIVAL must stay inside the action window: an overshooting
+                    // relocation key would interleave with later resolution/FT keys
+                    // (box-outs, rebound spots, lane setup) and read as a teleport.
+                    float span = Math.Max(0.25f, cur.DistanceTo(next) / RelocateAvg);
+                    if (t + span > actionEnd - 0.1f) break;
+                    float arrive = Glide(i, t, next, PlayerAction.Cutting, RelocateAvg);
                     t = arrive + 0.4f + (float)_rng.NextDouble() * 0.7f;
                 }
             }
@@ -454,9 +496,9 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
 
         /// <summary>Add a waypoint the player eases to, at a speed-capped arrival time so smoothstep's
         /// 1.5× peak stays under the ChoreographyTest per-tick bound. Returns the arrival time.</summary>
-        private float Glide(int i, float fromT, CourtPosition to, PlayerAction action, float speed = SafeSpeed)
+        private float Glide(int i, float fromT, CourtPosition to, PlayerAction action, float speed = CutAvg)
         {
-            if (speed > 25f) speed = 25f;
+            if (speed > SprintAvg) speed = SprintAvg;
             var from = _offense[i].PositionAt(fromT);
             to = FormationLibrary.Clamp(to);
             float dist = from.DistanceTo(to);
@@ -549,7 +591,35 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
             else
             {
                 float rimT = shotReleaseT + shotFlight;
-                _ball.Add(new ShotSegment(shotReleaseT, rimT, _s.ShotPosition, _rimX, _s.ShotType));
+                float shotDist = _s.ShotPosition.DistanceTo(new CourtPosition(_rimX, 0f));
+
+                // Full glass usage (presentational): layups live on the glass, close-range
+                // misses come off glass-then-rim, the occasional midrange jumper banks in.
+                // The bank occupies the SAME flight window, so rimT and everything keyed to
+                // it (RimResult beat, MakeSegment, CaromSegment) is untouched.
+                bool jumperType = _s.ShotType != ShotType.Dunk && _s.ShotType != ShotType.TipIn &&
+                                  _s.ShotType != ShotType.Layup && _s.ShotType != ShotType.Floater &&
+                                  _s.ShotType != ShotType.Hookshot && _s.ShotType != ShotType.Heave;
+                bool bank = made
+                    ? _s.ShotType == ShotType.Layup
+                        || (_s.ShotType == ShotType.Floater && _rng.NextDouble() < 0.4)
+                        || (jumperType && shotDist > 8f && shotDist < 18f && _rng.NextDouble() < 0.10)
+                    : shotDist < 10f && _s.ShotType != ShotType.Dunk && _s.ShotType != ShotType.TipIn;
+
+                if (bank)
+                {
+                    float side = _s.ShotPosition.Y >= 0.5f ? 1f
+                               : _s.ShotPosition.Y <= -0.5f ? -1f
+                               : (_rng.NextDouble() < 0.5 ? 1f : -1f);
+                    float glassY = side * Math.Min(Math.Max(Math.Abs(_s.ShotPosition.Y) * 0.25f, 0.5f), 2f);
+                    float hop = Math.Min(0.18f, shotFlight * 0.45f);
+                    float uGlass = (shotFlight - hop) / shotFlight;
+                    _ball.Add(new BankSegment(shotReleaseT, rimT, _s.ShotPosition, _rimX, glassY, uGlass, _s.ShotType));
+                }
+                else
+                {
+                    _ball.Add(new ShotSegment(shotReleaseT, rimT, _s.ShotPosition, _rimX, _s.ShotType));
+                }
 
                 var resultBeat = Beat(rimT, NarrationBeatKind.RimResult, shooter);
                 resultBeat.ShotType = _s.ShotType;
@@ -566,7 +636,11 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
                 }
                 else
                 {
-                    _reboundSpot = BallFlight.ComputeReboundSpot(_s.ShotPosition, _rimX, _rng);
+                    // Long misses carom along the actual shot line (front/back iron);
+                    // close misses keep the generic scatter (they already banked in via glass).
+                    _reboundSpot = shotDist >= 10f
+                        ? BallFlight.ComputeReboundSpot(_s.ShotPosition, _rimX, _rng, frontIron: _rng.NextDouble() < 0.6)
+                        : BallFlight.ComputeReboundSpot(_s.ShotPosition, _rimX, _rng);
                     float caromEnd = rimT + BallFlight.CaromDuration;
                     _ball.Add(new CaromSegment(rimT, caromEnd, _rimX, _reboundSpot));
                     BuildReboundScramble(caromEnd, _reboundSpot);
@@ -680,11 +754,33 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
         {
             int shooter = _s.ShooterIndex >= 0 ? _s.ShooterIndex : _s.InitialBallHandlerIndex;
             float setupStart = _totalT;
-            float setupEnd = setupStart + 1.2f;
 
             _phaseMarks.Add((setupStart, PossessionPhase.FreeThrow));
 
-            var offSpots = FormationLibrary.GetFreeThrowOffenseSpots(_s.OffenseAttacksRight, shooter, _rng);
+            // NBA alignment roles: the bigs battle on the lane. Offense takes the two second
+            // slots, defense the two blocks (nearest the rim, theirs by rule) + a third one
+            // slot above the low-side offensive rebounder. Everyone else spaces past the arc.
+            var laneOff = RankByBigness(_s.Offense, shooter);
+            var defRank = RankByBigness(_s.Defense, -1);
+            int oLane1 = laneOff[0];
+            int oLane2 = laneOff.Length > 1 ? laneOff[1] : laneOff[0];
+
+            var offSpots = FormationLibrary.GetFreeThrowOffenseSpots(
+                _s.OffenseAttacksRight, shooter, oLane1, oLane2, _rng);
+            _ftDefSpots = FormationLibrary.GetFreeThrowDefenseSpots(
+                _s.OffenseAttacksRight, defRank[0], defRank[1], defRank[2], _rng);
+            _ftLaneDefender = new bool[5];
+            _ftLaneDefender[defRank[0]] = _ftLaneDefender[defRank[1]] = _ftLaneDefender[defRank[2]] = true;
+            _ftStartT = setupStart;
+
+            // Setup time derived from the farthest walk so nobody warps to their spot.
+            float maxOffenseDist = 0f;
+            for (int i = 0; i < 5; i++)
+            {
+                float d = _offense[i].PositionAt(setupStart).DistanceTo(offSpots[i]);
+                if (d > maxOffenseDist) maxOffenseDist = d;
+            }
+            float setupEnd = setupStart + Math.Max(1.2f, maxOffenseDist / 16f);
             for (int i = 0; i < 5; i++)
                 _offense[i].Add(setupEnd, offSpots[i], PlayerAction.Running);
 
@@ -695,9 +791,12 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
             var setupBeat = Beat(setupStart, NarrationBeatKind.FreeThrowSetup, shooter);
             setupBeat.TargetIndex = _s.FreeThrows.Attempts;   // "to the line for {n}"
 
+            float tailEnd = 0f;   // latest crash/retreat arrival to keep inside the timeline
+
             for (int a = 0; a < _s.FreeThrows.Attempts; a++)
             {
                 bool thisMade = a < made; // presentational ordering: makes first
+                bool isFinal = a == _s.FreeThrows.Attempts - 1;
                 var ftBeat = Beat(cursor + 0.9f, NarrationBeatKind.FreeThrowAttempt, shooter);
                 ftBeat.Made = thisMade;
 
@@ -715,18 +814,81 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
                 {
                     _ball.Add(new MakeSegment(cursor + flight, cursor + flight + 0.3f, _rimX));
                     _ball.Add(new DeadSegment(cursor + flight + 0.3f, cursor + flight + 0.9f, new CourtPosition(_rimX, 0f)));
+
+                    if (isFinal)
+                    {
+                        // Ball game dead after the last make: the shooting team's shooter + arc
+                        // players turn and retreat toward their own half for defensive balance.
+                        float netT = cursor + flight + 0.3f;
+                        for (int i = 0; i < 5; i++)
+                        {
+                            if (i == oLane1 || i == oLane2) continue;   // lane bodies walk off later
+                            var cur = _offense[i].PositionAt(netT);
+                            var back = FormationLibrary.Clamp(new CourtPosition(
+                                8f * -M + 3f * ((float)_rng.NextDouble() - 0.5f), cur.Y * 0.6f));
+                            float arrive = Glide(i, netT + 0.2f, back, PlayerAction.Running, SprintAvg);
+                            if (arrive > tailEnd) tailEnd = arrive;
+                        }
+                    }
                 }
                 else
                 {
                     var spot = BallFlight.ComputeReboundSpot(ftLine, _rimX, _rng);
                     _ball.Add(new CaromSegment(cursor + flight, cursor + flight + 0.5f, _rimX, spot));
                     _ball.Add(new DeadSegment(cursor + flight + 0.5f, cursor + flight + 0.9f, spot));
+
+                    if (isFinal)
+                    {
+                        // Live miss: lane bodies crash the glass; the decided rebounder wins it.
+                        _reboundSpot = spot;
+                        _ftCrashT = cursor + flight;
+                        _ftCrashSpots = new CourtPosition[5];
+                        for (int i = 0; i < 5; i++)
+                            _ftCrashSpots[i] = _ftLaneDefender[i] ? NearPoint(spot, 2.5f) : _ftDefSpots[i];
+
+                        bool offenseRebounds = !_s.RebounderIsDefense && _s.RebounderIndex >= 0;
+                        foreach (int idx in new[] { oLane1, oLane2 })
+                        {
+                            if (offenseRebounds && idx == _s.RebounderIndex) continue;
+                            var laneSpot = _offense[idx].PositionAt(_ftCrashT);
+                            var target = NearPoint(spot, 3f);
+                            float arrive = _ftCrashT + Math.Max(0.6f, laneSpot.DistanceTo(target) / 12f);
+                            _offense[idx].Add(arrive, target, PlayerAction.BoxingOut);
+                            if (arrive > tailEnd) tailEnd = arrive;
+                        }
+                        if (offenseRebounds)
+                        {
+                            var from = _offense[_s.RebounderIndex].PositionAt(_ftCrashT);
+                            float arrive = _ftCrashT + Math.Max(0.6f, from.DistanceTo(spot) / 12f);
+                            _offense[_s.RebounderIndex].Add(arrive, spot, PlayerAction.Rebounding);
+                            if (arrive > tailEnd) tailEnd = arrive;
+                        }
+                    }
                 }
 
                 cursor += flight + 1.0f;
             }
 
-            _totalT = cursor + 0.3f;
+            _totalT = Math.Max(cursor + 0.3f, tailEnd + 0.2f);
+        }
+
+        /// <summary>Lineup indices ordered biggest-first — Position (C→PG), then height, then
+        /// index — skipping <paramref name="exclude"/>. Deterministic: no RNG, so the same
+        /// possession always picks the same lane bodies.</summary>
+        private static int[] RankByBigness(Player[] five, int exclude)
+        {
+            var order = new List<int>(5);
+            for (int i = 0; i < 5; i++)
+                if (i != exclude) order.Add(i);
+            order.Sort((a, b) =>
+            {
+                int byPos = ((int)five[b].Position).CompareTo((int)five[a].Position);
+                if (byPos != 0) return byPos;
+                int byHeight = five[b].HeightInches.CompareTo(five[a].HeightInches);
+                if (byHeight != 0) return byHeight;
+                return b.CompareTo(a);
+            });
+            return order.ToArray();
         }
 
         // ════════════════════════════════════════════════════════════════
@@ -831,8 +993,9 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
                 states.Add(Sample(t));
                 prevT = t;
 
-                bool inFlight = BallSegmentAt(t) is PassSegment || BallSegmentAt(t) is ShotSegment ||
-                                BallSegmentAt(t) is CaromSegment || BallSegmentAt(t) is BlockSegment;
+                var seg = BallSegmentAt(t);
+                bool inFlight = seg is PassSegment || seg is ShotSegment || seg is BankSegment ||
+                                seg is CaromSegment || seg is BlockSegment;
                 t += inFlight ? FlightTick : Tick;
             }
 
@@ -940,6 +1103,30 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
 
             for (int i = 0; i < 5; i++)
             {
+                // Free-throw window: hold the authored lane/arc spot instead of man-tracking
+                // (defenders drifting after their man mid-FT looked broken). On a final-attempt
+                // miss the lane bodies crash toward the precomputed rebound battle.
+                if (_ftStartT >= 0f && t >= _ftStartT)
+                {
+                    CourtPosition ftTarget = _ftDefSpots[i];
+                    float ftSpeed = DefenseSpeed;
+                    if (_ftCrashT >= 0f && t >= _ftCrashT)
+                    {
+                        if (_s.RebounderIsDefense && i == _s.RebounderIndex)
+                        {
+                            ftTarget = _reboundSpot;
+                            ftSpeed = DefenseSprint;
+                        }
+                        else if (_ftLaneDefender[i])
+                        {
+                            ftTarget = _ftCrashSpots[i];
+                            ftSpeed = DefenseSprint;
+                        }
+                    }
+                    _defPos[i] = _defPos[i].MoveTowards(ftTarget, ftSpeed * dt);
+                    continue;
+                }
+
                 int man = _defPlan[i].ManIndex;   // follows a Switch
                 CourtPosition target;
                 float speed = DefenseSpeed;
@@ -947,7 +1134,7 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
                 if (defenseRebounds && i == _s.RebounderIndex)
                 {
                     target = _reboundSpot;
-                    speed = SprintSpeed;
+                    speed = DefenseSprint;
                 }
                 else if (resolution && _s.Ending == ScriptEnding.MadeShot && i == 0)
                 {
@@ -961,7 +1148,7 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
                     float contestDist = (1f - _s.ContestLevel) * 6f;
                     var shooterPos = _offense[_s.ShooterIndex].PositionAt(t);
                     target = shooterPos.MoveTowards(rim, contestDist);
-                    speed = SprintSpeed;
+                    speed = DefenseSprint;
                 }
                 else if (screenAction && _defPlan[i].Nav == ScreenNavigation.Hedge &&
                          man == _action.Screener &&
@@ -969,7 +1156,7 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
                 {
                     // Screener's defender shows/hedges on the ball, then recovers after the beat.
                     target = Blend(_action.ScreenSpot, _offense[_action.Handler].PositionAt(t), 0.3f);
-                    speed = SprintSpeed;
+                    speed = DefenseSprint;
                 }
                 else if (_defPlan[i].IsHelper && _defPlan[i].TagIndex >= 0 && _action.RollStartT > 0f &&
                          t >= _action.RollStartT && t <= _action.RollStartT + 0.9f)
@@ -1011,6 +1198,14 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
 
         private PlayerAction DefenseActionAt(int i, float t)
         {
+            if (_ftStartT >= 0f && t >= _ftStartT)
+            {
+                if (_ftCrashT >= 0f && t >= _ftCrashT && _s.RebounderIsDefense && i == _s.RebounderIndex)
+                    return PlayerAction.Rebounding;
+                if (_ftLaneDefender != null && _ftLaneDefender[i]) return PlayerAction.BoxingOut;
+                return PlayerAction.Defending;
+            }
+
             int man = _defPlan[i].ManIndex;
             if (IsContestMoment(t) && man == _s.ShooterIndex) return PlayerAction.Contesting;
             if (t > _liveEndT && _s.RebounderIsDefense && i == _s.RebounderIndex) return PlayerAction.Rebounding;
@@ -1132,14 +1327,25 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
             public override BallState Sample(float t)
             {
                 var pos = _holder.PositionAt(t);
+                // Motion-derived dribble: a carrier in motion must pound the ball — a flat-held
+                // ball gliding with a moving player reads as traveling. Spacing relocations can
+                // move a catcher during an authored "static" hold, so check actual track motion.
+                bool moving = _dribbled;
+                if (!moving)
+                {
+                    float lookback = Math.Max(t - 0.12f, T0);
+                    float window = t - lookback;
+                    if (window > 0.01f)
+                        moving = pos.DistanceTo(_holder.PositionAt(lookback)) / window > 1.5f;
+                }
                 // True floor-to-hand dribble cycle: the |sin| cusp at the bottom reads as the
                 // floor hit (~2.2 bounces/sec, ball visibly pounding the floor). Held = dead still.
-                float height = _dribbled
+                float height = moving
                     ? 0.2f + 3.6f * (float)Math.Abs(Math.Sin(t * 7f + _dribblePhase))
                     : CourtGeometry.HeldBallHeight;
                 return new BallState(pos.X, pos.Y, height)
                 {
-                    Status = _dribbled ? BallStatus.Dribbled : BallStatus.Held,
+                    Status = moving ? BallStatus.Dribbled : BallStatus.Held,
                     HeldByPlayerId = _playerId
                 };
             }
@@ -1163,6 +1369,20 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
             public ShotSegment(float t0, float t1, CourtPosition from, float rimX, ShotType? type)
             { T0 = t0; T1 = t1; _from = from; _rimX = rimX; _type = type; }
             public override BallState Sample(float t) => BallFlight.SampleShot(_from, _rimX, U(t), _type);
+        }
+
+        /// <summary>Shot that uses the glass: arc to a backboard point, short hop down onto the
+        /// rim. Same [release, rim] window as ShotSegment, so downstream timing is identical.</summary>
+        private class BankSegment : BallSegment
+        {
+            private readonly CourtPosition _from;
+            private readonly float _rimX, _glassY, _uGlass;
+            private readonly ShotType? _type;
+            public BankSegment(float t0, float t1, CourtPosition from, float rimX, float glassY,
+                float uGlass, ShotType? type)
+            { T0 = t0; T1 = t1; _from = from; _rimX = rimX; _glassY = glassY; _uGlass = uGlass; _type = type; }
+            public override BallState Sample(float t) =>
+                BallFlight.SampleBankShot(_from, _rimX, _glassY, U(t), _uGlass, _type);
         }
 
         private class MakeSegment : BallSegment

@@ -82,49 +82,61 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
         }
 
         /// <summary>
-        /// Free-throw lineup. Shooter at the line; rebounders on the lane;
-        /// remaining players behind the arc.
-        /// Index mapping returned for the OFFENSE array; defense computed separately.
+        /// NBA free-throw alignment, OFFENSE (indexed by lineup slot 0-4): shooter alone at the
+        /// line, the two lane rebounders (lane1/lane2) in the second lane slots on BOTH sides of
+        /// the key, the remaining two spaced behind the arc.
         /// </summary>
-        public static CourtPosition[] GetFreeThrowOffenseSpots(bool attacksRight, int shooterIdx, System.Random rng)
+        public static CourtPosition[] GetFreeThrowOffenseSpots(bool attacksRight, int shooterIdx,
+            int lane1, int lane2, System.Random rng)
         {
             float m = attacksRight ? 1f : -1f;
             var spots = new CourtPosition[5];
 
-            int laneSlot = 0;
+            bool arcTop = true;
             for (int i = 0; i < 5; i++)
             {
                 if (i == shooterIdx)
-                {
                     spots[i] = new CourtPosition(CourtGeometry.FreeThrowLineX * m, 0f);
-                }
-                else if (laneSlot < 1)
-                {
-                    // One offensive rebounder on the lane
-                    spots[i] = new CourtPosition(38f * m, laneSlot == 0 ? -8f : 8f);
-                    laneSlot++;
-                }
+                else if (i == lane1)
+                    spots[i] = new CourtPosition(36.5f * m, -8f);   // second lane slot, low side
+                else if (i == lane2)
+                    spots[i] = new CourtPosition(36.5f * m, 8f);    // second lane slot, high side
                 else
                 {
-                    // Spaced beyond the arc
-                    float y = (i % 2 == 0) ? 14f : -14f;
-                    spots[i] = Jitter(new CourtPosition(22f * m, y), 1.5f, rng);
+                    spots[i] = Jitter(new CourtPosition(21f * m, arcTop ? 13f : -13f), 1.5f, rng);
+                    arcTop = false;
                 }
             }
             return spots;
         }
 
-        public static CourtPosition[] GetFreeThrowDefenseSpots(bool offenseAttacksRight, System.Random rng)
+        /// <summary>
+        /// NBA free-throw alignment, DEFENSE (indexed by lineup slot 0-4): block1/block2 on the
+        /// low blocks — the lane slots nearest the rim belong to the defense by rule — third one
+        /// slot above the offensive rebounder on the low side, the other two beyond the arc.
+        /// </summary>
+        public static CourtPosition[] GetFreeThrowDefenseSpots(bool offenseAttacksRight,
+            int block1, int block2, int third, System.Random rng)
         {
             float m = offenseAttacksRight ? 1f : -1f;
-            return new[]
+            var spots = new CourtPosition[5];
+
+            bool arcTop = true;
+            for (int i = 0; i < 5; i++)
             {
-                new CourtPosition(40f * m, -6f),   // inside lane left
-                new CourtPosition(40f * m, 6f),    // inside lane right
-                new CourtPosition(36f * m, -9f),   // second lane left
-                Jitter(new CourtPosition(24f * m, 10f), 1.5f, rng),
-                Jitter(new CourtPosition(20f * m, -4f), 1.5f, rng)
-            };
+                if (i == block1)
+                    spots[i] = new CourtPosition(40f * m, -8f);     // low block, low side
+                else if (i == block2)
+                    spots[i] = new CourtPosition(40f * m, 8f);      // low block, high side
+                else if (i == third)
+                    spots[i] = new CourtPosition(33f * m, -8f);     // third lane slot
+                else
+                {
+                    spots[i] = Jitter(new CourtPosition(19f * m, arcTop ? 10f : -10f), 1.5f, rng);
+                    arcTop = false;
+                }
+            }
+            return spots;
         }
 
         public static CourtPosition Jitter(CourtPosition pos, float radius, System.Random rng)

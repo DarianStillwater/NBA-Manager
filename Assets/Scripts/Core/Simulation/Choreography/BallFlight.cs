@@ -123,8 +123,64 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
         /// </summary>
         public static BallState SampleShot(CourtPosition from, float rimX, float u, ShotType? shotType = null)
         {
-            float dist = Dist(from, rimX);
-            float release, apexExtra;
+            ShotShape(shotType, Dist(from, rimX), out float release, out float apexExtra);
+
+            float height = Lerp(release, CourtGeometry.RimHeight, u) + apexExtra * Arc(u);
+            return new BallState(
+                Lerp(from.X, rimX, u),
+                Lerp(from.Y, 0f, u),
+                height)
+            {
+                Status = BallStatus.InAir_Shot,
+                HeldByPlayerId = null,
+                ShotStyle = shotType
+            };
+        }
+
+        /// <summary>
+        /// Bank shot in flight: the standard per-type arc aimed at a glass point just above the
+        /// rim, then a short hop off the backboard down onto the rim center. Occupies the SAME
+        /// flight window as a straight shot, so the rim-arrival time (and everything keyed to
+        /// it) is unchanged. uGlass = normalized progress at glass contact.
+        /// </summary>
+        public static BallState SampleBankShot(CourtPosition from, float rimX, float glassY,
+            float u, float uGlass, ShotType? shotType)
+        {
+            float glassX = CourtGeometry.BackboardXFor(rimX > 0f);
+            const float glassHeight = 11f;
+
+            if (u < uGlass)
+            {
+                float v = uGlass <= 0.0001f ? 1f : u / uGlass;
+                ShotShape(shotType, Dist(from, rimX), out float release, out float apexExtra);
+                float height = Lerp(release, glassHeight, v) + apexExtra * Arc(v);
+                return new BallState(
+                    Lerp(from.X, glassX, v),
+                    Lerp(from.Y, glassY, v),
+                    height)
+                {
+                    Status = BallStatus.InAir_Shot,
+                    HeldByPlayerId = null,
+                    ShotStyle = shotType
+                };
+            }
+
+            // Off the glass, down onto the rim (~1-2.5 ft of ground travel over the hop).
+            float w = (u - uGlass) / Math.Max(1f - uGlass, 0.0001f);
+            return new BallState(
+                Lerp(glassX, rimX, w),
+                Lerp(glassY, 0f, w),
+                Lerp(glassHeight, CourtGeometry.RimHeight, w))
+            {
+                Status = BallStatus.InAir_Shot,
+                HeldByPlayerId = null,
+                ShotStyle = shotType
+            };
+        }
+
+        /// <summary>Release height + arc shape by shot type (shared by straight and bank shots).</summary>
+        private static void ShotShape(ShotType? shotType, float dist, out float release, out float apexExtra)
+        {
             switch (shotType)
             {
                 case ShotType.Dunk:     release = 8.5f; apexExtra = 1.2f; break;
@@ -138,17 +194,6 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
                     apexExtra = dist > 22f ? 9f : dist > 12f ? 5.5f : 4f;
                     break;
             }
-
-            float height = Lerp(release, CourtGeometry.RimHeight, u) + apexExtra * Arc(u);
-            return new BallState(
-                Lerp(from.X, rimX, u),
-                Lerp(from.Y, 0f, u),
-                height)
-            {
-                Status = BallStatus.InAir_Shot,
-                HeldByPlayerId = null,
-                ShotStyle = shotType
-            };
         }
 
         /// <summary>Made shot: ball drops from the rim down through the net (punched through on dunks).</summary>
@@ -230,6 +275,31 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
             float x = rimX + backX * ((float)rng.NextDouble() * 0.8f + 0.2f) * caromDist;
 
             return FormationLibrary.Clamp(new CourtPosition(x, y));
+        }
+
+        /// <summary>
+        /// Shot-line-aware carom for long misses: FRONT iron kicks the ball back out along the
+        /// rim→shooter line (±25° spray); BACK iron pushes it the opposite way past the rim
+        /// toward the baseline. Rebounds land where that shot would actually put them.
+        /// </summary>
+        public static CourtPosition ComputeReboundSpot(CourtPosition shotPos, float rimX,
+            System.Random rng, bool frontIron)
+        {
+            float dx = shotPos.X - rimX, dy = shotPos.Y;
+            float len = (float)Math.Sqrt(dx * dx + dy * dy);
+            if (len < 0.001f) return ComputeReboundSpot(shotPos, rimX, rng);
+            dx /= len; dy /= len;
+
+            float spray = ((float)rng.NextDouble() * 2f - 1f) * 0.436f;   // ±25°
+            float cos = (float)Math.Cos(spray), sin = (float)Math.Sin(spray);
+            float rx = dx * cos - dy * sin;
+            float ry = dx * sin + dy * cos;
+
+            float dist = frontIron
+                ? 4f + (float)rng.NextDouble() * 8f       // back toward the shot
+                : -(3f + (float)rng.NextDouble() * 4f);   // long, over the back iron
+
+            return FormationLibrary.Clamp(new CourtPosition(rimX + rx * dist, ry * dist));
         }
 
         // ── Helpers ────────────────────────────────────────────────

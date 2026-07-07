@@ -1,20 +1,20 @@
 using UnityEngine;
 using UnityEngine.UI;
 using NBAHeadCoach.Core.Simulation;
+using NBAHeadCoach.Core.Simulation.Choreography;
 using NBAHeadCoach.Core.Util;
 
 namespace NBAHeadCoach.UI.Components
 {
     /// <summary>
     /// Dumb renderer for the ball: positions a sprite from a BallState (X/Y/Height).
-    /// The choreographer bakes all flight into the states, so this class never
-    /// synthesizes motion — height lifts the sprite and scales it toward the apex,
-    /// with a ground shadow for depth. Replaces BallAnimator for the match view.
+    /// The choreographer bakes all flight into the states, so this class never synthesizes
+    /// motion. TRUE TOP-DOWN: the sprite sits exactly on its floor track (no screen lift —
+    /// that read as sideways drift from a bird's-eye camera); height is conveyed by the ball
+    /// swelling toward the camera at the apex and by the fading contact shadow.
     /// </summary>
     public class MatchBallView : MonoBehaviour
     {
-        private const float HeightToPixelsPerFoot = 1.2f; // visual lift per foot of height
-
         private const float SpinDegPerPx = 3f;     // roll rate with horizontal travel
 
         private RectTransform _rect;
@@ -91,12 +91,15 @@ namespace NBAHeadCoach.UI.Components
             _punch = Mathf.Max(_punch, strength);
         }
 
-        /// <summary>Render the ball at an interpolated court position + height (feet).</summary>
+        /// <summary>Render the ball at an interpolated court position + height (feet).
+        /// throughRim: a make is dropping through the cylinder — shrink so the ball visibly
+        /// sinks inside the ring (the court view sorts the rim overlay above it).</summary>
         public void Render(Vector2 groundUiPos, float heightFeet, BallStatus status,
-            NBAHeadCoach.Core.Simulation.ShotType? style = null)
+            NBAHeadCoach.Core.Simulation.ShotType? style = null, bool throughRim = false)
         {
-            float lift = heightFeet * _pixelsPerFoot * HeightToPixelsPerFoot;
-            Vector2 ballPos = groundUiPos + Vector2.up * lift;
+            // True top-down: the ball rides its floor track exactly — height reads through
+            // scale (closer to the camera) + the contact shadow, never a screen offset.
+            Vector2 ballPos = groundUiPos;
             _rect.anchoredPosition = ballPos;
 
             // Spin: the ball rolls in its travel direction while airborne or loose, with a base
@@ -113,15 +116,19 @@ namespace NBAHeadCoach.UI.Components
             _lastPos = ballPos;
             _hasLast = true;
 
-            // Grow toward the apex so arcs read in top-down view; slam punch decays on top.
+            // Height → size: ground ≈ 0.9×, held ≈ 1.18×, rim ≈ 1.5×, apex (25 ft) ≈ 2.2×.
+            // With the lift gone this curve carries the whole arc read; slam punch on top.
             _punch = Mathf.MoveTowards(_punch, 0f, Time.deltaTime * 4f);
-            float scale = (1f + Mathf.Clamp01(heightFeet / 25f) * 0.7f) * (1f + _punch);
+            float scale = (0.9f + 1.3f * Mathf.Pow(Mathf.Clamp01(heightFeet / 25f), 0.85f)) * (1f + _punch);
+            if (throughRim)
+                scale *= Mathf.Lerp(1f, 0.5f, Mathf.Clamp01((CourtGeometry.RimHeight - heightFeet) / 4.5f));
             _rect.sizeDelta = new Vector2(_baseSize * scale, _baseSize * scale);
 
-            _shadowRect.anchoredPosition = groundUiPos;
-            float shadowFade = Mathf.Clamp01(1f - heightFeet / 35f);
-            _shadow.color = new Color(0f, 0f, 0f, 0.3f * shadowFade);
-            float shadowScale = 1f + Mathf.Clamp01(heightFeet / 25f) * 0.5f;
+            // Contact shadow: small fixed offset under the ball; higher ⇒ smaller and fainter.
+            _shadowRect.anchoredPosition = groundUiPos + new Vector2(0.18f, -0.18f) * _pixelsPerFoot;
+            float hf = Mathf.Clamp01(heightFeet / 30f);
+            _shadow.color = new Color(0f, 0f, 0f, 0.3f * Mathf.Lerp(1f, 0.25f, hf));
+            float shadowScale = 1f - hf * 0.45f;
             _shadowRect.sizeDelta = new Vector2(_baseSize * 0.8f * shadowScale, _baseSize * 0.45f * shadowScale);
 
             // Keep ball + shadow on top of player dots

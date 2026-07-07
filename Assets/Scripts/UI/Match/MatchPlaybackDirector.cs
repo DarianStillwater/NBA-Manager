@@ -33,6 +33,11 @@ namespace NBAHeadCoach.UI.Match
         /// Separate channel from OnTickerEntry — never rendered in the play-by-play box.</summary>
         public event Action<NarrationLine> OnNarration;
 
+        /// <summary>Per-frame clock readout during played possessions: (gameClock, shotClock)
+        /// in seconds. Ticks Start→End across the live window, holds during the shot tail.
+        /// Writes ONLY the clock texts — scores stay on the discrete scoreboard events.</summary>
+        public event Action<float, float> OnClockTick;
+
         private MatchSimulationController _sim;
         private MatchCourtView _court;
         private Coroutine _active;
@@ -80,6 +85,11 @@ namespace NBAHeadCoach.UI.Match
             // Play the FULL choreographed timeline (through the shot's resolution — ball through
             // the net on a make, carom + rebound on a miss), not just up to the ball reaching the rim.
             float total = packet.PlaybackSeconds;
+            // Game clock ticks Start→End across the live window, then holds through the tail
+            // (the sim already stopped the clock there). Proportional mapping stays honest when
+            // the choreographer stretched the presentation past the game-time duration.
+            float live = packet.LiveSeconds > 0.01f ? packet.LiveSeconds : Mathf.Max(packet.DurationGameSeconds, 0.01f);
+            float endShotClock = Mathf.Max(24f - packet.DurationGameSeconds, 0f);
             float t = 0f;
             int eventCursor = 0;
 
@@ -99,14 +109,21 @@ namespace NBAHeadCoach.UI.Match
 
                     t += Time.deltaTime * speed;
                     _court.RenderAt(Mathf.Min(t, total));
-                    eventCursor = FireDueEvents(packet, t, eventCursor);
+
+                    float frac = Mathf.Clamp01(t / live);
+                    float gameClock = Mathf.Lerp(packet.StartGameClock, packet.EndGameClock, frac);
+                    float shotClock = Mathf.Max(24f - frac * packet.DurationGameSeconds, 0f);
+                    OnClockTick?.Invoke(gameClock, shotClock);
+
+                    eventCursor = FireDueEvents(packet, t, eventCursor, gameClock, shotClock);
 
                     yield return null;
                 }
 
                 // Flush anything left (clamped offsets, FT tail)
-                FireDueEvents(packet, float.MaxValue, eventCursor);
+                FireDueEvents(packet, float.MaxValue, eventCursor, packet.EndGameClock, endShotClock);
                 _court.RenderAt(total);
+                OnClockTick?.Invoke(packet.EndGameClock, endShotClock);
 
                 // TV beat: hold on the resolved result before advancing, so a made basket or a
                 // rebound registers. Court stays frozen on the final frame; skipped at Instant speed.
@@ -145,7 +162,7 @@ namespace NBAHeadCoach.UI.Match
                         AwayScore = _sim != null ? _sim.AwayScore : 0,
                         Quarter = packet.Quarter,
                         Clock = Mathf.Lerp(packet.StartGameClock, packet.EndGameClock, u),
-                        ShotClock = 24f,
+                        ShotClock = Mathf.Max(24f - u * packet.DurationGameSeconds, 0f),
                         HomeHasPossession = packet.OffenseIsHome
                     });
 
@@ -159,9 +176,12 @@ namespace NBAHeadCoach.UI.Match
                         OnTickerEntry?.Invoke(evt.Entry);
                 }
 
-                // Final authoritative scoreboard snapshot
+                // Final authoritative scoreboard snapshot. Embedded snapshots carry the
+                // possession's START clock (minted before the sim advanced it) — override with
+                // the end clock so the display never jumps backwards.
                 var finalBoard = LastScoreboard(packet);
-                if (finalBoard != null) OnScoreboard?.Invoke(finalBoard);
+                if (finalBoard != null)
+                    OnScoreboard?.Invoke(CopyWithClock(finalBoard, packet.EndGameClock, 24f));
             }
             finally
             {
@@ -189,18 +209,41 @@ namespace NBAHeadCoach.UI.Match
             }
         }
 
-        private int FireDueEvents(PossessionPlaybackPacket packet, float t, int cursor)
+        private int FireDueEvents(PossessionPlaybackPacket packet, float t, int cursor,
+            float? clockOverride = null, float? shotClockOverride = null)
         {
             while (cursor < packet.Events.Count && packet.Events[cursor].Offset <= t)
             {
                 var evt = packet.Events[cursor];
                 if (evt.Entry != null) OnTickerEntry?.Invoke(evt.Entry);
-                if (evt.Scoreboard != null) OnScoreboard?.Invoke(evt.Scoreboard);
+                if (evt.Scoreboard != null)
+                {
+                    // Embedded snapshots are minted before the sim advances its clock, so they
+                    // carry the possession's START clock. During played possessions, re-stamp
+                    // with the current mapped clock (copy — packet data stays pristine).
+                    var board = clockOverride.HasValue
+                        ? CopyWithClock(evt.Scoreboard, clockOverride.Value, shotClockOverride ?? evt.Scoreboard.ShotClock)
+                        : evt.Scoreboard;
+                    OnScoreboard?.Invoke(board);
+                }
                 if (evt.ShotMarker.HasValue) _court.ResolveShot(evt.ShotMarker.Value, evt.ShotMade);
                 if (evt.Narration != null) OnNarration?.Invoke(evt.Narration);
                 cursor++;
             }
             return cursor;
+        }
+
+        private static ScoreboardUpdate CopyWithClock(ScoreboardUpdate src, float clock, float shotClock)
+        {
+            return new ScoreboardUpdate
+            {
+                HomeScore = src.HomeScore,
+                AwayScore = src.AwayScore,
+                Quarter = src.Quarter,
+                Clock = clock,
+                ShotClock = shotClock,
+                HomeHasPossession = src.HomeHasPossession
+            };
         }
 
         private void Complete()

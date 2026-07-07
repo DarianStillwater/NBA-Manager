@@ -87,6 +87,27 @@ namespace NBAHeadCoach.UI.Components
             _fx = StartCoroutine(DunkRoutine());
         }
 
+        /// <summary>Standalone rim ring for the through-rim moment: the court view re-sorts this
+        /// ABOVE the ball while a make drops through the cylinder, so the ball visibly sinks
+        /// inside the ring instead of covering it. Starts disabled.</summary>
+        public static Image CreateRimOverlay(RectTransform parent, Vector2 anchoredPos, float pixelsPerFoot)
+        {
+            var go = new GameObject("RimOverlay", typeof(RectTransform), typeof(Image));
+            var rect = go.GetComponent<RectTransform>();
+            rect.SetParent(parent, false);
+            rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.anchoredPosition = anchoredPos;
+            float rimDia = Mathf.Max(12f, pixelsPerFoot * 1.5f);
+            rect.sizeDelta = new Vector2(rimDia, rimDia);
+
+            var img = go.GetComponent<Image>();
+            img.sprite = GetRingSprite();
+            img.color = RimColor;
+            img.raycastTarget = false;
+            img.enabled = false;
+            return img;
+        }
+
         private IEnumerator SwishRoutine(float intensity)
         {
             float t = 0f;

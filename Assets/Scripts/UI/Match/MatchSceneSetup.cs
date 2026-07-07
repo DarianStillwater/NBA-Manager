@@ -27,7 +27,7 @@ namespace NBAHeadCoach.UI.Match
 
         // UI references
         private Text _awayTeamName, _awayScoreText, _homeTeamName, _homeScoreText;
-        private Text _quarterText, _clockText;
+        private Text _quarterText, _clockText, _shotClockText;
         private Image _awayLogo, _homeLogo;
         private GameObject _homePossessionDot, _awayPossessionDot;
         private RectTransform _playByPlayContent;
@@ -35,6 +35,7 @@ namespace NBAHeadCoach.UI.Match
         private Text _gameEndTitle, _gameEndScore, _gameEndResult;
         private GameObject _gameEndOverlay;
         private RectTransform _courtArea;
+        private RectTransform _courtSurface;
         private MatchCourtView _courtView;
         private MatchPlaybackDirector _director;
         private Text _ffTickerLabel;
@@ -113,16 +114,22 @@ namespace NBAHeadCoach.UI.Match
             _director.Bind(_simController, _courtView);
             _director.OnTickerEntry += OnPlayByPlay;
             _director.OnScoreboard += OnScoreboardUpdate;
+            _director.OnClockTick += OnClockTick;
             _director.OnFastForwardChanged += OnFastForwardChanged;
 
             // Radio narration bar over the court (separate channel — never in the PBP box)
-            _narrationBar = NarrationBarView.Create(_courtArea);
+            _narrationBar = NarrationBarView.Create(_courtSurface);
             _director.OnNarration += _narrationBar.Show;
 
             SubscribeToEvents();
 
+            // Settle the AspectRatioFitter's rect BEFORE the court view captures
+            // PixelsPerFoot for hoop/dot/ball sizing.
+            Canvas.ForceUpdateCanvases();
+            LayoutRebuilder.ForceRebuildLayoutImmediate(_root);
+
             // Setup court view with full court sprite and actual team colors
-            var courtBgImg = _courtArea.GetComponent<Image>();
+            var courtBgImg = _courtSurface.GetComponent<Image>();
             var fullCourtSprite = ArtManager.GetFullCourt();
             // Home wears its primary color, away wears its secondary (NBA convention).
             // Each falls back to the team's other color if its choice would wash out on the wood.
@@ -165,13 +172,22 @@ namespace NBAHeadCoach.UI.Match
             // ── COURT VIEW (middle, 45%) ──
             _courtArea = CreateRT(_root, "Court");
             _courtArea.anchorMin = new Vector2(0, 0.25f); _courtArea.anchorMax = new Vector2(1, 0.85f); _courtArea.sizeDelta = Vector2.zero;
-            // Court background image (full court sprite, stretched to fill)
-            var courtBgImg = _courtArea.gameObject.AddComponent<Image>();
+            // Dark margin fill behind the aspect-locked court surface
+            _courtArea.gameObject.AddComponent<Image>().color = new Color(0.03f, 0.035f, 0.06f);
+
+            // Court surface locked to true 94:50 so a court foot is the same length in both
+            // axes — circles are circles, X-speed reads like Y-speed, rim geometry is honest.
+            _courtSurface = CreateRT(_courtArea, "CourtSurface");
+            Stretch(_courtSurface);
+            var fitter = _courtSurface.gameObject.AddComponent<AspectRatioFitter>();
+            fitter.aspectMode = AspectRatioFitter.AspectMode.FitInParent;
+            fitter.aspectRatio = 94f / 50f;
+            var courtBgImg = _courtSurface.gameObject.AddComponent<Image>();
             courtBgImg.color = Color.white;
             courtBgImg.type = Image.Type.Simple;
             courtBgImg.preserveAspect = false;
 
-            _courtView = _courtArea.gameObject.AddComponent<MatchCourtView>();
+            _courtView = _courtSurface.gameObject.AddComponent<MatchCourtView>();
 
             // ── PLAY-BY-PLAY (bottom 35%) ──
             var pbpArea = CreateRT(_root, "PBP");
@@ -216,14 +232,28 @@ namespace NBAHeadCoach.UI.Match
             var apImg = _awayPossessionDot.AddComponent<Image>(); apImg.color = UITheme.AccentPrimary;
             _awayPossessionDot.SetActive(false);
 
-            // Center info (quarter/clock)
-            var center = CreateRT(parent, "Center"); center.gameObject.AddComponent<LayoutElement>().preferredWidth = 120;
+            // Center info (quarter / game clock / shot clock)
+            var center = CreateRT(parent, "Center"); center.gameObject.AddComponent<LayoutElement>().preferredWidth = 160;
             var cvlg = center.gameObject.AddComponent<VerticalLayoutGroup>();
             cvlg.childControlWidth = true; cvlg.childControlHeight = true; cvlg.childForceExpandWidth = true;
             _quarterText = MkText(center, "Q1", 14, FontStyle.Bold, UITheme.AccentPrimary, TextAnchor.MiddleCenter);
             _quarterText.gameObject.AddComponent<LayoutElement>().flexibleHeight = 1;
-            _clockText = MkText(center, "12:00", 20, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
-            _clockText.gameObject.AddComponent<LayoutElement>().flexibleHeight = 1;
+
+            var clockRow = CreateRT(center, "ClockRow");
+            clockRow.gameObject.AddComponent<LayoutElement>().flexibleHeight = 1;
+            var crHlg = clockRow.gameObject.AddComponent<HorizontalLayoutGroup>();
+            crHlg.childControlWidth = true; crHlg.childControlHeight = true;
+            crHlg.childForceExpandHeight = true; crHlg.spacing = 6;
+            crHlg.childAlignment = TextAnchor.MiddleCenter;
+
+            var clockGo = CreateRT(clockRow, "Clock");
+            clockGo.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1;
+            _clockText = MkText(clockGo, "12:00", 20, FontStyle.Bold, Color.white, TextAnchor.MiddleRight);
+
+            var shotClockGo = CreateRT(clockRow, "ShotClock");
+            shotClockGo.gameObject.AddComponent<LayoutElement>().preferredWidth = 36;
+            _shotClockText = MkText(shotClockGo, "24", 16, FontStyle.Bold,
+                new Color(1f, 0.55f, 0.15f), TextAnchor.MiddleLeft);
 
             // Possession dot home
             _homePossessionDot = CreateRT(parent, "HPoss").gameObject;
@@ -435,6 +465,22 @@ namespace NBAHeadCoach.UI.Match
             int mins = (int)(update.Clock / 60);
             int secs = (int)(update.Clock % 60);
             _clockText.text = $"{mins}:{secs:D2}";
+            if (_shotClockText != null)
+                _shotClockText.text = Mathf.CeilToInt(update.ShotClock).ToString();
+        }
+
+        /// <summary>Per-frame clock tick during played possessions — writes ONLY the two clock
+        /// texts. Scores stay on the discrete scoreboard events so a make isn't revealed early.</summary>
+        private void OnClockTick(float gameClock, float shotClock)
+        {
+            if (_clockText != null)
+            {
+                int mins = (int)(gameClock / 60);
+                int secs = (int)(gameClock % 60);
+                _clockText.text = $"{mins}:{secs:D2}";
+            }
+            if (_shotClockText != null)
+                _shotClockText.text = Mathf.CeilToInt(shotClock).ToString();
         }
 
         private IEnumerator PulseText(Text text)
@@ -713,6 +759,7 @@ namespace NBAHeadCoach.UI.Match
             {
                 _director.OnTickerEntry -= OnPlayByPlay;
                 _director.OnScoreboard -= OnScoreboardUpdate;
+                _director.OnClockTick -= OnClockTick;
                 _director.OnFastForwardChanged -= OnFastForwardChanged;
                 if (_narrationBar != null) _director.OnNarration -= _narrationBar.Show;
             }

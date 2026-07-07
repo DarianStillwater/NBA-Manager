@@ -195,6 +195,7 @@ namespace NBAHeadCoach.Core
                 StartGameClock = result.StartGameClock,
                 EndGameClock = result.EndGameClock,
                 PresentationSeconds = result.PresentationSeconds,
+                LiveSeconds = result.LiveSeconds,
                 Quarter = result.Quarter,
                 OffenseIsHome = offenseIsHome
             };

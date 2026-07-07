@@ -33,6 +33,8 @@ namespace NBAHeadCoach.UI.Components
         private MatchBallView _ball;
         private HoopView _leftHoop;
         private HoopView _rightHoop;
+        private Image _rimOverlayLeft;    // drawn above the ball while a make drops through
+        private Image _rimOverlayRight;
         private readonly List<ShotMarkerUI> _shotMarkers = new List<ShotMarkerUI>();
         private const int MaxShotMarkers = 40;
 
@@ -73,6 +75,10 @@ namespace NBAHeadCoach.UI.Components
             // Hoops at both ends, sized to the court rect
             _leftHoop = HoopView.Create(_courtRect, rightEnd: false, CourtToUI, PixelsPerFoot);
             _rightHoop = HoopView.Create(_courtRect, rightEnd: true, CourtToUI, PixelsPerFoot);
+            _rimOverlayLeft = HoopView.CreateRimOverlay(_courtRect,
+                CourtToUI(-CourtGeometry.RimX, 0f), PixelsPerFoot);
+            _rimOverlayRight = HoopView.CreateRimOverlay(_courtRect,
+                CourtToUI(CourtGeometry.RimX, 0f), PixelsPerFoot);
 
             foreach (var id in homeLineup.Take(5)) CreateDot(id, homeTeam, true);
             foreach (var id in awayLineup.Take(5)) CreateDot(id, awayTeam, false);
@@ -161,7 +167,27 @@ namespace NBAHeadCoach.UI.Components
                 float bx = Mathf.Lerp(a.Ball.X, b.Ball.X, u);
                 float by = Mathf.Lerp(a.Ball.Y, b.Ball.Y, u);
                 float bh = Mathf.Lerp(a.Ball.Height, b.Ball.Height, u);
-                _ball.Render(CourtToUI(bx, by), bh, b.Ball.Status, b.Ball.ShotStyle);
+
+                // A shot descending into the cylinder renders UNDER the rim ring and shrinks,
+                // so a make visibly drops INSIDE the hoop instead of landing beside it.
+                // Miss caroms are Loose and kick upward first, so they never trigger.
+                bool throughRim = b.Ball.Status == BallStatus.InAir_Shot &&
+                                  bh < CourtGeometry.RimHeight + 0.3f &&
+                                  b.Ball.Height <= a.Ball.Height + 0.01f &&
+                                  Mathf.Abs(Mathf.Abs(bx) - CourtGeometry.RimX) < 1.2f &&
+                                  Mathf.Abs(by) < 1.2f;
+
+                _ball.Render(CourtToUI(bx, by), bh, b.Ball.Status, b.Ball.ShotStyle, throughRim);
+
+                var overlay = bx >= 0f ? _rimOverlayRight : _rimOverlayLeft;
+                var other = bx >= 0f ? _rimOverlayLeft : _rimOverlayRight;
+                if (other != null && other.enabled) other.enabled = false;
+                if (overlay != null)
+                {
+                    if (overlay.enabled != throughRim) overlay.enabled = throughRim;
+                    // Above the ball, which just re-sorted itself to last
+                    if (throughRim) overlay.transform.SetAsLastSibling();
+                }
             }
         }
 
@@ -249,7 +275,10 @@ namespace NBAHeadCoach.UI.Components
             if (_ball != null) Destroy(_ball.gameObject);
             if (_leftHoop != null) Destroy(_leftHoop.gameObject);
             if (_rightHoop != null) Destroy(_rightHoop.gameObject);
+            if (_rimOverlayLeft != null) Destroy(_rimOverlayLeft.gameObject);
+            if (_rimOverlayRight != null) Destroy(_rimOverlayRight.gameObject);
             _ball = null; _leftHoop = null; _rightHoop = null;
+            _rimOverlayLeft = null; _rimOverlayRight = null;
             _timeline = null;
         }
 

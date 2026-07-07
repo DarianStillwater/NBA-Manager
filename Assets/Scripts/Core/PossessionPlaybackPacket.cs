@@ -37,6 +37,11 @@ namespace NBAHeadCoach.Core
         /// past the live possession end. 0 when there is no timeline (legacy/headless).</summary>
         public float PresentationSeconds;
 
+        /// <summary>End of the LIVE action window in presentation seconds — the game clock ticks
+        /// Start→End across this span and holds during the tail. 0 when no choreography ran
+        /// (director falls back to DurationGameSeconds).</summary>
+        public float LiveSeconds;
+
         public float DurationGameSeconds => StartGameClock - EndGameClock;
         public float TotalPlaybackSeconds => DurationGameSeconds + TailSeconds;
 
