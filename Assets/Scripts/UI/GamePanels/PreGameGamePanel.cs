@@ -108,12 +108,17 @@ namespace NBAHeadCoach.UI.GamePanels
             btnHlg.padding = new RectOffset(20, 20, 2, 2);
 
             var capturedEvent = _gameEvent;
-            MkActionBtn(btnRow, "SIMULATE GAME", UITheme.Success, () => SimulateAndShowResult(gm, playerTeam, oppTeam, isHome, capturedEvent));
-            MkActionBtn(btnRow, "PLAY GAME", UITheme.AccentSecondary, () => {
-                ApplyPreGameChoices(playerTeam);
-                gm.MatchController?.PrepareMatch(capturedEvent);
-                gm.MatchController?.StartInteractiveMatch();
-            });
+            bool canCoach = NBAHeadCoach.Core.Data.RolePermissions.CanEditLineupAndStrategy;
+            MkActionBtn(btnRow, canCoach ? "SIMULATE GAME" : "SIM GAME DAY", UITheme.Success,
+                () => SimulateAndShowResult(gm, playerTeam, oppTeam, isHome, capturedEvent));
+            if (NBAHeadCoach.Core.Data.RolePermissions.CanPlayInteractiveMatch)
+            {
+                MkActionBtn(btnRow, "PLAY GAME", UITheme.AccentSecondary, () => {
+                    ApplyPreGameChoices(playerTeam);
+                    gm.MatchController?.PrepareMatch(capturedEvent);
+                    gm.MatchController?.StartInteractiveMatch();
+                });
+            }
         }
 
         private void ApplyPreGameChoices(Team playerTeam)
@@ -165,7 +170,12 @@ namespace NBAHeadCoach.UI.GamePanels
                 UIBuilder.Stretch(nameText.gameObject); nameText.alignment = TextAnchor.MiddleLeft;
                 nameText.GetComponent<RectTransform>().offsetMin = new Vector2(8, 0);
 
-                // Cycle arrows
+                // Cycle arrows (coach-controlled lineups only)
+                if (!NBAHeadCoach.Core.Data.RolePermissions.CanEditLineupAndStrategy)
+                {
+                    AddOppCells(row, gm, oppLineup, i);
+                    continue;
+                }
                 var leftGo = UIBuilder.Child(row, "L"); leftGo.AddComponent<LayoutElement>().preferredWidth = 24;
                 leftGo.AddComponent<Image>().color = UITheme.CardBackground;
                 var lt = UIBuilder.Text(leftGo.GetComponent<RectTransform>(), "T", "<", 12, FontStyle.Bold, UITheme.AccentPrimary);
@@ -180,18 +190,31 @@ namespace NBAHeadCoach.UI.GamePanels
                 leftGo.AddComponent<Button>().onClick.AddListener(() => CyclePlayer(posIdx, -1, roster, nameText, gm));
                 rightGo.AddComponent<Button>().onClick.AddListener(() => CyclePlayer(posIdx, 1, roster, nameText, gm));
 
-                // "vs" label
-                var vsGo = UIBuilder.Child(row, "VS"); vsGo.AddComponent<LayoutElement>().preferredWidth = 24;
-                var vst = UIBuilder.Text(vsGo.GetComponent<RectTransform>(), "T", "vs", 9, FontStyle.Italic, UITheme.TextSecondary);
-                UIBuilder.Stretch(vst.gameObject); vst.alignment = TextAnchor.MiddleCenter;
-
-                // Opponent starter
-                var oppGo = UIBuilder.Child(row, "Opp"); oppGo.AddComponent<LayoutElement>().flexibleWidth = 0.7f;
-                oppGo.AddComponent<Image>().color = UITheme.PanelSurface;
-                string oppName = i < oppLineup.Length ? GetPlayerName(gm, oppLineup[i]) : "—";
-                var ot = UIBuilder.Text(oppGo.GetComponent<RectTransform>(), "T", oppName, 10, FontStyle.Normal, UITheme.TextSecondary);
-                UIBuilder.Stretch(ot.gameObject); ot.alignment = TextAnchor.MiddleCenter;
+                AddOppCells(row, gm, oppLineup, i);
             }
+
+            if (!NBAHeadCoach.Core.Data.RolePermissions.CanEditLineupAndStrategy)
+            {
+                var note = MkRow(parent, 22);
+                var nt = UIBuilder.Text(note, "T",
+                    $"Starting five set by coach {NBAHeadCoach.Core.Data.RolePermissions.AICoachName}.",
+                    10, FontStyle.Italic, UITheme.TextSecondary);
+                UIBuilder.Stretch(nt.gameObject); nt.alignment = TextAnchor.MiddleLeft;
+                nt.GetComponent<RectTransform>().offsetMin = new Vector2(8, 0);
+            }
+        }
+
+        private void AddOppCells(RectTransform row, GameManager gm, string[] oppLineup, int i)
+        {
+            var vsGo = UIBuilder.Child(row, "VS"); vsGo.AddComponent<LayoutElement>().preferredWidth = 24;
+            var vst = UIBuilder.Text(vsGo.GetComponent<RectTransform>(), "T", "vs", 9, FontStyle.Italic, UITheme.TextSecondary);
+            UIBuilder.Stretch(vst.gameObject); vst.alignment = TextAnchor.MiddleCenter;
+
+            var oppGo = UIBuilder.Child(row, "Opp"); oppGo.AddComponent<LayoutElement>().flexibleWidth = 0.7f;
+            oppGo.AddComponent<Image>().color = UITheme.PanelSurface;
+            string oppName = i < oppLineup.Length ? GetPlayerName(gm, oppLineup[i]) : "—";
+            var ot = UIBuilder.Text(oppGo.GetComponent<RectTransform>(), "T", oppName, 10, FontStyle.Normal, UITheme.TextSecondary);
+            UIBuilder.Stretch(ot.gameObject); ot.alignment = TextAnchor.MiddleCenter;
         }
 
         private void CyclePlayer(int posIdx, int dir, List<string> roster, Text nameText, GameManager gm)
@@ -224,6 +247,20 @@ namespace NBAHeadCoach.UI.GamePanels
             vlg.spacing = 6; vlg.childControlWidth = true; vlg.childControlHeight = true;
             vlg.childForceExpandWidth = true; vlg.childForceExpandHeight = false;
             vlg.padding = new RectOffset(12, 12, 8, 8);
+
+            if (!NBAHeadCoach.Core.Data.RolePermissions.CanEditLineupAndStrategy)
+            {
+                string coach = NBAHeadCoach.Core.Data.RolePermissions.AICoachName;
+                var ro = MkRow(parent, 60);
+                var rt2 = UIBuilder.Text(ro, "T",
+                    $"Game plan set by coach {coach}:\n" +
+                    $"Offense: {FormatEnumName(_offense.ToString())}   " +
+                    $"Defense: {FormatEnumName(_defense.ToString())}   " +
+                    $"Pace: {FormatEnumName(_pace.ToString())}",
+                    11, FontStyle.Normal, UITheme.TextSecondary);
+                UIBuilder.Stretch(rt2.gameObject); rt2.alignment = TextAnchor.UpperLeft;
+                return;
+            }
 
             // Offense
             string[] offNames = Enum.GetNames(typeof(OffensiveSystemType));
@@ -425,13 +462,17 @@ namespace NBAHeadCoach.UI.GamePanels
         {
             try
             {
-                ApplyPreGameChoices(playerTeam);
+                bool coachControlled = NBAHeadCoach.Core.Data.RolePermissions.CanEditLineupAndStrategy;
+                if (coachControlled) ApplyPreGameChoices(playerTeam);
                 var homeTeam = isHome ? playerTeam : oppTeam;
                 var awayTeam = isHome ? oppTeam : playerTeam;
                 var simulator = new NBAHeadCoach.Core.Simulation.GameSimulator(gm.PlayerDatabase);
                 var result = simulator.SimulateGame(homeTeam, awayTeam, gameEvent.IsPlayoffGame);
+                var source = coachControlled
+                    ? NBAHeadCoach.Core.Simulation.GameSource.QuickSim
+                    : NBAHeadCoach.Core.Simulation.GameSource.AutonomousCoachSim;
                 gm?.GameCompletion?.Complete(new NBAHeadCoach.Core.Simulation.GameCompletionContext(
-                    gameEvent, result, NBAHeadCoach.Core.Simulation.GameSource.QuickSim,
+                    gameEvent, result, source,
                     gm.PlayerTeamId, gameEvent.IsPlayoffGame, gameEvent.PlayoffRound));
                 var postGame = new PostGameGamePanel(_shell);
                 postGame.SetResult(result, isHome);

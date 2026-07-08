@@ -12,7 +12,9 @@ namespace NBAHeadCoach.Core.Simulation
         LeagueAutoSim,
         QuickSim,
         InteractiveMatch,
-        AutonomousSim
+        AutonomousSim,
+        /// <summary>GM-only mode: the AI head coach ran the game day; full box score via the live sim.</summary>
+        AutonomousCoachSim
     }
 
     public readonly struct GameCompletionContext

@@ -358,6 +358,7 @@ namespace NBAHeadCoach.Core
             RegisterSystems();
 
             // Bridge existing producer events into the inbox
+            _injuryManager.OnPlayerInjured += OnPlayerInjuredLineupHook;
             InboxWiring.Wire(this, _inboxService, _jobSecurityManager, _financeManager,
                 _tradeAnnouncementSystem, _mediaManager, _injuryManager, _playoffManager,
                 _tradeOfferGenerator, _jobMarketManager, _historyManager);
@@ -663,6 +664,9 @@ namespace NBAHeadCoach.Core
             // Initialize all 30 teams with AI coach personalities, lineups, and strategies
             InitializeAllTeamCoaches();
 
+            // GM-only: the generated AI head coach (not a random one) runs the bench
+            ApplyAICoachToPlayerTeam();
+
             // Generate hidden personalities for every roster so morale/chemistry has data to work with
             if (_moraleChemistryManager != null)
             {
@@ -851,6 +855,9 @@ namespace NBAHeadCoach.Core
                 }
             }
 
+            // GM-only hires get their named AI coach installed on the new bench
+            ApplyAICoachToPlayerTeam();
+
             // The new owner sets expectations on day one
             _jobSecurityManager?.InitializeForNewSeason(_career, teamId);
             _careerStakes?.SetPlayerSeasonExpectations();
@@ -889,6 +896,43 @@ namespace NBAHeadCoach.Core
         /// <summary>
         /// Initialize all 30 teams with AI coach personalities, starting lineups, and strategies.
         /// </summary>
+        /// <summary>
+        /// GM-only mode: replace the player team's random coach personality with one
+        /// derived from the generated AI head coach profile, and let that coach set
+        /// the strategy and starting five. No-op in Coach/Both modes.
+        /// </summary>
+        private void ApplyAICoachToPlayerTeam()
+        {
+            if (_userRoleConfig?.HasAICoach != true) return;
+            var team = GetPlayerTeam();
+            var profile = GetAICoach();
+            if (team == null || profile == null) return;
+
+            team.CoachPersonality = AI.AICoachPersonality.FromProfile(profile);
+            team.AutoSetStrategy(team.CoachPersonality);
+            team.AutoSetStartingLineup(team.CoachPersonality);
+        }
+
+        /// <summary>
+        /// When the user doesn't control coaching and a starter goes down, the AI
+        /// coach reshuffles the five and reports it.
+        /// </summary>
+        private void OnPlayerInjuredLineupHook(Player player, InjuryEvent evt)
+        {
+            if (player == null || player.TeamId != _playerTeamId) return;
+            if (Data.RolePermissions.CanEditLineupAndStrategy) return;
+
+            var team = GetPlayerTeam();
+            if (team?.StartingLineupIds == null) return;
+            if (System.Array.IndexOf(team.StartingLineupIds, player.PlayerId) < 0) return;
+
+            team.AutoSetStartingLineup(team.CoachPersonality);
+            _inboxService?.Publish(InboxMessageType.Injury, Data.RolePermissions.AICoachName,
+                $"Lineup change after {player.FullName}'s injury",
+                $"With {player.FullName} out, I'm adjusting the starting five. We'll keep competing.",
+                deepLinkPanelId: "Roster");
+        }
+
         private void InitializeAllTeamCoaches()
         {
             var rng = new System.Random();

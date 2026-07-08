@@ -627,6 +627,28 @@ namespace NBAHeadCoach.Core.AI
         // ==================== FACTORY METHODS ====================
 
         /// <summary>
+        /// Builds a deterministic personality from a staff profile — the named AI
+        /// head coach who runs the bench in GM-only mode. Same profile, same
+        /// personality, across sessions and loads.
+        /// </summary>
+        public static AICoachPersonality FromProfile(UnifiedCareerProfile profile)
+        {
+            if (profile == null) return CreateRandom("default_coach", "Default Coach");
+
+            var rng = new System.Random(profile.ProfileId?.GetHashCode() ?? 0);
+            var p = CreateRandom(profile.ProfileId, profile.FullName, rng);
+
+            p.CoachId = profile.ProfileId;
+            p.CoachName = profile.FullName;
+            p.PreferredPace = 98 + (profile.TacticalRating - 50) * 0.2f;
+            p.InGameAdjustmentSpeed = profile.TacticalRating;
+            p.ClutchPressure = 50 + (profile.Reputation - 50) / 2;
+            p.MotivationAbility = profile.PlayerDevelopment;
+
+            return p;
+        }
+
+        /// <summary>
         /// Creates a random AI coach personality.
         /// </summary>
         public static AICoachPersonality CreateRandom(string coachId, string coachName, System.Random rng = null)

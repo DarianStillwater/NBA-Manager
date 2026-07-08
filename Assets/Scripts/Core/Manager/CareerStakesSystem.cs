@@ -63,6 +63,11 @@ namespace NBAHeadCoach.Core.Manager
             var finances = _finances?.Invoke(career.CurrentTeamId);
             if (team == null || finances == null) return null;
 
+            // GM careers also get a front-office record so playoff misses and
+            // losing seasons accumulate GM-side career data
+            if (career.CurrentRole == UnifiedRole.GeneralManager)
+                _gmSecurity?.EnsureGMRecord(career.CurrentTeamId, career.ProfileId, career.FullName);
+
             int projectedWins = ProjectTeamWins(team);
             return _jobSecurity?.SetSeasonExpectations(career.ProfileId, finances, projectedWins);
         }
@@ -197,10 +202,28 @@ namespace NBAHeadCoach.Core.Manager
             var verdict = _jobSecurity.EvaluateEndOfSeason(career.ProfileId, team.Wins, team.Losses,
                 madePlayoffs, playoffResult, wonTitle, finances);
 
+            // GM-only careers additionally accumulate a front-office record — playoff
+            // misses and losing seasons build a GM-flavored case for the owner
+            bool gmWantsFiring = false;
+            if (career.CurrentRole == UnifiedRole.GeneralManager && _gmSecurity != null)
+            {
+                _gmSecurity.EnsureGMRecord(career.CurrentTeamId, career.ProfileId, career.FullName);
+                int roundsWon = wonTitle ? 4
+                    : career.CurrentTeamId == runnerUpTeamId ? 3
+                    : madePlayoffs ? 1 : 0;
+                _gmSecurity.EvaluateGMPerformance(career.CurrentTeamId, team.Wins, team.Losses,
+                    madePlayoffs, roundsWon);
+                gmWantsFiring = _gmSecurity.ShouldFireGM(career.CurrentTeamId);
+            }
+
             // EvaluateEndOfSeason already sent the owner message and marked the
             // profile Fired — we handle the franchise-side fallout
-            if (verdict?.WillBeFired == true)
+            if (verdict?.WillBeFired == true || gmWantsFiring)
             {
+                if (career.CurrentRole == UnifiedRole.GeneralManager && gmWantsFiring)
+                    _gmSecurity?.FireGM(career.CurrentTeamId,
+                        madePlayoffs ? GMFiringReason.PoorRecord : GMFiringReason.MissedPlayoffs);
+
                 var reason = career.CurrentExpectations?.ExpectsPlayoffs == true && !madePlayoffs
                     ? FiringReason.MissedPlayoffs
                     : madePlayoffs ? FiringReason.EarlyPlayoffExit : FiringReason.PoorRecord;

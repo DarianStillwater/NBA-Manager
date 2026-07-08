@@ -76,6 +76,7 @@ namespace NBAHeadCoach.Tests
             RunTest<HistoryRecordsTest>("History & Records");
             RunTest<PlayerComparisonTest>("Player Comparison");
             RunTest<RolePermissionsTest>("Role Permissions");
+            RunTest<GMOnlyModeTest>("GM-Only Mode");
 
             // Summary
             Debug.Log("\n" + new string('=', 70));
