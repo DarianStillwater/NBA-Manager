@@ -107,6 +107,7 @@ namespace NBAHeadCoach.Core.Data
         /// <summary>League history: season archives, records, Hall of Fame — Phase 6.</summary>
         public HistorySectionData HistoryData;
         public NBAHeadCoach.Core.AI.AIGMSaveData AIGMData;
+        public NBAHeadCoach.Core.Manager.AllStarSaveData AllStarData;
 
         /// <summary>
         /// Create a display-friendly summary of the save

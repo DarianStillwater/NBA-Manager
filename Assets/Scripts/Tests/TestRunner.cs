@@ -78,6 +78,7 @@ namespace NBAHeadCoach.Tests
             RunTest<RolePermissionsTest>("Role Permissions");
             RunTest<GMOnlyModeTest>("GM-Only Mode");
             RunTest<CoachOnlyModeTest>("Coach-Only Mode");
+            RunTest<AllStarWeekendTest>("All-Star Weekend");
 
             // Summary
             Debug.Log("\n" + new string('=', 70));

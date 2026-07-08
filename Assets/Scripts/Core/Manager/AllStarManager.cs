@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using NBAHeadCoach.Core.Manager;
+using NBAHeadCoach.Core.Data;
 
 namespace NBAHeadCoach.Core.Manager
 {
@@ -188,8 +189,35 @@ namespace NBAHeadCoach.Core.Manager
     /// Manages All-Star voting, selection, and weekend events
     /// Fan votes (50%), Player votes (25%), Media votes (25%)
     /// </summary>
-    public class AllStarManager : ISeasonPhaseListener
+    public class AllStarManager : ISeasonPhaseListener, IDailyTickable, ISaveSection
     {
+        public int TickOrder => 155;
+
+        /// <summary>
+        /// Test seam / player lookup. Defaults to the live database.
+        /// </summary>
+        public Func<string, Data.Player> PlayerSource;
+
+        private Data.Player ResolvePlayer(string playerId) =>
+            PlayerSource != null ? PlayerSource(playerId)
+            : GameManager.Instance?.PlayerDatabase?.GetPlayer(playerId);
+
+        /// <summary>
+        /// Daily rail: the game (and contests) run on All-Star Sunday — two days
+        /// into the break — once selections exist and the game hasn't been played.
+        /// </summary>
+        public void DailyTick(in DailyTickContext ctx)
+        {
+            var gm = ctx.Game;
+            if (gm?.SeasonController == null) return;
+            if (gm.SeasonController.CurrentPhase != Data.SeasonPhase.AllStarBreak) return;
+            if (CurrentWeekend == null || CurrentWeekend.Season != gm.CurrentSeason) return;
+            if (CurrentWeekend.AllStarGameResult != null) return;
+            if (ctx.Date.Day < 16) return; // break starts Feb 14; Sunday is the 16th
+
+            RunAllStarWeekend(gm.PlayerDatabase);
+        }
+
         public static AllStarManager Instance { get; private set; }
 
         public string SystemId => "AllStar";
@@ -762,7 +790,131 @@ namespace NBAHeadCoach.Core.Manager
         }
 
         /// <summary>
-        /// Simulate the All-Star Game
+        /// Run the full weekend: 3PT contest, dunk contest, and the game itself —
+        /// the game is a REAL simulation (GameSimulator over synthetic East/West
+        /// teams built from the selections), with a proper box score and an MVP.
+        /// Exhibition: nothing touches season stats, standings, or energy.
+        /// Idempotent per season.
+        /// </summary>
+        public AllStarWeekendSummary RunAllStarWeekend(Data.PlayerDatabase playerDb)
+        {
+            var weekend = CurrentWeekend;
+            if (weekend == null || weekend.AllStarGameResult != null || playerDb == null)
+                return weekend;
+
+            var selected = weekend.GetAllSelected();
+
+            // Saturday night: contests with real names, seeded by real (hidden) skills
+            var shooters = selected
+                .OrderByDescending(v => ResolvePlayer(v.PlayerId)?.Shot_Three ?? 0)
+                .Take(8).Select(v => v.PlayerId).ToList();
+            weekend.ThreePointContestResult = SimulateThreePointContest(shooters);
+
+            var leapers = selected
+                .OrderByDescending(v => (ResolvePlayer(v.PlayerId)?.Vertical ?? 0) +
+                                        (ResolvePlayer(v.PlayerId)?.Finishing_Rim ?? 0))
+                .Take(6).Select(v => v.PlayerId).ToList();
+            weekend.DunkContestResult = SimulateDunkContest(leapers);
+
+            // Sunday: the game, for real
+            var east = BuildConferenceTeam(weekend, "East");
+            var west = BuildConferenceTeam(weekend, "West");
+            var sim = new Simulation.GameSimulator(playerDb);
+            var gameResult = sim.SimulateExhibition(east, west);
+
+            weekend.AllStarGameResult = ConvertToAllStarResult(weekend, gameResult);
+            OnAllStarGameCompleted?.Invoke(weekend.AllStarGameResult);
+
+            var r = weekend.AllStarGameResult;
+            InboxService.Instance?.Publish(InboxMessageType.League, "League Office",
+                $"All-Star Game: {r.WinningConference} wins {Math.Max(r.EastScore, r.WestScore)}-{Math.Min(r.EastScore, r.WestScore)}",
+                $"{r.MvpName} takes MVP with {r.MvpPoints}/{r.MvpRebounds}/{r.MvpAssists}. " +
+                $"{weekend.ThreePointContestResult?.WinnerName} won the three-point contest; " +
+                $"{weekend.DunkContestResult?.WinnerName} took the dunk title.",
+                deepLinkPanelId: "AllStar");
+
+            return weekend;
+        }
+
+        /// <summary>Synthetic conference squad over real players in the shared database.</summary>
+        public Team BuildConferenceTeam(AllStarWeekendSummary weekend, string conference)
+        {
+            bool east = conference == "East";
+            var starters = east ? weekend.EastStarters : weekend.WestStarters;
+            var reserves = east ? weekend.EastReserves : weekend.WestReserves;
+
+            var team = new Team
+            {
+                TeamId = east ? "ALLSTAR_EAST" : "ALLSTAR_WEST",
+                City = east ? "East" : "West",
+                Nickname = "All-Stars",
+                Conference = conference
+            };
+            team.RosterPlayerIds = starters.Concat(reserves).Select(v => v.PlayerId).ToList();
+            for (int i = 0; i < 5 && i < starters.Count; i++)
+                team.StartingLineupIds[i] = starters[i].PlayerId;
+
+            // An exhibition coach: up-tempo, everybody plays
+            var coach = AI.AICoachPersonality.CreateRandom(team.TeamId, $"{conference} bench",
+                new System.Random(weekend.Season * 31 + (east ? 1 : 2)));
+            team.CoachPersonality = coach;
+            team.AutoSetStrategy(coach);
+            return team;
+        }
+
+        /// <summary>Box score of the real sim → the All-Star result shape the UI renders.</summary>
+        private AllStarGameResult ConvertToAllStarResult(AllStarWeekendSummary weekend, Simulation.GameResult game)
+        {
+            var result = new AllStarGameResult
+            {
+                EastScore = game.HomeScore,
+                WestScore = game.AwayScore,
+                WinningConference = game.HomeScore > game.AwayScore ? "East" : "West"
+            };
+
+            foreach (var line in game.BoxScore.PlayerStats.Values)
+            {
+                result.PlayerStats[line.PlayerId] = new PlayerAllStarStats
+                {
+                    PlayerId = line.PlayerId,
+                    Minutes = line.Minutes,
+                    Points = line.Points,
+                    Rebounds = line.Rebounds,
+                    Assists = line.Assists,
+                    Steals = line.Steals,
+                    Blocks = line.Blocks,
+                    ThreePointersMade = line.ThreePointMade
+                };
+            }
+
+            var winners = result.WinningConference == "East"
+                ? weekend.EastStarters.Concat(weekend.EastReserves)
+                : weekend.WestStarters.Concat(weekend.WestReserves);
+            var mvp = winners
+                .Where(v => result.PlayerStats.ContainsKey(v.PlayerId))
+                .OrderByDescending(v => CalculateMvpScore(result.PlayerStats[v.PlayerId]))
+                .FirstOrDefault();
+            if (mvp != null)
+            {
+                result.MvpId = mvp.PlayerId;
+                result.MvpName = mvp.PlayerName;
+                var line = result.PlayerStats[mvp.PlayerId];
+                result.MvpPoints = line.Points;
+                result.MvpRebounds = line.Rebounds;
+                result.MvpAssists = line.Assists;
+                result.GameHighlights.Add($"{result.MvpName} wins MVP with {line.Points} points!");
+                if (line.Points >= 40)
+                    result.GameHighlights.Add($"Historic performance! {result.MvpName} erupts for {line.Points}!");
+            }
+            if (Math.Abs(result.EastScore - result.WestScore) <= 5)
+                result.GameHighlights.Add("Thrilling finish as the game comes down to the wire!");
+
+            return result;
+        }
+
+        /// <summary>
+        /// Simulate the All-Star Game (legacy random model — superseded by
+        /// RunAllStarWeekend's real simulation; kept for compatibility).
         /// </summary>
         public AllStarGameResult SimulateAllStarGame(AllStarWeekendSummary weekend)
         {
@@ -798,23 +950,6 @@ namespace NBAHeadCoach.Core.Manager
             result.MvpPoints = mvpStats.Points;
             result.MvpRebounds = mvpStats.Rebounds;
             result.MvpAssists = mvpStats.Assists;
-
-            // Generate highlights
-            result.GameHighlights.Add($"{result.MvpName} wins MVP with {result.MvpPoints} points!");
-            if (result.MvpPoints >= 40)
-            {
-                result.GameHighlights.Add($"Historic performance! {result.MvpName} erupts for {result.MvpPoints}!");
-            }
-            if (Math.Abs(result.EastScore - result.WestScore) <= 5)
-            {
-                result.GameHighlights.Add("Thrilling finish as the game comes down to the wire!");
-            }
-
-            // Check for dunk contest moments during game
-            foreach (var stats in result.PlayerStats.Values.Where(s => s.WasDunkContestMoment))
-            {
-                result.GameHighlights.Add($"{GetPlayerName(stats.PlayerId)} throws down a poster dunk!");
-            }
 
             OnAllStarGameCompleted?.Invoke(result);
             return result;
@@ -1013,14 +1148,16 @@ namespace NBAHeadCoach.Core.Manager
 
         private float GetPlayerThreePointSkill(string playerId)
         {
-            // Would integrate with player stats
-            return UnityEngine.Random.Range(0.5f, 0.9f);
+            var p = ResolvePlayer(playerId);
+            if (p == null) return 0.7f;
+            return Mathf.Clamp(0.4f + p.Shot_Three / 100f * 0.55f, 0.4f, 0.95f);
         }
 
         private float GetPlayerDunkSkill(string playerId)
         {
-            // Would integrate with player athleticism
-            return UnityEngine.Random.Range(0.5f, 0.95f);
+            var p = ResolvePlayer(playerId);
+            if (p == null) return 0.7f;
+            return Mathf.Clamp(0.35f + (p.Vertical + p.Finishing_Rim) / 200f * 0.6f, 0.35f, 0.95f);
         }
 
         private PlayerAllStarStats SimulateAllStarPlayerStats(AllStarVote player)
@@ -1050,11 +1187,123 @@ namespace NBAHeadCoach.Core.Manager
 
         private string GetPlayerName(string playerId)
         {
-            // Would integrate with PlayerManager
-            return $"Player_{playerId}";
+            var p = ResolvePlayer(playerId);
+            return p?.FullName ?? playerId;
         }
 
         #endregion
+
+        // ==================== PERSISTENCE ====================
+        // AllStarWeekendSummary holds Dictionaries (JsonUtility-hostile), so the
+        // save shape is a flat DTO: rosters, contest winners, and the game line.
+
+        public void WriteSave(SaveData data)
+        {
+            if (data == null || CurrentWeekend == null) return;
+            var w = CurrentWeekend;
+            var dto = new AllStarSaveData
+            {
+                Season = w.Season,
+                HostCity = w.HostCity,
+                NotableSnubs = new List<string>(w.NotableSnubs ?? new List<string>())
+            };
+
+            void PackVotes(List<AllStarVote> votes, bool east, bool starter)
+            {
+                if (votes == null) return;
+                foreach (var v in votes)
+                    dto.Selections.Add(new AllStarVoteRecord
+                    {
+                        PlayerId = v.PlayerId, PlayerName = v.PlayerName, TeamId = v.TeamId,
+                        Conference = v.Conference, IsEast = east, IsStarter = starter
+                    });
+            }
+            PackVotes(w.EastStarters, true, true);
+            PackVotes(w.EastReserves, true, false);
+            PackVotes(w.WestStarters, false, true);
+            PackVotes(w.WestReserves, false, false);
+
+            if (w.ThreePointContestResult != null)
+            {
+                dto.ThreePointWinnerId = w.ThreePointContestResult.WinnerId;
+                dto.ThreePointWinnerName = w.ThreePointContestResult.WinnerName;
+            }
+            if (w.DunkContestResult != null)
+            {
+                dto.DunkWinnerId = w.DunkContestResult.WinnerId;
+                dto.DunkWinnerName = w.DunkContestResult.WinnerName;
+            }
+            if (w.AllStarGameResult != null)
+            {
+                var g = w.AllStarGameResult;
+                dto.GamePlayed = true;
+                dto.EastScore = g.EastScore;
+                dto.WestScore = g.WestScore;
+                dto.WinningConference = g.WinningConference;
+                dto.MvpId = g.MvpId; dto.MvpName = g.MvpName;
+                dto.MvpPoints = g.MvpPoints; dto.MvpRebounds = g.MvpRebounds; dto.MvpAssists = g.MvpAssists;
+                dto.GameHighlights = new List<string>(g.GameHighlights ?? new List<string>());
+                foreach (var line in g.PlayerStats.Values)
+                    dto.GameLines.Add(line);
+            }
+
+            data.AllStarData = dto;
+        }
+
+        public void ReadSave(SaveData data, in SaveReadContext ctx)
+        {
+            var dto = data?.AllStarData;
+            if (dto == null || dto.Season == 0 || dto.Selections == null || dto.Selections.Count == 0)
+                return;
+
+            var w = new AllStarWeekendSummary
+            {
+                Season = dto.Season,
+                HostCity = dto.HostCity,
+                NotableSnubs = dto.NotableSnubs ?? new List<string>()
+            };
+            foreach (var rec in dto.Selections)
+            {
+                var vote = new AllStarVote
+                {
+                    PlayerId = rec.PlayerId, PlayerName = rec.PlayerName,
+                    TeamId = rec.TeamId, Conference = rec.Conference, IsStarter = rec.IsStarter
+                };
+                var list = rec.IsEast
+                    ? (rec.IsStarter ? w.EastStarters : w.EastReserves)
+                    : (rec.IsStarter ? w.WestStarters : w.WestReserves);
+                list.Add(vote);
+            }
+
+            if (!string.IsNullOrEmpty(dto.ThreePointWinnerId))
+                w.ThreePointContestResult = new AllStarEventResult
+                {
+                    EventType = AllStarEventType.ThreePointContest,
+                    WinnerId = dto.ThreePointWinnerId, WinnerName = dto.ThreePointWinnerName
+                };
+            if (!string.IsNullOrEmpty(dto.DunkWinnerId))
+                w.DunkContestResult = new AllStarEventResult
+                {
+                    EventType = AllStarEventType.DunkContest,
+                    WinnerId = dto.DunkWinnerId, WinnerName = dto.DunkWinnerName
+                };
+            if (dto.GamePlayed)
+            {
+                var g = new AllStarGameResult
+                {
+                    EastScore = dto.EastScore, WestScore = dto.WestScore,
+                    WinningConference = dto.WinningConference,
+                    MvpId = dto.MvpId, MvpName = dto.MvpName,
+                    MvpPoints = dto.MvpPoints, MvpRebounds = dto.MvpRebounds, MvpAssists = dto.MvpAssists,
+                    GameHighlights = dto.GameHighlights ?? new List<string>()
+                };
+                foreach (var line in dto.GameLines ?? new List<PlayerAllStarStats>())
+                    g.PlayerStats[line.PlayerId] = line;
+                w.AllStarGameResult = g;
+            }
+
+            CurrentWeekend = w;
+        }
 
         /// <summary>
         /// Get historical All-Star selections for a player
@@ -1108,5 +1357,43 @@ namespace NBAHeadCoach.Core.Manager
                 default: return number + "th";
             }
         }
+    }
+
+    /// <summary>Flat, JsonUtility-safe snapshot of the current season's All-Star weekend.</summary>
+    [Serializable]
+    public class AllStarSaveData
+    {
+        public int Season;
+        public string HostCity;
+        public List<AllStarVoteRecord> Selections = new List<AllStarVoteRecord>();
+        public List<string> NotableSnubs = new List<string>();
+
+        public string ThreePointWinnerId;
+        public string ThreePointWinnerName;
+        public string DunkWinnerId;
+        public string DunkWinnerName;
+
+        public bool GamePlayed;
+        public int EastScore;
+        public int WestScore;
+        public string WinningConference;
+        public string MvpId;
+        public string MvpName;
+        public int MvpPoints;
+        public int MvpRebounds;
+        public int MvpAssists;
+        public List<string> GameHighlights = new List<string>();
+        public List<PlayerAllStarStats> GameLines = new List<PlayerAllStarStats>();
+    }
+
+    [Serializable]
+    public class AllStarVoteRecord
+    {
+        public string PlayerId;
+        public string PlayerName;
+        public string TeamId;
+        public string Conference;
+        public bool IsEast;
+        public bool IsStarter;
     }
 }

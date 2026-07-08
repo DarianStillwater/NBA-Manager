@@ -54,6 +54,35 @@ namespace NBAHeadCoach.Core.Simulation
         /// <summary>
         /// Simulates a complete game between two teams.
         /// </summary>
+        /// <summary>
+        /// Simulate an exhibition (All-Star game, summer league, camp scrimmage):
+        /// the full live sim with a box score, but nothing leaks into the season —
+        /// no energy drain on the real players, no DNP-rest (playoff availability
+        /// rules), and the caller must NOT route the result through the
+        /// GameCompletionPipeline.
+        /// </summary>
+        public GameResult SimulateExhibition(Team homeTeam, Team awayTeam)
+        {
+            // Snapshot energy so the exhibition costs the real season nothing
+            var energySnapshot = new Dictionary<string, float>();
+            foreach (var pid in homeTeam.RosterPlayerIds.Concat(awayTeam.RosterPlayerIds))
+            {
+                if (string.IsNullOrEmpty(pid)) continue;
+                var p = _playerDatabase.GetPlayer(pid);
+                if (p != null && !energySnapshot.ContainsKey(pid)) energySnapshot[pid] = p.Energy;
+            }
+
+            var result = SimulateGame(homeTeam, awayTeam, isPlayoff: true);
+
+            foreach (var kv in energySnapshot)
+            {
+                var p = _playerDatabase.GetPlayer(kv.Key);
+                if (p != null) p.Energy = kv.Value;
+            }
+
+            return result;
+        }
+
         public GameResult SimulateGame(Team homeTeam, Team awayTeam, bool isPlayoff = false)
         {
             _homeTeam = homeTeam;
