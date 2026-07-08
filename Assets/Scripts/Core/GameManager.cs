@@ -95,6 +95,9 @@ namespace NBAHeadCoach.Core
         private PlayerDevelopmentManager _developmentManager;
         public PlayerDevelopmentManager Development => _developmentManager;
         private JobSecurityManager _jobSecurityManager;
+        public JobSecurityManager JobSecurity => _jobSecurityManager;
+        private CareerStakesSystem _careerStakes;
+        public CareerStakesSystem CareerStakes => _careerStakes;
         private TransactionLog _transactionLog;
         public TransactionLog Transactions => _transactionLog;
         private InboxService _inboxService;
@@ -357,7 +360,7 @@ namespace NBAHeadCoach.Core
             // Bridge existing producer events into the inbox
             InboxWiring.Wire(this, _inboxService, _jobSecurityManager, _financeManager,
                 _tradeAnnouncementSystem, _mediaManager, _injuryManager, _playoffManager,
-                _tradeOfferGenerator);
+                _tradeOfferGenerator, _jobMarketManager);
 
             // Load player/team data
             StartCoroutine(LoadGameData());
@@ -395,9 +398,22 @@ namespace NBAHeadCoach.Core
             _scoutingSystem = ScoutingSystem.CreateDefault(this);
             Systems.Register(_scoutingSystem);
             Systems.Register(_personnelManager);      // also ISaveSection (unified careers)
-            Systems.Register(_jobMarketManager);
+
+            // Career stakes: owner expectations, weekly hot-seat evaluation,
+            // firings, and the season-end verdict. Runs just before the job
+            // market ticks so a firing lands on a live market.
+            _careerStakes = new CareerStakesSystem(
+                _jobSecurityManager,
+                _gmJobSecurityManager,
+                id => _financeManager?.GetTeamFinances(id),
+                () => _career,
+                GetTeam,
+                FirePlayerFromCurrentJob);
+            Systems.Register(_careerStakes);
+
+            Systems.Register(_jobMarketManager);      // also ISaveSection (openings/applications)
             Systems.Register(_mentorshipManager);
-            Systems.Register(_mediaManager);
+            Systems.Register(_mediaManager);          // also ISaveSection (media reputation)
 
             // Save-section-only systems (no daily tick yet). Registration order is the
             // save read/write order.
@@ -667,6 +683,9 @@ namespace NBAHeadCoach.Core
                 }
             }
 
+            // Owner expectations need the finances the initializables just created
+            _careerStakes?.SetPlayerSeasonExpectations();
+
             // Fire event
             OnNewGameStarted?.Invoke();
 
@@ -717,6 +736,46 @@ namespace NBAHeadCoach.Core
         }
 
         /// <summary>
+        /// True when the player's career is between jobs — the league keeps
+        /// running (all games auto-sim) while they work the job market.
+        /// </summary>
+        public bool IsCareerUnemployed => _career?.CurrentRole == UnifiedRole.Unemployed;
+
+        /// <summary>
+        /// The franchise-side fallout of the player losing their job: the market
+        /// flow (reputation hit, severance, openings, unemployed state), the career
+        /// record, an AI successor so the old team keeps functioning, and the inbox
+        /// notice. The owner-side message/status is JobSecurityManager's job and has
+        /// already happened by the time this runs.
+        /// </summary>
+        public void FirePlayerFromCurrentJob(FiringReason reason)
+        {
+            if (_career == null || _career.CurrentRole == UnifiedRole.Unemployed) return;
+
+            string oldTeamId = _playerTeamId;
+            var oldTeam = GetTeam(oldTeamId);
+            var oldRole = _userRoleConfig?.CurrentRole ?? UserRole.Both;
+
+            // Market flow first — it reads the current config and salary for severance
+            _jobMarketManager?.HandlePlayerFired(reason);
+
+            // Career record: history entry, unemployed track, fired counter
+            _career.HandleFired(_currentSeason, reason.ToString());
+
+            // The old franchise hires AI replacements so the league keeps running
+            if (oldTeam != null)
+            {
+                if (oldRole != UserRole.GMOnly)
+                    PersonnelManager.Instance?.RegisterProfile(GenerateAICoach(oldTeamId, oldTeam.Name));
+                if (oldRole != UserRole.HeadCoachOnly)
+                    PersonnelManager.Instance?.RegisterProfile(GenerateAIGM(oldTeamId, oldTeam.Name));
+            }
+
+            SaveLoad?.AutoSave(CreateSaveData());
+            Debug.Log($"[GameManager] Player fired from {oldTeamId} ({reason}). The job hunt begins.");
+        }
+
+        /// <summary>
         /// Start a new career after accepting a job from the job market.
         /// Used when transitioning from unemployment to a new position.
         /// </summary>
@@ -759,6 +818,16 @@ namespace NBAHeadCoach.Core
                     PersonnelManager.Instance?.RegisterProfile(aiGM);
                 }
             }
+
+            // The new owner sets expectations on day one
+            _jobSecurityManager?.InitializeForNewSeason(_career, teamId);
+            _careerStakes?.SetPlayerSeasonExpectations();
+
+            _inboxService?.Publish(InboxMessageType.JobMarket, "League News",
+                $"You're the new {(newRole == UserRole.GMOnly ? "GM" : "head coach")} of the {team?.Name ?? teamId}",
+                "A fresh start. The owner has shared expectations for the season — they're waiting at your Career desk.",
+                highPriority: true,
+                deepLinkPanelId: "Career");
 
             // Return to playing state
             ChangeState(GameState.Playing);
@@ -1098,6 +1167,7 @@ namespace NBAHeadCoach.Core
             // counters reset — then the new season initializes on top.
             SeasonController.TransitionToNewSeason(_currentSeason);
             _financeSystem?.OnNewSeason(_currentSeason);
+            _careerStakes?.OnNewSeason();
             OnSeasonChanged?.Invoke(_currentSeason);
 
             ChangeState(GameState.Playing);

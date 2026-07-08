@@ -10,7 +10,7 @@ namespace NBAHeadCoach.Core.Manager
     /// Manages job market, firings, and career transitions.
     /// Handles the job search phase when user is fired.
     /// </summary>
-    public class JobMarketManager : IDailyTickable
+    public class JobMarketManager : IDailyTickable, ISaveSection
     {
         public string SystemId => "JobMarket";
         public int TickOrder => Manager.TickOrder.JobMarket;
@@ -34,6 +34,17 @@ namespace NBAHeadCoach.Core.Manager
         public event Action<string, string> OnJobAccepted;  // teamId, position
 
         public JobMarketState MarketState => _marketState;
+
+        /// <summary>Overridable sources so the market works headless (tests) —
+        /// default to the live game when unset.</summary>
+        public Func<List<Team>> TeamSource;
+        public Func<UnifiedCareerProfile> CareerSource;
+
+        private List<Team> ResolveTeams() =>
+            TeamSource?.Invoke() ?? GameManager.Instance?.AllTeams ?? new List<Team>();
+
+        private UnifiedCareerProfile ResolveCareer() =>
+            CareerSource?.Invoke() ?? GameManager.Instance?.Career;
 
         public JobMarketManager()
         {
@@ -160,8 +171,9 @@ namespace NBAHeadCoach.Core.Manager
             // Determine number of openings
             int numOpenings = _rng.Next(_minOpeningsPerSeason, _maxOpeningsPerSeason + 1);
 
-            // Get all teams
-            var allTeams = GameManager.Instance?.AllTeams ?? new List<Team>();
+            // Get all teams (never the player's current one)
+            string playerTeamId = ResolveCareer()?.CurrentTeamId;
+            var allTeams = ResolveTeams().Where(t => t != null && t.TeamId != playerTeamId).ToList();
             var shuffledTeams = allTeams.OrderBy(t => _rng.Next()).ToList();
 
             // Generate mix of GM and Coach openings
@@ -320,8 +332,9 @@ namespace NBAHeadCoach.Core.Manager
 
         private void ProcessApplication(JobApplication application, JobOpening opening)
         {
-            var career = GameManager.Instance?.Career;
+            var career = ResolveCareer();
             float hireChance = CalculateHireChance(career, opening);
+            var now = TradeSystem.GameNow();
 
             // 3 possible outcomes: Reject, Interview, or Direct Offer
             float roll = (float)_rng.NextDouble();
@@ -333,7 +346,7 @@ namespace NBAHeadCoach.Core.Manager
                 application.HasOffer = true;
                 application.OfferedSalary = opening.OfferedSalary;
                 application.OfferedYears = opening.ContractYears;
-                application.OfferExpiration = DateTime.Now.AddDays(7);
+                application.OfferExpiration = now.AddDays(7);
                 application.TeamResponse = "We're impressed with your credentials and want to offer you the position.";
                 _marketState.TotalOffers++;
 
@@ -344,7 +357,7 @@ namespace NBAHeadCoach.Core.Manager
                 // Interview
                 application.Status = JobApplicationStatus.Interviewing;
                 application.InterviewScheduled = true;
-                application.InterviewDate = DateTime.Now.AddDays(3);
+                application.InterviewDate = now.AddDays(3);
                 application.TeamResponse = "We'd like to schedule an interview to discuss the position.";
                 _marketState.TotalInterviews++;
             }
@@ -356,7 +369,7 @@ namespace NBAHeadCoach.Core.Manager
                 _marketState.TotalRejections++;
             }
 
-            application.ResponseDate = DateTime.Now;
+            application.ResponseDate = now;
         }
 
         private float CalculateHireChance(UnifiedCareerProfile career, JobOpening opening)
@@ -364,6 +377,14 @@ namespace NBAHeadCoach.Core.Manager
             if (career == null) return 0.1f;
 
             float chance = 0.3f;  // Base chance
+
+            // How the press talks about you travels ahead of your resume
+            var media = GameManager.Instance?.MediaManager;
+            if (media != null)
+            {
+                int mediaRep = media.GetMediaReputation(career.ProfileId); // -100..100
+                chance += mediaRep / 100f * 0.08f;
+            }
 
             // Reputation match
             float repDiff = career.Reputation - opening.Requirements.PreferredReputation;
@@ -423,7 +444,18 @@ namespace NBAHeadCoach.Core.Manager
 
             Debug.Log($"[JobMarketManager] Accepted job: {opening.TeamName} {opening.GetPositionTitle()}");
 
-            // GameManager will handle the actual role change
+            // Take the job: team switch, new AI counterpart, back to Playing.
+            // Only when this market is driving the live game's career (headless
+            // fixtures inject their own career and skip the handoff).
+            var gmInstance = GameManager.Instance;
+            if (gmInstance != null && ReferenceEquals(ResolveCareer(), gmInstance.Career))
+            {
+                gmInstance.StartNewCareerFromJobMarket(
+                    opening.TeamId, opening.Position,
+                    application.OfferedSalary > 0 ? application.OfferedSalary : opening.OfferedSalary,
+                    application.OfferedYears > 0 ? application.OfferedYears : opening.ContractYears);
+            }
+
             return true;
         }
 
@@ -461,7 +493,7 @@ namespace NBAHeadCoach.Core.Manager
         /// </summary>
         public void CheckForUnsolicitedOffers()
         {
-            var career = GameManager.Instance?.Career;
+            var career = ResolveCareer();
             if (career == null) return;
 
             // Higher reputation = more likely to get offers
@@ -475,8 +507,8 @@ namespace NBAHeadCoach.Core.Manager
 
         private void GenerateUnsolicitedOffer()
         {
-            var allTeams = GameManager.Instance?.AllTeams ?? new List<Team>();
-            var currentTeamId = GameManager.Instance?.PlayerTeamId;
+            var allTeams = ResolveTeams();
+            var currentTeamId = ResolveCareer()?.CurrentTeamId;
 
             // Pick a random team that's not the current one
             var availableTeams = allTeams.Where(t => t.TeamId != currentTeamId).ToList();
@@ -539,12 +571,52 @@ namespace NBAHeadCoach.Core.Manager
                 }
             }
 
+            // Interviews resolve after they happen: an offer or a pass
+            foreach (var app in _marketState.UserApplications)
+            {
+                if (app.Status != JobApplicationStatus.Interviewing) continue;
+                if (!app.InterviewDate.HasValue || currentDate < app.InterviewDate.Value) continue;
+
+                var opening = _marketState.OpenPositions.Find(o => o.OpeningId == app.OpeningId);
+                if (opening == null || opening.Status != JobOpeningStatus.Open)
+                {
+                    app.Status = JobApplicationStatus.Rejected;
+                    app.TeamResponse = "The position has been filled.";
+                    continue;
+                }
+
+                float interviewChance = Mathf.Clamp01(CalculateHireChance(ResolveCareer(), opening) + 0.2f);
+                if (_rng.NextDouble() < interviewChance)
+                {
+                    app.Status = JobApplicationStatus.Offered;
+                    app.HasOffer = true;
+                    app.OfferedSalary = opening.OfferedSalary;
+                    app.OfferedYears = opening.ContractYears;
+                    app.OfferExpiration = currentDate.AddDays(7);
+                    app.TeamResponse = "The interview went well — we'd like to offer you the position.";
+                    _marketState.TotalOffers++;
+                    OnJobOffered?.Invoke(opening);
+                }
+                else
+                {
+                    app.Status = JobApplicationStatus.Rejected;
+                    app.TeamResponse = "Thank you for interviewing. We've decided to go with another candidate.";
+                    _marketState.TotalRejections++;
+                }
+            }
+
             // Remove expired unsolicited offers
             _marketState.UnsolicitedOffers.RemoveAll(o => currentDate > o.ExpirationDate);
 
-            // AI fills some positions over time
+            // AI fills some positions over time — but never one the player is
+            // actively interviewing for or holding an offer from
             foreach (var opening in _marketState.OpenPositions.Where(o => o.Status == JobOpeningStatus.Open))
             {
+                bool playerInPlay = _marketState.UserApplications.Any(a =>
+                    a.OpeningId == opening.OpeningId &&
+                    (a.HasOffer || a.Status == JobApplicationStatus.Interviewing));
+                if (playerInPlay) continue;
+
                 if (_rng.Next(100) < 3)  // 3% daily chance position gets filled
                 {
                     opening.Status = JobOpeningStatus.Filled;
@@ -553,5 +625,144 @@ namespace NBAHeadCoach.Core.Manager
         }
 
         #endregion
+
+        #region Save
+
+        public void WriteSave(SaveData data)
+        {
+            if (data == null) return;
+
+            var save = new JobMarketSaveData
+            {
+                IsUnemployed = _marketState.IsUnemployed,
+                UnemployedSinceStr = _marketState.UnemployedSince?.ToString("o") ?? "",
+                CurrentSeason = _marketState.CurrentSeason
+            };
+
+            foreach (var o in _marketState.OpenPositions)
+            {
+                save.Openings.Add(new JobOpeningRecord
+                {
+                    OpeningId = o.OpeningId,
+                    TeamId = o.TeamId,
+                    Position = (int)o.Position,
+                    OfferedSalary = o.OfferedSalary,
+                    ContractYears = o.ContractYears,
+                    Status = (int)o.Status,
+                    TeamSituation = o.TeamSituation,
+                    OwnerExpectations = o.OwnerExpectations
+                });
+            }
+
+            foreach (var a in _marketState.UserApplications)
+            {
+                save.Applications.Add(new JobApplicationRecord
+                {
+                    OpeningId = a.OpeningId,
+                    Status = (int)a.Status,
+                    HasOffer = a.HasOffer,
+                    OfferedSalary = a.OfferedSalary,
+                    OfferedYears = a.OfferedYears,
+                    OfferExpirationStr = a.OfferExpiration?.ToString("o") ?? "",
+                    InterviewDateStr = a.InterviewDate?.ToString("o") ?? "",
+                    TeamResponse = a.TeamResponse
+                });
+            }
+
+            data.JobMarketData = save;
+        }
+
+        public void ReadSave(SaveData data, in SaveReadContext ctx)
+        {
+            var save = data?.JobMarketData;
+            if (save == null) return; // legacy save: fresh market
+
+            _marketState = new JobMarketState
+            {
+                IsUnemployed = save.IsUnemployed,
+                CurrentSeason = save.CurrentSeason
+            };
+            if (DateTime.TryParse(save.UnemployedSinceStr, null,
+                    System.Globalization.DateTimeStyles.RoundtripKind, out var since))
+                _marketState.UnemployedSince = since;
+
+            foreach (var rec in save.Openings ?? new List<JobOpeningRecord>())
+            {
+                var team = ResolveTeams().FirstOrDefault(t => t.TeamId == rec.TeamId);
+                if (team == null) continue;
+
+                var opening = CreateOpening(team, (UserRole)rec.Position);
+                opening.OpeningId = rec.OpeningId;
+                opening.OfferedSalary = rec.OfferedSalary;
+                opening.ContractYears = rec.ContractYears;
+                opening.Status = (JobOpeningStatus)rec.Status;
+                if (!string.IsNullOrEmpty(rec.TeamSituation)) opening.TeamSituation = rec.TeamSituation;
+                if (!string.IsNullOrEmpty(rec.OwnerExpectations)) opening.OwnerExpectations = rec.OwnerExpectations;
+                _marketState.AddOpening(opening);
+            }
+
+            foreach (var rec in save.Applications ?? new List<JobApplicationRecord>())
+            {
+                var app = new JobApplication
+                {
+                    OpeningId = rec.OpeningId,
+                    Status = (JobApplicationStatus)rec.Status,
+                    HasOffer = rec.HasOffer,
+                    OfferedSalary = rec.OfferedSalary,
+                    OfferedYears = rec.OfferedYears,
+                    TeamResponse = rec.TeamResponse
+                };
+                if (DateTime.TryParse(rec.OfferExpirationStr, null,
+                        System.Globalization.DateTimeStyles.RoundtripKind, out var exp))
+                    app.OfferExpiration = exp;
+                if (DateTime.TryParse(rec.InterviewDateStr, null,
+                        System.Globalization.DateTimeStyles.RoundtripKind, out var iv))
+                    app.InterviewDate = iv;
+                _marketState.UserApplications.Add(app);
+
+                var opening = _marketState.OpenPositions.Find(o => o.OpeningId == app.OpeningId);
+                if (opening != null) opening.UserApplication = app;
+            }
+        }
+
+        #endregion
+    }
+
+    /// <summary>Compact JsonUtility-safe persistence for the job market
+    /// (DateTimes as ISO strings, enums as ints, openings rebuilt on load).</summary>
+    [Serializable]
+    public class JobMarketSaveData
+    {
+        public bool IsUnemployed;
+        public string UnemployedSinceStr;
+        public int CurrentSeason;
+        public List<JobOpeningRecord> Openings = new List<JobOpeningRecord>();
+        public List<JobApplicationRecord> Applications = new List<JobApplicationRecord>();
+    }
+
+    [Serializable]
+    public class JobOpeningRecord
+    {
+        public string OpeningId;
+        public string TeamId;
+        public int Position;
+        public int OfferedSalary;
+        public int ContractYears;
+        public int Status;
+        public string TeamSituation;
+        public string OwnerExpectations;
+    }
+
+    [Serializable]
+    public class JobApplicationRecord
+    {
+        public string OpeningId;
+        public int Status;
+        public bool HasOffer;
+        public int OfferedSalary;
+        public int OfferedYears;
+        public string OfferExpirationStr;
+        public string InterviewDateStr;
+        public string TeamResponse;
     }
 }

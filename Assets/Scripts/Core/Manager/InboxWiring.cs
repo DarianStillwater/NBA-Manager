@@ -1,4 +1,5 @@
 using System.Linq;
+using NBAHeadCoach.Core.Data;
 
 namespace NBAHeadCoach.Core.Manager
 {
@@ -18,7 +19,8 @@ namespace NBAHeadCoach.Core.Manager
             MediaManager media,
             InjuryManager injuries,
             PlayoffManager playoffs = null,
-            AITradeOfferGenerator tradeOffers = null)
+            AITradeOfferGenerator tradeOffers = null,
+            JobMarketManager jobMarket = null)
         {
             if (inbox == null) return;
 
@@ -83,7 +85,32 @@ namespace NBAHeadCoach.Core.Manager
                     inbox.Publish(InboxMessageType.OwnerMessage, "Team Owner",
                         msg.Subject, msg.Message,
                         highPriority: msg.RequiresResponse,
-                        deepLinkPanelId: "Dashboard");
+                        deepLinkPanelId: "Career");
+                };
+            }
+
+            if (jobMarket != null)
+            {
+                jobMarket.OnPlayerFired += firing =>
+                {
+                    if (firing == null) return;
+                    inbox.Publish(InboxMessageType.JobMarket, "League News",
+                        $"{firing.TeamName} part ways with their {(firing.Position == UserRole.GMOnly ? "GM" : "head coach")}",
+                        $"{firing.PublicStatement}\n\nSeverance: {firing.SeveranceMonths} months. " +
+                        "Open positions around the league are listed at your Career desk.",
+                        highPriority: true,
+                        deepLinkPanelId: "Career");
+                };
+
+                jobMarket.OnJobOffered += opening =>
+                {
+                    if (opening == null) return;
+                    inbox.Publish(InboxMessageType.JobMarket, $"{opening.TeamName} Ownership",
+                        $"Job offer: {opening.TeamName} {opening.GetPositionTitle()}",
+                        $"{opening.JobDescription}\n\nSalary: ${opening.OfferedSalary:N0} over {opening.ContractYears} years. " +
+                        "Respond from your Career desk before the offer expires.",
+                        highPriority: true,
+                        deepLinkPanelId: "Career");
                 };
             }
 

@@ -367,6 +367,11 @@ namespace NBAHeadCoach.Core.Manager
             try { gm.FinanceSystem?.ProcessSeasonEnd(gm); }
             catch (Exception ex) { Debug.LogWarning($"[Offseason] Finance close failed: {ex.Message}"); }
 
+            // Career stakes: the player's season lands in their record, staff ages a
+            // year, and the owner delivers the verdict — which can be a firing
+            try { gm.CareerStakes?.ProcessSeasonEnd(gm); }
+            catch (Exception ex) { Debug.LogWarning($"[Offseason] Career evaluation failed: {ex.Message}"); }
+
             // Snapshot stats for next season's Most Improved comparison
             AwardManager.StorePreviousSeasonStats(players);
 

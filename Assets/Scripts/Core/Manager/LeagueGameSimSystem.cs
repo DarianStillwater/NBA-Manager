@@ -42,8 +42,9 @@ namespace NBAHeadCoach.Core.Manager
 
             var simulator = new Simulation.GameSimulator(_gm.PlayerDatabase);
 
-            // Only skip the player's NEXT game (the one they'll manually play/sim)
-            var nextPlayerGame = season.GetNextGame();
+            // Only skip the player's NEXT game (the one they'll manually play/sim).
+            // An unemployed player has no game to play — the whole league auto-sims.
+            var nextPlayerGame = _gm.IsCareerUnemployed ? null : season.GetNextGame();
 
             foreach (var game in todaysGames)
             {

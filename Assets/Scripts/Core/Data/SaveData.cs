@@ -98,6 +98,12 @@ namespace NBAHeadCoach.Core.Data
         [Header("Scouting")]
         public ScoutingSaveData ScoutingData;
 
+        /// <summary>Job market persistence (openings, applications, unemployment) — Phase 6.</summary>
+        public JobMarketSaveData JobMarketData;
+
+        /// <summary>Media reputation persistence — Phase 6.</summary>
+        public MediaSaveData MediaData;
+
         /// <summary>
         /// Create a display-friendly summary of the save
         /// </summary>
