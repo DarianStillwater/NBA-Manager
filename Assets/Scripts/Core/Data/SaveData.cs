@@ -92,6 +92,9 @@ namespace NBAHeadCoach.Core.Data
         [Header("Finances")]
         public FinanceSaveData FinancesData;
 
+        [Header("Development Desk")]
+        public DevelopmentSaveData DevelopmentData;
+
         /// <summary>
         /// Create a display-friendly summary of the save
         /// </summary>

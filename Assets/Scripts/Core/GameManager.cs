@@ -82,6 +82,8 @@ namespace NBAHeadCoach.Core
         public InSeasonFreeAgencySystem InSeasonSigning => _inSeasonSigning;
         private FinanceSystem _financeSystem;
         public FinanceSystem FinanceSystem => _financeSystem;
+        private DevelopmentSystem _developmentDesk;
+        public DevelopmentSystem DevelopmentDesk => _developmentDesk;
         private FreeAgentManager _freeAgentManager;
         public FreeAgentManager FreeAgents => _freeAgentManager;
         private DraftSystem _draftSystem;
@@ -380,6 +382,11 @@ namespace NBAHeadCoach.Core
             _financeSystem = FinanceSystem.CreateDefault(this);
             _financeSystem.HookGameRevenue(GameCompletion);
             Systems.Register(_financeSystem);
+
+            // Development desk: weekly practice, mentorship sessions, tendency
+            // training for the player's team (also boots the lazy engines).
+            _developmentDesk = DevelopmentSystem.CreateDefault(this);
+            Systems.Register(_developmentDesk);
             Systems.Register(_personnelManager);      // also ISaveSection (unified careers)
             Systems.Register(_jobMarketManager);
             Systems.Register(_mentorshipManager);
