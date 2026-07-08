@@ -246,6 +246,7 @@ namespace NBAHeadCoach.UI.Shell
             var navGOs = new Dictionary<string, GameObject>();
             foreach (var nav in navItems)
             {
+                if (Core.Data.RolePermissions.IsPanelHidden(nav[2])) continue;
                 bool isActive = nav[2] == "Dashboard";
                 var navGo = CreateNavItem(sidebar.transform, nav[0], nav[1], nav[2], teamColor, isActive);
                 navGOs[nav[2]] = navGo;
@@ -425,6 +426,10 @@ namespace NBAHeadCoach.UI.Shell
         public void ShowPanel(string panelId)
         {
             if (_contentArea == null) return;
+
+            // Panels foreign to the user's role are unreachable, even via deep links.
+            if (Core.Data.RolePermissions.IsPanelHidden(panelId))
+                panelId = "Dashboard";
 
             // Re-enable sidebar buttons when returning to a regular panel
             if (panelId != "PreGame" && panelId != "PostGame" && panelId != "PlayerDetail")

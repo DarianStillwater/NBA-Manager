@@ -217,6 +217,37 @@ namespace NBAHeadCoach.UI.Shell
             text.horizontalOverflow = HorizontalWrapMode.Wrap;
         }
 
+        /// <summary>
+        /// A locked pane for features foreign to the user's role: a lock glyph,
+        /// the feature name, and a note naming the AI staffer who handles it.
+        /// </summary>
+        public static void LockedPane(RectTransform parent, string featureName, string note)
+        {
+            var pane = Child(parent, "LockedPane");
+            Stretch(pane);
+
+            var glyph = Text(pane.GetComponent<RectTransform>(), "Lock", "\ud83d\udd12", 42,
+                FontStyle.Normal, UITheme.TextSecondary);
+            var gr = glyph.GetComponent<RectTransform>();
+            gr.anchorMin = new Vector2(0, 0.55f); gr.anchorMax = new Vector2(1, 0.75f);
+            gr.offsetMin = Vector2.zero; gr.offsetMax = Vector2.zero;
+            glyph.alignment = TextAnchor.MiddleCenter;
+
+            var title = Text(pane.GetComponent<RectTransform>(), "Feature", featureName, 20,
+                FontStyle.Bold, Color.white);
+            var tr = title.GetComponent<RectTransform>();
+            tr.anchorMin = new Vector2(0, 0.45f); tr.anchorMax = new Vector2(1, 0.55f);
+            tr.offsetMin = Vector2.zero; tr.offsetMax = Vector2.zero;
+            title.alignment = TextAnchor.MiddleCenter;
+
+            var noteText = Text(pane.GetComponent<RectTransform>(), "Note", note, 14,
+                FontStyle.Normal, UITheme.TextSecondary);
+            var nr = noteText.GetComponent<RectTransform>();
+            nr.anchorMin = new Vector2(0.1f, 0.35f); nr.anchorMax = new Vector2(0.9f, 0.45f);
+            nr.offsetMin = Vector2.zero; nr.offsetMax = Vector2.zero;
+            noteText.alignment = TextAnchor.MiddleCenter;
+        }
+
         public static void Divider(Transform parent)
         {
             var div = new GameObject("Divider", typeof(RectTransform));
