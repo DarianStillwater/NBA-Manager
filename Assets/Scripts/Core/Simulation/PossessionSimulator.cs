@@ -41,6 +41,7 @@ namespace NBAHeadCoach.Core.Simulation
         private GameContext _gameContext;
         private ViolationEventDetail _currentViolation;  // Stores violation from DeterminePossessionOutcome
         private HalfCourtAction _currentAction;          // Action family decided per possession
+        private bool _isFastBreak;                       // Real transition possession (decided, not cosmetic)
 
         public PossessionSimulator(int? seed = null, FoulSystem foulSystem = null)
         {
@@ -87,7 +88,8 @@ namespace NBAHeadCoach.Core.Simulation
             bool isOffenseHome,
             string offenseTeamId = null,
             string defenseTeamId = null,
-            int scoreDifferential = 0)
+            int scoreDifferential = 0,
+            bool liveBallStart = false)
         {
             _offensePlayers = offensePlayers;
             _defensePlayers = defensePlayers;
@@ -124,25 +126,38 @@ namespace NBAHeadCoach.Core.Simulation
             // Select primary ball handler (weighted by position and skill)
             _ballHandlerIndex = SelectBallHandler();
 
+            // Transition first: a live-ball start plus a coach who pushes can turn this
+            // into a real fast break — shorter clock, rim pressure, easier looks.
+            _isFastBreak = RollFastBreak(liveBallStart);
+
             // Pick the half-court action family from the offense's system frequencies.
             // Shapes possession duration, turnover risk, shooter selection, and shot
             // zones below — all on the decision RNG, identical at every SpatialDetail.
-            _currentAction = SelectAction();
+            _currentAction = _isFastBreak ? HalfCourtAction.Motion : SelectAction();
 
-            // Determine possession duration (influenced by pace, shot-clock philosophy, action)
-            float paceMultiplier = Mathf.Lerp(1.15f, 0.85f, _offenseStrategy.Pace / 100f);
-            float possessionDuration = AVG_POSSESSION_TIME * paceMultiplier;
-            possessionDuration += DurationShiftForApproach();
-            possessionDuration += _currentAction switch
+            float possessionDuration;
+            if (_isFastBreak)
             {
-                HalfCourtAction.Isolation => 1.0f,   // clear-outs burn clock
-                HalfCourtAction.PostUp => 0.8f,      // post entries take time
-                HalfCourtAction.Cut => -0.5f,        // quick hitters
-                HalfCourtAction.Handoff => -0.5f,
-                _ => 0f
-            };
-            possessionDuration += (float)(_random.NextDouble() * 4.0 - 2.0); // +/- 2 seconds variance
-            possessionDuration = Mathf.Clamp(possessionDuration, MIN_POSSESSION_TIME, SHOT_CLOCK - 2f);
+                // Early offense: the shot comes up in 4-7 seconds
+                possessionDuration = 4f + (float)_random.NextDouble() * 3f;
+            }
+            else
+            {
+                // Half-court duration (influenced by pace, shot-clock philosophy, action)
+                float paceMultiplier = Mathf.Lerp(1.15f, 0.85f, _offenseStrategy.Pace / 100f);
+                possessionDuration = AVG_POSSESSION_TIME * paceMultiplier;
+                possessionDuration += DurationShiftForApproach();
+                possessionDuration += _currentAction switch
+                {
+                    HalfCourtAction.Isolation => 1.0f,   // clear-outs burn clock
+                    HalfCourtAction.PostUp => 0.8f,      // post entries take time
+                    HalfCourtAction.Cut => -0.5f,        // quick hitters
+                    HalfCourtAction.Handoff => -0.5f,
+                    _ => 0f
+                };
+                possessionDuration += (float)(_random.NextDouble() * 4.0 - 2.0); // +/- 2 seconds variance
+                possessionDuration = Mathf.Clamp(possessionDuration, MIN_POSSESSION_TIME, SHOT_CLOCK - 2f);
+            }
 
             // Don't exceed remaining game clock
             possessionDuration = Mathf.Min(possessionDuration, gameClock);
@@ -163,7 +178,7 @@ namespace NBAHeadCoach.Core.Simulation
                 OffenseStrategy = _offenseStrategy,
                 DefenseStrategy = _defenseStrategy,
                 InitialBallHandlerIndex = _ballHandlerIndex,
-                IsFastBreak = possessionDuration < 8f,
+                IsFastBreak = _isFastBreak,
                 Events = result.Events
             };
 
@@ -225,8 +240,16 @@ namespace NBAHeadCoach.Core.Simulation
                     _ballHandlerIndex = shooterIndex;
                 }
 
-                // Check for steal before shot (~5% chance)
+                // Check for steal before shot (~5% chance); gambling defenses reach more
                 float stealChance = 0.05f * (defender.Steal / 80f);
+                var stealSys = _defenseStrategy?.DefensiveSystem;
+                if (stealSys != null)
+                {
+                    stealChance *= 1f + (stealSys.GamblingFrequency - 30) / 100f;
+                    if (stealSys.PrimaryScheme == DefensiveSchemeType.FullCourtPress ||
+                        stealSys.PrimaryScheme == DefensiveSchemeType.HalfCourtTrap)
+                        stealChance *= 1.2f;
+                }
                 if (_random.NextDouble() < stealChance)
                 {
                     result.Events.Add(new PossessionEvent
@@ -254,7 +277,11 @@ namespace NBAHeadCoach.Core.Simulation
 
                     _script.ShotType = shotType;
 
-                    float foulChance = _foulSystem.CalculateFoulProbability(defender, shooter, shotType, _gameContext);
+                    float foulChance = _foulSystem.CalculateFoulProbability(defender, shooter, shotType,
+                        _gameContext, _defenseStrategy?.DefensiveSystem);
+                    // Zone defenses commit fewer fouls (no man to chase)
+                    float zoneFrac = (_defenseStrategy?.DefensiveSystem?.ZoneUsage ?? 0) / 100f;
+                    if (zoneFrac > 0f) foulChance *= 1f - 0.15f * zoneFrac;
                     bool defenderFouls = _random.NextDouble() < foulChance;
 
                     if (defenderFouls)
@@ -294,10 +321,20 @@ namespace NBAHeadCoach.Core.Simulation
                             _script.Ending = ScriptEnding.MissedShot;
                         }
 
-                        // Generate rebound on missed shots
+                        // Generate rebound on missed shots. Crashing the glass earns
+                        // second chances; sprinting back and zone defense concede them.
                         if (shotEvent.Outcome == EventOutcome.Fail || shotEvent.Type == EventType.Block)
                         {
-                            bool offensiveRebound = _random.NextDouble() < 0.25f; // ~25% OREB rate
+                            float orebChance = 0.25f;
+                            orebChance += (_offenseStrategy.OffensiveReboundingFocus - 2) * 0.02f;
+                            orebChance += (_offenseStrategy.SendersOnOffensiveGlass - 2) * 0.01f;
+                            if (_offenseStrategy.TransitionDefense == TransitionDefensePreference.SprintBack)
+                                orebChance -= 0.03f;
+                            orebChance += (_defenseStrategy?.DefensiveSystem?.ZoneUsage ?? 0) / 100f * 0.04f;
+                            if (_isFastBreak) orebChance -= 0.05f; // nobody trails the break
+                            orebChance = Mathf.Clamp(orebChance, 0.10f, 0.40f);
+
+                            bool offensiveRebound = _random.NextDouble() < orebChance;
                             int rebounderIndex;
                             Player rebounder;
 
@@ -354,7 +391,35 @@ namespace NBAHeadCoach.Core.Simulation
             }
 
             result.EndGameClock = endGameClock;
+            result.WasFastBreak = _isFastBreak;
             return result;
+        }
+
+        /// <summary>
+        /// Decides whether this possession is a real fast break: the offense's push
+        /// philosophy, a live-ball start (steal / defensive board), and how hard the
+        /// defense commits to getting back.
+        /// </summary>
+        private bool RollFastBreak(bool liveBallStart)
+        {
+            float chance = _offenseStrategy.TransitionOffense switch
+            {
+                TransitionPreference.NoPush => 0.02f,
+                TransitionPreference.OpportunisticPush => 0.06f,
+                TransitionPreference.PushWhenPossible => 0.11f,
+                TransitionPreference.AggressivePush => 0.16f,
+                TransitionPreference.AlwaysPush => 0.22f,
+                _ => 0.06f
+            };
+            chance *= liveBallStart ? 1.8f : 0.25f;
+            chance *= _defenseStrategy?.TransitionDefense switch
+            {
+                TransitionDefensePreference.SprintBack => 0.6f,
+                TransitionDefensePreference.GambleForSteals => 1.25f,
+                TransitionDefensePreference.MatchupTransition => 0.85f,
+                _ => 1f
+            };
+            return _random.NextDouble() < chance;
         }
 
         private PossessionChoreographer _choreographer;
@@ -428,6 +493,22 @@ namespace NBAHeadCoach.Core.Simulation
                 HalfCourtAction.Isolation => -0.010f,
                 _ => 0f
             };
+
+            // Defensive scheme pressure: traps and blitzes force mistakes
+            var dSys = _defenseStrategy?.DefensiveSystem;
+            if (dSys != null)
+            {
+                if (_currentAction == HalfCourtAction.PickAndRoll &&
+                    dSys.PickAndRollCoverage == PnRCoverage.Blitz)
+                    turnoverChance += 0.02f;
+                if (dSys.PrimaryScheme == DefensiveSchemeType.FullCourtPress ||
+                    dSys.PrimaryScheme == DefensiveSchemeType.HalfCourtTrap)
+                    turnoverChance += 0.015f;
+            }
+
+            // Reckless pushes get loose with the ball
+            if (_isFastBreak && _offenseStrategy.TransitionOffense >= TransitionPreference.AggressivePush)
+                turnoverChance += 0.01f;
 
             // Ball-movement philosophy: more passes carry a little more risk
             var osys = _offenseStrategy.OffensiveSystem;
@@ -689,6 +770,12 @@ namespace NBAHeadCoach.Core.Simulation
                     threeWeight *= 1.25f; break;
             }
 
+            // Transition shots are rim runs and kick-ahead threes, almost never pull-up twos
+            if (_isFastBreak)
+            {
+                rimWeight *= 2f; threeWeight *= 1.2f; midWeight *= 0.5f;
+            }
+
             float total = threeWeight + midWeight + rimWeight;
 
             float roll = (float)_random.NextDouble() * total;
@@ -785,11 +872,15 @@ namespace NBAHeadCoach.Core.Simulation
             var position = _offensePositions[shooterIndex];
             var defender = _defensePlayers[shooterIndex];
             float defenderDistance = position.DistanceTo(_defensePositions[shooterIndex]);
+            var shotZone = position.GetZone(_isOffenseHome);
 
             // Calculate shot probability
             float shotProb = ShotCalculator.CalculateShotProbability(
                 shooter, position, defender, defenderDistance, shotType,
-                isFastBreak: false, secondsRemaining: possessionClock, isHomeTeam: _isOffenseHome);
+                isFastBreak: _isFastBreak, secondsRemaining: possessionClock, isHomeTeam: _isOffenseHome);
+
+            // Defensive scheme shapes the look by zone (neutral at scheme defaults)
+            shotProb = ApplyDefenseSchemeModifiers(shotProb, shotZone);
 
             // Ball-movement teams find the open man: small bonus on assisted looks
             var osys = _offenseStrategy.OffensiveSystem;
@@ -900,6 +991,69 @@ namespace NBAHeadCoach.Core.Simulation
         }
 
         /// <summary>
+        /// Defensive scheme shot-quality modifiers, by zone and against the chosen
+        /// action. Every term is neutral at the scheme defaults (ZoneUsage 0,
+        /// TeamHelp, Contesting 70, Contest closeouts, Gambling 30, SwitchSome).
+        /// </summary>
+        private float ApplyDefenseSchemeModifiers(float prob, CourtZone zone)
+        {
+            var d = _defenseStrategy?.DefensiveSystem;
+            if (d == null) return prob;
+
+            bool interior = zone == CourtZone.RestrictedArea || zone == CourtZone.Paint;
+            float mod = 1f;
+
+            // Zone: walls off the interior, concedes perimeter looks
+            float zoneFrac = d.ZoneUsage / 100f;
+            if (zoneFrac > 0f)
+                mod *= interior ? 1f - 0.06f * zoneFrac : 1f + 0.05f * zoneFrac;
+
+            // Help philosophy: bodies in the paint vs staying home on shooters
+            switch (d.HelpDefense)
+            {
+                case HelpDefenseLevel.NoHelp: mod *= interior ? 1.04f : 0.98f; break;
+                case HelpDefenseLevel.LimitedHelp: mod *= interior ? 1.02f : 1f; break;
+                case HelpDefenseLevel.ActiveHelp: mod *= interior ? 0.97f : 1.02f; break;
+                case HelpDefenseLevel.PackedPaint: mod *= interior ? 0.95f : 1.04f; break;
+            }
+
+            // Contest commitment on jumpers
+            if (!interior)
+                mod *= 1f - (d.ContestingLevel - 70) / 100f * 0.08f;
+
+            switch (d.CloseoutStyle)
+            {
+                case CloseoutStyle.StayGrounded: if (!interior) mod *= 1.015f; break;
+                case CloseoutStyle.RunOff: mod *= zone == CourtZone.ThreePoint ? 0.98f : 1.01f; break;
+            }
+
+            // Overplaying defenses give up cleaner looks when the gamble misses
+            mod *= 1f + (d.GamblingFrequency - 30) / 1000f;
+
+            // Scheme counters to the chosen action
+            if (_currentAction == HalfCourtAction.PickAndRoll && !_isFastBreak)
+            {
+                switch (d.PickAndRollCoverage)
+                {
+                    case PnRCoverage.DropCoverage:
+                        mod *= interior ? 0.98f : (zone != CourtZone.ThreePoint ? 1.03f : 1f); break;
+                    case PnRCoverage.Blitz:
+                        mod *= 1.03f; break; // beat the trap and it's 4-on-3
+                    case PnRCoverage.SwitchAll:
+                        mod *= 0.985f; break;
+                }
+                if (d.SwitchingLevel >= SwitchingLevel.SwitchMost) mod *= 0.985f;
+            }
+            else if (_currentAction == HalfCourtAction.Isolation &&
+                     d.SwitchingLevel == SwitchingLevel.SwitchAll)
+            {
+                mod *= 1.025f; // hunt the switch, attack the mismatch
+            }
+
+            return Mathf.Clamp(prob * mod, 0.02f, 0.95f);
+        }
+
+        /// <summary>
         /// Selects a rebounder weighted by rebounding skill.
         /// </summary>
         private int SelectRebounder(Player[] players, bool offensive)
@@ -1005,7 +1159,10 @@ namespace NBAHeadCoach.Core.Simulation
             float defenderDistance = position.DistanceTo(_defensePositions[shooterIndex]);
             float shotProb = ShotCalculator.CalculateShotProbability(
                 shooter, position, defender, defenderDistance, shotType,
-                isFastBreak: false, secondsRemaining: possessionClock, isHomeTeam: _isOffenseHome);
+                isFastBreak: _isFastBreak, secondsRemaining: possessionClock, isHomeTeam: _isOffenseHome);
+
+            // Defensive scheme shapes the look by zone (neutral at scheme defaults)
+            shotProb = ApplyDefenseSchemeModifiers(shotProb, zone);
 
             // Fouled shooters get a slightly lower percentage (disrupted)
             shotProb *= 0.85f;
@@ -1108,6 +1265,9 @@ namespace NBAHeadCoach.Core.Simulation
         public float StartGameClock;
         public float EndGameClock;
         public int Quarter;
+
+        /// <summary>Decision metadata: this possession was a real transition push.</summary>
+        public bool WasFastBreak;
 
         /// <summary>True length of the choreographed timeline in seconds from possession start
         /// (includes the shot-resolution tail past the live end). 0 when no choreography ran.</summary>

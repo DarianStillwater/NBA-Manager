@@ -86,8 +86,9 @@ namespace NBAHeadCoach.Core.Simulation
                     _ => 0f // Normal
                 };
 
-                // Gambling frequency increases fouls
-                probability += defenseSystem.GamblingFrequency / 500f; // up to +20%
+                // Gambling frequency increases fouls (centered on the default 30 so
+                // a default defense fouls at the league baseline)
+                probability += (defenseSystem.GamblingFrequency - 30) / 500f; // -6% to +14%
             }
 
             // Defender modifiers (higher stats = fewer fouls)

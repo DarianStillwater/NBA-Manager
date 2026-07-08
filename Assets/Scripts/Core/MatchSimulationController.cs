@@ -66,6 +66,7 @@ namespace NBAHeadCoach.Core
 
         // Dead ball state
         private bool _isDeadBall = false;
+        private bool _liveBallForNext = false; // next possession starts off a live board/steal
         private int _homeUnansweredPoints = 0;
         private int _awayUnansweredPoints = 0;
         private bool _lastPossessionScored = false;
@@ -296,6 +297,7 @@ namespace NBAHeadCoach.Core
             _isPaused = false;
             _isRunning = false;
             _isDeadBall = false;
+            _liveBallForNext = false;
             _homeUnansweredPoints = 0;
             _awayUnansweredPoints = 0;
             _lastPossessionScored = false;
@@ -531,8 +533,16 @@ namespace NBAHeadCoach.Core
                 _homeHasPossession,
                 offenseTeam.TeamId,
                 defenseTeam.TeamId,
-                scoreDifferential
+                scoreDifferential,
+                _liveBallForNext
             );
+
+            // Transition logic: the next possession starts live off a defensive
+            // board or a steal (same rule as the headless sim)
+            _liveBallForNext = result.Outcome == PossessionOutcome.Miss ||
+                               result.Outcome == PossessionOutcome.Block ||
+                               (result.Outcome == PossessionOutcome.Turnover &&
+                                result.Events.Any(e => e.Type == EventType.Steal));
 
             // In packet mode, presentation side-effects are captured instead of fired live
             if (HasPresentationConsumer)
@@ -1350,6 +1360,7 @@ namespace NBAHeadCoach.Core
             _currentQuarter++;
             _gameClock = _currentQuarter <= 4 ? 720f : 300f;
             _homeHasPossession = _currentQuarter % 2 == 1; // Alternate
+            _liveBallForNext = false; // quarters open with a dead-ball inbound
 
             // Reset team fouls for new quarter
             _foulSystem.ResetQuarterFouls();

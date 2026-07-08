@@ -69,6 +69,7 @@ namespace NBAHeadCoach.Tests
             RunTest<DevelopmentDeskTest>("Development Desk");
             RunTest<ScoutingFogTest>("Scouting Fog of War");
             RunTest<StrategySimWiringTest>("Strategy Sim Wiring");
+            RunTest<DefensiveWiringTest>("Defensive Wiring");
 
             // Summary
             Debug.Log("\n" + new string('=', 70));

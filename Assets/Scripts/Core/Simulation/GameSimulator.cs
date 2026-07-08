@@ -140,7 +140,7 @@ namespace NBAHeadCoach.Core.Simulation
         {
             _gameClock = quarterLengthSeconds;
             _homeHasPossession = _currentQuarter % 2 == 1; // Home starts Q1/Q3, Away starts Q2/Q4
-            PossessionOutcome? previousOutcome = null;
+            bool liveBallStart = false; // quarters open with a dead-ball inbound
 
             // Reset team fouls at the start of each quarter
             _foulSystem.ResetQuarterFouls();
@@ -174,7 +174,8 @@ namespace NBAHeadCoach.Core.Simulation
                     _homeHasPossession,
                     offenseTeamId,
                     defenseTeamId,
-                    scoreDifferential
+                    scoreDifferential,
+                    liveBallStart
                 );
 
                 // Record stats
@@ -202,8 +203,12 @@ namespace NBAHeadCoach.Core.Simulation
                     _homeHasPossession = !_homeHasPossession;
                 }
 
-                // Track outcome for transition logic
-                previousOutcome = result.Outcome;
+                // Transition logic: the NEXT possession starts live off a defensive
+                // board or a steal — that's when fast breaks happen
+                liveBallStart = result.Outcome == PossessionOutcome.Miss ||
+                                result.Outcome == PossessionOutcome.Block ||
+                                (result.Outcome == PossessionOutcome.Turnover &&
+                                 result.Events.Any(e => e.Type == EventType.Steal));
 
                 // Energy drain for active players
                 DrainEnergy(offensePlayers, result.Duration * 0.35f);

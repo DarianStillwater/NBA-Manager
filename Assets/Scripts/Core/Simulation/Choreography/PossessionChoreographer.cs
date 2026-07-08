@@ -1079,11 +1079,41 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
 
             float t = 0f;
             float prevT = 0f;
+            var prevOff = new (float x, float y)[5];
+            bool hasPrev = false;
             while (t <= _totalT + 0.001f)
             {
                 float dt = t - prevT;
                 IntegrateDefense(t, dt);
-                states.Add(Sample(t));
+                var state = Sample(t);
+
+                // Hard per-tick displacement cap for the offense. Authored legs are
+                // speed-budgeted, but a deadline-bound leg (catch-and-relocate to a
+                // far shot spot) can exceed sprint speed; the emitted stream is the
+                // contract (≤8 ft per 0.2s tick), so late arrivals beat teleports.
+                if (hasPrev)
+                {
+                    float cap = 7.5f * (dt <= 0f ? 1f : dt / Tick);
+                    for (int i = 0; i < 5; i++)
+                    {
+                        var snap = state.Players[i];
+                        float dx = snap.X - prevOff[i].x;
+                        float dy = snap.Y - prevOff[i].y;
+                        float d = (float)Math.Sqrt(dx * dx + dy * dy);
+                        if (d > cap)
+                        {
+                            float k = cap / d;
+                            snap.X = prevOff[i].x + dx * k;
+                            snap.Y = prevOff[i].y + dy * k;
+                            state.Players[i] = snap;
+                        }
+                    }
+                }
+                for (int i = 0; i < 5; i++)
+                    prevOff[i] = (state.Players[i].X, state.Players[i].Y);
+                hasPrev = true;
+
+                states.Add(state);
                 prevT = t;
 
                 var seg = BallSegmentAt(t);
