@@ -126,6 +126,11 @@ namespace NBAHeadCoach.Core.Simulation
             // Select primary ball handler (weighted by position and skill)
             _ballHandlerIndex = SelectBallHandler();
 
+            // End-game: the defense may simply give a foul — up 3 protecting the arc,
+            // or trailing and stopping the clock. Short possession, free throws.
+            if (DefenseWantsIntentionalFoul(gameClock, quarter, scoreDifferential))
+                return BuildIntentionalFoulPossession(result, gameClock, quarter);
+
             // Transition first: a live-ball start plus a coach who pushes can turn this
             // into a real fast break — shorter clock, rim pressure, easier looks.
             _isFastBreak = RollFastBreak(liveBallStart);
@@ -158,6 +163,9 @@ namespace NBAHeadCoach.Core.Simulation
                 possessionDuration += (float)(_random.NextDouble() * 4.0 - 2.0); // +/- 2 seconds variance
                 possessionDuration = Mathf.Clamp(possessionDuration, MIN_POSSESSION_TIME, SHOT_CLOCK - 2f);
             }
+
+            // End-game clock management: milk a lead, hurry a deficit, hold for the last shot
+            possessionDuration = ApplyEndGameTiming(possessionDuration, gameClock, quarter, scoreDifferential);
 
             // Don't exceed remaining game clock
             possessionDuration = Mathf.Min(possessionDuration, gameClock);
@@ -396,12 +404,165 @@ namespace NBAHeadCoach.Core.Simulation
         }
 
         /// <summary>
+        /// The defense elects to give a foul: leading by exactly 3 in the final
+        /// possession window (deny the game-tying three), or trailing late and
+        /// stopping the clock. Only when the foul actually sends the offense to
+        /// the line (defense at 4+ team fouls — the foul itself triggers the bonus);
+        /// before that, fouling would hand over the ball for nothing here.
+        /// </summary>
+        private bool DefenseWantsIntentionalFoul(float gameClock, int quarter, int scoreDiff)
+        {
+            var close = _defenseStrategy?.CloseGameStrategy;
+            if (close == null || quarter < 4) return false;
+            if (gameClock <= 2f) return false; // too late to matter
+            if (_foulSystem.GetTeamFouls(_defenseTeamId) < 4) return false;
+
+            int defenseMargin = -scoreDiff; // positive = defense leading
+
+            // Up 3, shot-clock-off window: foul before the tying three goes up
+            if (close.FoulWhenDown3 && defenseMargin == 3 && gameClock <= 24f)
+                return true;
+
+            // Trailing with the clock dying: foul to extend — but only while the
+            // deficit is still chaseable in the time left (nobody fouls down 9
+            // with under a minute; each made pair ends the tactic naturally)
+            if (close.IntentionalFoulWhenDown && !close.PlayStraightUpLate &&
+                defenseMargin < 0 && gameClock <= 45f &&
+                -defenseMargin <= 3f + gameClock / 12f)
+                return true;
+
+            return false;
+        }
+
+        /// <summary>
+        /// A give-the-foul possession: 1.5-3.5 seconds, a personal foul on the
+        /// handler (or the worst free-throw shooter if the coach hunts hack-a),
+        /// and bonus free throws. Choreographed like any decided shooting foul.
+        /// </summary>
+        private PossessionResult BuildIntentionalFoulPossession(PossessionResult result, float gameClock, int quarter)
+        {
+            float duration = 1.5f + (float)_random.NextDouble() * 2f;
+            duration = Mathf.Min(duration, gameClock);
+            float endClock = gameClock - duration;
+
+            // Whom to grab: the handler, unless hunting a poor free-throw shooter
+            int targetIdx = _ballHandlerIndex;
+            var d = _defenseStrategy?.DefensiveSystem;
+            if (d != null && d.IntentionalFoulPoorShooters)
+            {
+                for (int i = 0; i < 5; i++)
+                    if (_offensePlayers[i].FreeThrow < d.FreeThrowThresholdToFoul + 20 &&
+                        _offensePlayers[i].FreeThrow < _offensePlayers[targetIdx].FreeThrow)
+                        targetIdx = i;
+            }
+            var fouled = _offensePlayers[targetIdx];
+            var fouler = _defensePlayers[targetIdx];
+
+            _script = new PossessionScript
+            {
+                Offense = _offensePlayers,
+                Defense = _defensePlayers,
+                OffenseAttacksRight = _isOffenseHome,
+                StartGameClock = gameClock,
+                Duration = duration,
+                Quarter = quarter,
+                OffenseStrategy = _offenseStrategy,
+                DefenseStrategy = _defenseStrategy,
+                InitialBallHandlerIndex = _ballHandlerIndex,
+                IsFastBreak = false,
+                Events = result.Events,
+                ShooterIndex = targetIdx,
+                ShotType = ShotType.Layup,
+                ShotPosition = _offensePositions[targetIdx],
+                Ending = ScriptEnding.ShootingFoulMissed
+            };
+
+            var foulEvent = _foulSystem.CreateFoulEvent(fouled, fouler, _defenseTeamId,
+                FoulType.Personal, isShootingFoul: false, shotWasMade: false, isBehindArc: false,
+                shotType: null, gameClock: endClock, quarter: quarter, context: _gameContext);
+            result.Events.Add(foulEvent);
+
+            int made = 0;
+            int freeThrows = foulEvent.FoulDetail?.FreeThrowsAwarded ?? 0;
+            if (freeThrows > 0)
+            {
+                var ft = _freeThrowHandler.CalculateFreeThrows(fouled, freeThrows, _gameContext);
+                made = ft.Made;
+                foulEvent.FreeThrowResult = ft;
+                result.Events.Add(_freeThrowHandler.CreateFreeThrowEvent(fouled, ft, endClock, quarter));
+                _script.FreeThrows = ft;
+            }
+
+            result.Outcome = made > 0 ? PossessionOutcome.Score : PossessionOutcome.Foul;
+            result.PointsScored = made;
+            _script.PointsScored = made;
+
+            for (int i = 0; i < 5; i++)
+            {
+                _script.OffenseSpots[i] = _offensePositions[i];
+                _script.DefenseSpots[i] = _defensePositions[i];
+            }
+
+            if (SpatialDetail == SpatialDetailLevel.Full)
+            {
+                _choreographer ??= new PossessionChoreographer(_choreoRandom);
+                result.SpatialStates = _choreographer.Choreograph(_script);
+                result.PresentationSeconds = _choreographer.TotalSeconds;
+                result.LiveSeconds = _choreographer.LiveSeconds;
+                result.NarrationBeats = _choreographer.Beats;
+            }
+
+            result.EndGameClock = endClock;
+            result.WasFastBreak = false;
+            return result;
+        }
+
+        /// <summary>
+        /// End-game clock management, all from the offense's CloseGameStrategy:
+        /// milk a late lead, hurry when trailing, hold for the quarter's last shot.
+        /// Neutral outside the final minutes.
+        /// </summary>
+        private float ApplyEndGameTiming(float duration, float gameClock, int quarter, int scoreDiff)
+        {
+            var close = _offenseStrategy.CloseGameStrategy;
+
+            // Milk the clock protecting a late lead
+            if (quarter >= 4 && gameClock <= 180f && close != null && close.RunClockWhenAhead &&
+                scoreDiff >= Mathf.Max(1, close.SecondsAheadToSlowDown))
+            {
+                duration = Mathf.Max(duration, SHOT_CLOCK - 3f + (float)_random.NextDouble() * 2f);
+            }
+
+            // Trailing late: get a shot up fast
+            if (quarter >= 4 && gameClock <= 60f && scoreDiff < 0 && scoreDiff >= -12)
+            {
+                duration = Mathf.Min(duration, 5f + (float)_random.NextDouble() * 3f);
+            }
+
+            // Hold for the last shot of the quarter (only when not chasing points)
+            if (gameClock <= SHOT_CLOCK + 6f && gameClock > 6f && scoreDiff >= 0)
+            {
+                float hold = gameClock - (close?.TargetLastShotClock ?? 4);
+                if (hold > 4f) duration = Mathf.Max(duration, Mathf.Min(hold, SHOT_CLOCK - 0.5f));
+            }
+
+            return duration;
+        }
+
+        /// <summary>
         /// Decides whether this possession is a real fast break: the offense's push
         /// philosophy, a live-ball start (steal / defensive board), and how hard the
         /// defense commits to getting back.
         /// </summary>
         private bool RollFastBreak(bool liveBallStart)
         {
+            // A team milking a late lead does not run
+            var close = _offenseStrategy.CloseGameStrategy;
+            if (_gameContext.Quarter >= 4 && _gameContext.GameClock <= 180f &&
+                close != null && close.RunClockWhenAhead &&
+                _gameContext.ScoreDifferential >= Mathf.Max(1, close.SecondsAheadToSlowDown))
+                return false;
+
             float chance = _offenseStrategy.TransitionOffense switch
             {
                 TransitionPreference.NoPush => 0.02f,
@@ -567,6 +728,17 @@ namespace NBAHeadCoach.Core.Simulation
             float cut = (sys?.CuttingFrequency ?? 50) * 0.4f;
             float motion = 25f + (sys?.BallMovementPriority ?? 70) * 0.25f;
 
+            // Clutch: the coach's late-game play call tilts the mix hard
+            if (_gameContext.IsClutchTime)
+            {
+                switch (_offenseStrategy.CloseGameStrategy?.LateGamePlay)
+                {
+                    case LateGamePlayType.StarIsolation: iso *= 3f; break;
+                    case LateGamePlayType.PickAndRoll: pnr *= 3f; break;
+                    case LateGamePlayType.PostUp: post *= 3f; break;
+                }
+            }
+
             // The declared system identity tilts the mix — this is what makes the
             // pre-game scheme picker and the strategy templates play differently
             switch (sys?.PrimarySystem)
@@ -716,6 +888,17 @@ namespace NBAHeadCoach.Core.Simulation
                 weights[_ballHandlerIndex] *= 1.5f;
             }
 
+            // Clutch: feed the designated closer if he's on the floor
+            if (_gameContext.IsClutchTime)
+            {
+                string goTo = _offenseStrategy.CloseGameStrategy?.GoToPlayerId;
+                if (!string.IsNullOrEmpty(goTo))
+                {
+                    for (int i = 0; i < 5; i++)
+                        if (_offensePlayers[i].PlayerId == goTo) { weights[i] *= 3f; break; }
+                }
+            }
+
             // Ball-movement philosophy shapes who shoots: low-movement offenses run
             // through the handler (unassisted); high-movement teams spread usage
             // toward the open man. Neutral in the 60-70 default band.
@@ -774,6 +957,19 @@ namespace NBAHeadCoach.Core.Simulation
             if (_isFastBreak)
             {
                 rimWeight *= 2f; threeWeight *= 1.2f; midWeight *= 0.5f;
+            }
+
+            // Late-game geometry: down three or more in the final 30 seconds, the
+            // three is the only shot; a coach calling for it hunts it all clutch
+            if (_gameContext.Quarter >= 4 && _gameContext.GameClock <= 30f &&
+                _gameContext.ScoreDifferential <= -3)
+            {
+                threeWeight *= 3f;
+            }
+            else if (_gameContext.IsClutchTime &&
+                     _offenseStrategy.CloseGameStrategy?.LateGamePlay == LateGamePlayType.ThreePointer)
+            {
+                threeWeight *= 2f;
             }
 
             float total = threeWeight + midWeight + rimWeight;
