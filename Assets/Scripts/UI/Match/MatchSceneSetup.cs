@@ -101,10 +101,13 @@ namespace NBAHeadCoach.UI.Match
             // Wait for singleton to set
             yield return null;
 
-            // Create coach for player
+            // Create coach for player — with a real playbook and default player
+            // instructions so play calls and the coaching menu actually function
             var playerCoach = new GameCoach(
                 _playerTeam.Strategy ?? new TeamStrategy(),
-                null, null);
+                PlayBook.CreateDefault(_playerTeam.TeamId),
+                TeamGameInstructions.CreateDefault(_playerTeam.TeamId,
+                    _playerTeam.Roster ?? new List<Player>()));
 
             _simController.InitializeMatch(_homeTeam, _awayTeam, _playerTeam, playerCoach);
 

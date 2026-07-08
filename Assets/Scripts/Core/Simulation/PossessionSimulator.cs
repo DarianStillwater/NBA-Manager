@@ -89,7 +89,8 @@ namespace NBAHeadCoach.Core.Simulation
             string offenseTeamId = null,
             string defenseTeamId = null,
             int scoreDifferential = 0,
-            bool liveBallStart = false)
+            bool liveBallStart = false,
+            HalfCourtAction? calledAction = null)
         {
             _offensePlayers = offensePlayers;
             _defensePlayers = defensePlayers;
@@ -133,12 +134,14 @@ namespace NBAHeadCoach.Core.Simulation
 
             // Transition first: a live-ball start plus a coach who pushes can turn this
             // into a real fast break — shorter clock, rim pressure, easier looks.
-            _isFastBreak = RollFastBreak(liveBallStart);
+            // A called set play implies half-court: the call overrides the break.
+            _isFastBreak = !calledAction.HasValue && RollFastBreak(liveBallStart);
 
-            // Pick the half-court action family from the offense's system frequencies.
-            // Shapes possession duration, turnover risk, shooter selection, and shot
-            // zones below — all on the decision RNG, identical at every SpatialDetail.
-            _currentAction = _isFastBreak ? HalfCourtAction.Motion : SelectAction();
+            // Pick the half-court action family: the coach's play call wins, else
+            // roll from the offense's system frequencies. Shapes possession duration,
+            // turnover risk, shooter selection, and shot zones below — all on the
+            // decision RNG, identical at every SpatialDetail.
+            _currentAction = calledAction ?? (_isFastBreak ? HalfCourtAction.Motion : SelectAction());
 
             float possessionDuration;
             if (_isFastBreak)
@@ -400,6 +403,7 @@ namespace NBAHeadCoach.Core.Simulation
 
             result.EndGameClock = endGameClock;
             result.WasFastBreak = _isFastBreak;
+            result.Action = _currentAction;
             return result;
         }
 
@@ -1464,6 +1468,9 @@ namespace NBAHeadCoach.Core.Simulation
 
         /// <summary>Decision metadata: this possession was a real transition push.</summary>
         public bool WasFastBreak;
+
+        /// <summary>Decision metadata: the half-court action family this possession ran.</summary>
+        public HalfCourtAction Action;
 
         /// <summary>True length of the choreographed timeline in seconds from possession start
         /// (includes the shot-resolution tail past the live end). 0 when no choreography ran.</summary>

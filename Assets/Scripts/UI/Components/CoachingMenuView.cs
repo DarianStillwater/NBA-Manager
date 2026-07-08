@@ -894,20 +894,12 @@ namespace NBAHeadCoach.UI.Components
 
         private void OnFullCourtPressToggled(bool enabled)
         {
-            var tactics = _gameCoach?.GetTactics();
-            if (tactics != null)
-            {
-                tactics.PressEnabled = enabled;
-            }
+            _gameCoach?.SetFullCourtPress(enabled);
         }
 
         private void OnHackAShaqToggled(bool enabled)
         {
-            var tactics = _gameCoach?.GetTactics();
-            if (tactics != null)
-            {
-                tactics.HackAShaqEnabled = enabled;
-            }
+            _gameCoach?.SetHackAShaq(enabled);
         }
 
         private void OnFatigueThresholdChanged(float value)

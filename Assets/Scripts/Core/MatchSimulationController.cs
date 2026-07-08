@@ -272,10 +272,13 @@ namespace NBAHeadCoach.Core
             _playerIsHome = playerTeam.TeamId == homeTeam.TeamId;
             _playerCoach = playerCoach;
 
-            // Create AI coach for opponent
+            // Create AI coach for opponent — with a real playbook and default
+            // player instructions, same as the player's coach
+            var aiTeam = _playerIsHome ? awayTeam : homeTeam;
             _aiCoach = new GameCoach(
-                _playerIsHome ? awayTeam.Strategy : homeTeam.Strategy,
-                null, null);
+                aiTeam.Strategy,
+                PlayBook.CreateDefault(aiTeam.TeamId),
+                TeamGameInstructions.CreateDefault(aiTeam.TeamId, aiTeam.Roster ?? new List<Player>()));
 
             // Initialize rules systems
             _foulSystem = new FoulSystem();
@@ -522,6 +525,11 @@ namespace NBAHeadCoach.Core
                 ? _homeScore - _awayScore
                 : _awayScore - _homeScore;
 
+            // A coach's play call (set play or quick action) forces the next
+            // possession's action family — consumed once
+            var offenseCoach = _homeHasPossession == _playerIsHome ? _playerCoach : _aiCoach;
+            var calledAction = offenseCoach?.ConsumePendingActionCall();
+
             // Simulate with team IDs for foul tracking
             var result = _possessionSimulator.SimulatePossession(
                 offensePlayers,
@@ -534,7 +542,8 @@ namespace NBAHeadCoach.Core
                 offenseTeam.TeamId,
                 defenseTeam.TeamId,
                 scoreDifferential,
-                _liveBallForNext
+                _liveBallForNext,
+                calledAction
             );
 
             // Transition logic: the next possession starts live off a defensive

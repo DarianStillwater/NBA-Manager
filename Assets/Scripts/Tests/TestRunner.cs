@@ -71,6 +71,7 @@ namespace NBAHeadCoach.Tests
             RunTest<StrategySimWiringTest>("Strategy Sim Wiring");
             RunTest<DefensiveWiringTest>("Defensive Wiring");
             RunTest<EndOfGameTest>("End of Game Logic");
+            RunTest<GameCoachWiringTest>("Game Coach Wiring");
 
             // Summary
             Debug.Log("\n" + new string('=', 70));
