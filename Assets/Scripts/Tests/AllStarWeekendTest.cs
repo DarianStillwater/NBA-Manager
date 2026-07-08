@@ -31,6 +31,7 @@ namespace NBAHeadCoach.Tests
 
             TestWeekendRunsForReal(mgr, weekend, players, db);
             TestSaveRoundTrip(mgr, weekend);
+            TestBestRecordCoachRule();
 
             return (_passed, _failed);
         }
@@ -97,6 +98,25 @@ namespace NBAHeadCoach.Tests
             Assert(w.AllStarGameResult.PlayerStats.Count > 0, "Box lines survive the flattening");
             AssertEqual(weekend.ThreePointContestResult.WinnerId, w.ThreePointContestResult?.WinnerId,
                 "Contest winner survives");
+        }
+
+        private void TestBestRecordCoachRule()
+        {
+            var mine = new Team { TeamId = "ME", Conference = "East", Wins = 40, Losses = 12 };
+            var rival = new Team { TeamId = "RV", Conference = "East", Wins = 38, Losses = 14 };
+            var westBest = new Team { TeamId = "WB", Conference = "West", Wins = 45, Losses = 7 };
+            var all = new List<Team> { mine, rival, westBest };
+
+            Assert(AllStarManager.TeamLeadsConference(mine, all),
+                "Best record in the conference earns the All-Star bench");
+            Assert(!AllStarManager.TeamLeadsConference(rival, all),
+                "Second place doesn't coach");
+            Assert(AllStarManager.TeamLeadsConference(westBest, all),
+                "The other conference judges independently");
+
+            rival.Wins = 40; rival.Losses = 12;
+            Assert(AllStarManager.TeamLeadsConference(mine, all),
+                "Ties break toward the checked team");
         }
 
         /// <summary>30 teams, 8 players each, with season stats and hidden attributes for the sim.</summary>

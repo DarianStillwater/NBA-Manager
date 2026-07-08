@@ -38,6 +38,7 @@ namespace NBAHeadCoach.UI
             _shell.RegisterPanel("History", new HistoryGamePanel());
             _shell.RegisterPanel("SaveGame", new SaveLoadGamePanel(loadMode: false));
             _shell.RegisterPanel("LoadGame", new SaveLoadGamePanel(loadMode: true));
+            _shell.RegisterPanel("AllStar", new AllStarPanel());
             _shell.RegisterPanel("Settings", new SettingsMenuPanel(_shell));
             _shell.RegisterPanel("PreGame", _preGamePanel);
             _shell.RegisterPanel("PostGame", _postGamePanel);

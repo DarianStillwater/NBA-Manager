@@ -241,6 +241,7 @@ namespace NBAHeadCoach.UI.Shell
                 new[] { "\u2699", "Staff",     "Staff" },
                 new[] { "\u25C9", "Career",    "Career" },
                 new[] { "\u2606", "History",   "History" },
+                new[] { "\u2726", "All-Star",  "AllStar" },
             };
 
             var navGOs = new Dictionary<string, GameObject>();

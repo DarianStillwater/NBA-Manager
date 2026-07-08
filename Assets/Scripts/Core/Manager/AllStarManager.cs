@@ -215,7 +215,53 @@ namespace NBAHeadCoach.Core.Manager
             if (CurrentWeekend.AllStarGameResult != null) return;
             if (ctx.Date.Day < 16) return; // break starts Feb 14; Sunday is the 16th
 
+            // Best-record coach rule: if the player's team leads its conference,
+            // the player coaches the game — hold it for them (one day of grace)
+            // instead of auto-simming, and tell them once.
+            if (PlayerCoachesASG(gm) && ctx.Date.Day < 18)
+            {
+                if (!_coachInviteSent)
+                {
+                    _coachInviteSent = true;
+                    string conf = gm.GetPlayerTeam()?.Conference ?? "conference";
+                    InboxService.Instance?.Publish(InboxMessageType.League, "League Office",
+                        $"You're coaching the {conf} All-Stars",
+                        "Best record in the conference at the break — the sideline is yours. " +
+                        "Run the game from the All-Star desk.",
+                        highPriority: true, deepLinkPanelId: "AllStar");
+                }
+                return;
+            }
+
             RunAllStarWeekend(gm.PlayerDatabase);
+        }
+
+        private bool _coachInviteSent;
+
+        /// <summary>
+        /// The real-NBA rule: the coach of the conference's best team at the break
+        /// coaches its All-Star squad. Only meaningful if the user actually coaches.
+        /// </summary>
+        public static bool PlayerCoachesASG(GameManager gm)
+        {
+            if (gm == null || !Data.RolePermissions.CanPlayInteractiveMatch) return false;
+            var playerTeam = gm.GetPlayerTeam();
+            if (playerTeam == null) return false;
+            return TeamLeadsConference(playerTeam, gm.AllTeams);
+        }
+
+        /// <summary>Pure best-record check, testable headless. Ties break toward the player's team.</summary>
+        public static bool TeamLeadsConference(Team team, IEnumerable<Team> allTeams)
+        {
+            if (team == null || allTeams == null) return false;
+            float Pct(Team t) => t.Wins + t.Losses == 0 ? 0f : (float)t.Wins / (t.Wins + t.Losses);
+            float mine = Pct(team);
+            foreach (var t in allTeams)
+            {
+                if (t == null || t.TeamId == team.TeamId || t.Conference != team.Conference) continue;
+                if (Pct(t) > mine) return false;
+            }
+            return true;
         }
 
         public static AllStarManager Instance { get; private set; }
@@ -854,11 +900,26 @@ namespace NBAHeadCoach.Core.Manager
             for (int i = 0; i < 5 && i < starters.Count; i++)
                 team.StartingLineupIds[i] = starters[i].PlayerId;
 
-            // An exhibition coach: up-tempo, everybody plays
-            var coach = AI.AICoachPersonality.CreateRandom(team.TeamId, $"{conference} bench",
-                new System.Random(weekend.Season * 31 + (east ? 1 : 2)));
-            team.CoachPersonality = coach;
-            team.AutoSetStrategy(coach);
+            // The player's squad carries the player's coaching identity; the other
+            // bench gets an exhibition coach.
+            var gm = GameManager.Instance;
+            var playerTeam = gm?.GetPlayerTeam();
+            bool playerBench = gm != null && PlayerCoachesASG(gm) &&
+                               playerTeam?.Conference == conference;
+            if (playerBench && playerTeam?.Strategy != null)
+            {
+                team.CoachPersonality = playerTeam.CoachPersonality;
+                team.Strategy = playerTeam.Strategy;
+                team.OffensiveStrategy = playerTeam.Strategy;
+                team.DefensiveStrategy = playerTeam.Strategy;
+            }
+            else
+            {
+                var coach = AI.AICoachPersonality.CreateRandom(team.TeamId, $"{conference} bench",
+                    new System.Random(weekend.Season * 31 + (east ? 1 : 2)));
+                team.CoachPersonality = coach;
+                team.AutoSetStrategy(coach);
+            }
             return team;
         }
 
@@ -1205,6 +1266,7 @@ namespace NBAHeadCoach.Core.Manager
             {
                 Season = w.Season,
                 HostCity = w.HostCity,
+                CoachInviteSent = _coachInviteSent,
                 NotableSnubs = new List<string>(w.NotableSnubs ?? new List<string>())
             };
 
@@ -1302,6 +1364,7 @@ namespace NBAHeadCoach.Core.Manager
                 w.AllStarGameResult = g;
             }
 
+            _coachInviteSent = dto.CoachInviteSent;
             CurrentWeekend = w;
         }
 
@@ -1365,6 +1428,7 @@ namespace NBAHeadCoach.Core.Manager
     {
         public int Season;
         public string HostCity;
+        public bool CoachInviteSent;
         public List<AllStarVoteRecord> Selections = new List<AllStarVoteRecord>();
         public List<string> NotableSnubs = new List<string>();
 
