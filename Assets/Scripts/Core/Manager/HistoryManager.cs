@@ -11,8 +11,10 @@ namespace NBAHeadCoach.Core.Manager
     /// Manages historical records, season archives, franchise records, and Hall of Fame.
     /// Tracks all-time leaders, single-game/season records, and career milestones.
     /// </summary>
-    public class HistoryManager
+    public class HistoryManager : IGameSystem, ISaveSection
     {
+        public string SystemId => "History";
+
         public static HistoryManager Instance { get; private set; }
 
         #region State
@@ -153,6 +155,47 @@ namespace NBAHeadCoach.Core.Manager
         #endregion
 
         #region Records Tracking
+
+        /// <summary>
+        /// Check both franchises' and the league's records for a completed game.
+        /// Players are attributed to their OWN team (the older per-team entry point
+        /// below credits every player in the box to one franchise — kept for
+        /// compatibility, but this is the correct whole-game path).
+        /// </summary>
+        public void CheckGameRecordsForGame(int year, BoxScore box, Func<string, string> playerTeamResolver)
+        {
+            if (box == null) return;
+
+            if (!_franchiseRecords.ContainsKey(box.HomeTeamId))
+                _franchiseRecords[box.HomeTeamId] = new FranchiseRecords { TeamId = box.HomeTeamId };
+            if (!_franchiseRecords.ContainsKey(box.AwayTeamId))
+                _franchiseRecords[box.AwayTeamId] = new FranchiseRecords { TeamId = box.AwayTeamId };
+
+            var homeFranchise = _franchiseRecords[box.HomeTeamId];
+            var awayFranchise = _franchiseRecords[box.AwayTeamId];
+
+            foreach (var stats in box.PlayerStats.Values)
+            {
+                string teamId = playerTeamResolver?.Invoke(stats.PlayerId);
+                var franchise = teamId == box.HomeTeamId ? homeFranchise
+                    : teamId == box.AwayTeamId ? awayFranchise : null;
+                if (franchise == null) continue;
+
+                CheckSingleGameRecord(ref franchise.SingleGamePoints, "Points", year, stats.PlayerId, teamId, stats.Points);
+                CheckSingleGameRecord(ref franchise.SingleGameRebounds, "Rebounds", year, stats.PlayerId, teamId, stats.Rebounds);
+                CheckSingleGameRecord(ref franchise.SingleGameAssists, "Assists", year, stats.PlayerId, teamId, stats.Assists);
+                CheckSingleGameRecord(ref franchise.SingleGameSteals, "Steals", year, stats.PlayerId, teamId, stats.Steals);
+                CheckSingleGameRecord(ref franchise.SingleGameBlocks, "Blocks", year, stats.PlayerId, teamId, stats.Blocks);
+                CheckSingleGameRecord(ref franchise.SingleGameThrees, "3PM", year, stats.PlayerId, teamId, stats.ThreePointMade);
+
+                CheckSingleGameRecord(ref _leagueRecords.SingleGamePoints, "Points (League)", year, stats.PlayerId, teamId, stats.Points);
+                CheckSingleGameRecord(ref _leagueRecords.SingleGameRebounds, "Rebounds (League)", year, stats.PlayerId, teamId, stats.Rebounds);
+                CheckSingleGameRecord(ref _leagueRecords.SingleGameAssists, "Assists (League)", year, stats.PlayerId, teamId, stats.Assists);
+            }
+
+            CheckSingleGameRecord(ref homeFranchise.TeamHighestScore, "Team Points", year, null, box.HomeTeamId, box.HomeScore);
+            CheckSingleGameRecord(ref awayFranchise.TeamHighestScore, "Team Points", year, null, box.AwayTeamId, box.AwayScore);
+        }
 
         /// <summary>
         /// Check and update records after a game
@@ -505,6 +548,41 @@ namespace NBAHeadCoach.Core.Manager
 
         #region Save/Load
 
+        /// <summary>
+        /// JsonUtility-safe persistence: franchise records dictionary flattened to a
+        /// list (each entry carries its TeamId). Archives, records, and the Hall of
+        /// Fame were computed-but-lost on every reload until this existed.
+        /// </summary>
+        public void WriteSave(SaveData data)
+        {
+            if (data == null) return;
+            data.HistoryData = new HistorySectionData
+            {
+                SeasonArchives = _seasonArchives,
+                FranchiseRecordsList = _franchiseRecords.Values.ToList(),
+                LeagueRecords = _leagueRecords,
+                HallOfFame = _hallOfFame,
+                HallOfFameEligible = _hallOfFameEligible
+            };
+        }
+
+        public void ReadSave(SaveData data, in SaveReadContext ctx)
+        {
+            var d = data?.HistoryData;
+            if (d == null) return; // legacy save: empty history
+
+            _seasonArchives = d.SeasonArchives ?? new List<SeasonArchive>();
+            _franchiseRecords = new Dictionary<string, FranchiseRecords>();
+            foreach (var fr in d.FranchiseRecordsList ?? new List<FranchiseRecords>())
+            {
+                if (fr != null && !string.IsNullOrEmpty(fr.TeamId))
+                    _franchiseRecords[fr.TeamId] = fr;
+            }
+            _leagueRecords = d.LeagueRecords ?? new LeagueRecords();
+            _hallOfFame = d.HallOfFame ?? new List<HallOfFameInductee>();
+            _hallOfFameEligible = d.HallOfFameEligible ?? new List<string>();
+        }
+
         public HistorySaveData CreateSaveData()
         {
             return new HistorySaveData
@@ -534,6 +612,17 @@ namespace NBAHeadCoach.Core.Manager
     }
 
     #region Data Classes
+
+    /// <summary>JsonUtility-safe history save section (dictionary flattened).</summary>
+    [Serializable]
+    public class HistorySectionData
+    {
+        public List<SeasonArchive> SeasonArchives = new List<SeasonArchive>();
+        public List<FranchiseRecords> FranchiseRecordsList = new List<FranchiseRecords>();
+        public LeagueRecords LeagueRecords = new LeagueRecords();
+        public List<HallOfFameInductee> HallOfFame = new List<HallOfFameInductee>();
+        public List<string> HallOfFameEligible = new List<string>();
+    }
 
     [Serializable]
     public class SeasonArchive

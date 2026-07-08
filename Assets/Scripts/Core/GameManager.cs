@@ -360,7 +360,7 @@ namespace NBAHeadCoach.Core
             // Bridge existing producer events into the inbox
             InboxWiring.Wire(this, _inboxService, _jobSecurityManager, _financeManager,
                 _tradeAnnouncementSystem, _mediaManager, _injuryManager, _playoffManager,
-                _tradeOfferGenerator, _jobMarketManager);
+                _tradeOfferGenerator, _jobMarketManager, _historyManager);
 
             // Load player/team data
             StartCoroutine(LoadGameData());
@@ -425,6 +425,10 @@ namespace NBAHeadCoach.Core
             Systems.Register(_transactionLog);
             Systems.Register(_inboxService);
             Systems.Register(_awardsStore);
+            Systems.Register(_historyManager);        // season archives, records, Hall of Fame
+
+            // Every completed game feeds the record books and career milestones
+            GameCompletion.OnGameCompleted += OnGameCompletedHistoryHook;
 
             // Phase rails: OffseasonManager stays a stub until Phase 2; AllStarManager
             // runs the All-Star selections when the break begins.
@@ -740,6 +744,34 @@ namespace NBAHeadCoach.Core
         /// running (all games auto-sim) while they work the job market.
         /// </summary>
         public bool IsCareerUnemployed => _career?.CurrentRole == UnifiedRole.Unemployed;
+
+        /// <summary>
+        /// Feeds every completed game into the record books: franchise/league
+        /// single-game records and career milestones (both existed with zero
+        /// callers before Phase 6).
+        /// </summary>
+        private void OnGameCompletedHistoryHook(Simulation.GameCompletionContext ctx)
+        {
+            try
+            {
+                var box = ctx.Result?.BoxScore;
+                if (box == null || _historyManager == null) return;
+
+                _historyManager.CheckGameRecordsForGame(_currentSeason, box,
+                    id => PlayerDatabase?.GetPlayer(id)?.TeamId);
+
+                foreach (var stats in box.PlayerStats.Values)
+                {
+                    if (stats.Points == 0 && stats.Rebounds == 0 && stats.Assists == 0) continue;
+                    var player = PlayerDatabase?.GetPlayer(stats.PlayerId);
+                    if (player != null) _historyManager.CheckCareerMilestones(player, stats);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[GameManager] History hook failed: {ex.Message}");
+            }
+        }
 
         /// <summary>
         /// The franchise-side fallout of the player losing their job: the market

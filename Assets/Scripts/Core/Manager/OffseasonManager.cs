@@ -481,6 +481,33 @@ namespace NBAHeadCoach.Core.Manager
                     highPriority: player.OverallRating >= 85);
             }
 
+            // Hall of Fame: fresh retirees join the eligibility list (5-year wait),
+            // and this year's class gets voted on
+            var history = gm.HistoryManager;
+            if (history != null)
+            {
+                foreach (var pid in retired)
+                    history.AddHallOfFameEligible(pid, _seasonLabel);
+
+                try
+                {
+                    var everyone = gm.PlayerDatabase.GetAllPlayers();
+                    var retirees = everyone.Where(p => p != null && p.RetirementYear > 0).ToList();
+                    var inducted = history.VoteHallOfFame(_seasonLabel, everyone, retirees);
+                    foreach (var hof in inducted)
+                    {
+                        InboxService.Instance?.Publish(InboxMessageType.League, "Hall of Fame",
+                            $"{hof.PlayerName} elected to the Hall of Fame" +
+                            (hof.IsFirstBallot ? " — first ballot" : ""),
+                            $"{hof.PlayerName} enters the Hall with {hof.CareerPoints:N0} career points, " +
+                            $"{hof.Championships} championship(s), {hof.MVPs} MVP(s), and {hof.AllStarSelections} All-Star nods.",
+                            highPriority: true,
+                            deepLinkPanelId: "History");
+                    }
+                }
+                catch (Exception ex) { Debug.LogWarning($"[Offseason] HOF voting failed: {ex.Message}"); }
+            }
+
             if (retired.Count > 0)
                 Debug.Log($"[Offseason] {retired.Count} player(s) retired");
             return retired;

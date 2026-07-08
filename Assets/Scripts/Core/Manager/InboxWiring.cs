@@ -20,7 +20,8 @@ namespace NBAHeadCoach.Core.Manager
             InjuryManager injuries,
             PlayoffManager playoffs = null,
             AITradeOfferGenerator tradeOffers = null,
-            JobMarketManager jobMarket = null)
+            JobMarketManager jobMarket = null,
+            HistoryManager history = null)
         {
             if (inbox == null) return;
 
@@ -111,6 +112,30 @@ namespace NBAHeadCoach.Core.Manager
                         "Respond from your Career desk before the offer expires.",
                         highPriority: true,
                         deepLinkPanelId: "Career");
+                };
+            }
+
+            if (history != null)
+            {
+                history.OnRecordBroken += record =>
+                {
+                    if (record == null) return;
+                    string who = gm?.PlayerDatabase?.GetPlayer(record.PlayerId)?.FullName ?? "A player";
+                    inbox.Publish(InboxMessageType.League, "League News",
+                        $"Record broken: {record.RecordName}",
+                        $"{who} sets a new mark of {record.NewValue} (previous: {record.OldValue}).",
+                        deepLinkPanelId: "History");
+                };
+
+                history.OnMilestoneReached += milestone =>
+                {
+                    if (milestone == null) return;
+                    bool onPlayerTeam = gm?.PlayerDatabase?.GetPlayer(milestone.PlayerId)?.TeamId == gm?.PlayerTeamId;
+                    inbox.Publish(InboxMessageType.League, "League News",
+                        $"{milestone.PlayerName} reaches {milestone.MilestoneValue:N0} {milestone.StatName}",
+                        $"A career milestone: {milestone.PlayerName} now sits at {milestone.ActualValue:N0} {milestone.StatName}.",
+                        highPriority: onPlayerTeam,
+                        deepLinkPanelId: "History");
                 };
             }
 

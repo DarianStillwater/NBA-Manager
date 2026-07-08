@@ -104,6 +104,9 @@ namespace NBAHeadCoach.Core.Data
         /// <summary>Media reputation persistence — Phase 6.</summary>
         public MediaSaveData MediaData;
 
+        /// <summary>League history: season archives, records, Hall of Fame — Phase 6.</summary>
+        public HistorySectionData HistoryData;
+
         /// <summary>
         /// Create a display-friendly summary of the save
         /// </summary>

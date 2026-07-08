@@ -73,6 +73,7 @@ namespace NBAHeadCoach.Tests
             RunTest<EndOfGameTest>("End of Game Logic");
             RunTest<GameCoachWiringTest>("Game Coach Wiring");
             RunTest<CareerStakesTest>("Career Stakes");
+            RunTest<HistoryRecordsTest>("History & Records");
 
             // Summary
             Debug.Log("\n" + new string('=', 70));
