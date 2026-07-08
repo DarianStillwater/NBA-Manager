@@ -14,7 +14,6 @@ namespace NBAHeadCoach.UI.Components
     /// The playback director calls BeginPossession(packet) then RenderAt(t) every frame;
     /// this view binary-advances a cursor over the dense choreographed SpatialStates and
     /// lerps the bracketing pair — no buffering, no rubber-banding, correct at any speed.
-    /// Supersedes AnimatedCourtView (left in the project, no longer attached).
     /// </summary>
     public class MatchCourtView : MonoBehaviour
     {
