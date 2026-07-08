@@ -67,6 +67,7 @@ namespace NBAHeadCoach.UI.GamePanels
             var bodyLE = bodyGo.AddComponent<LayoutElement>(); bodyLE.flexibleHeight = 1;
             var scroll = B.FixedArea(bodyGo.GetComponent<RectTransform>());
 
+            BuildGMDeskCard(scroll);
             if (_tab == "DRAFT") BuildDraft(scroll);
             else if (_tab == "TRADES") BuildTrades(scroll);
             else BuildFreeAgency(scroll);
@@ -142,6 +143,51 @@ namespace NBAHeadCoach.UI.GamePanels
         }
 
         /// <summary>In-season buyout wire: leftover pool, minimum deals only.</summary>
+        // ==================== COACH-ONLY: THE GM DESK ====================
+
+        /// <summary>
+        /// Coach-only mode: roster moves go through the AI GM as requests. Approval
+        /// executes the move; denial comes back with the GM's reasoning. Either way
+        /// the verdict lands in the inbox and the status line.
+        /// </summary>
+        private void AskGM(NBAHeadCoach.Core.Data.RosterRequest request, Action onApproved)
+        {
+            NBAHeadCoach.Core.Manager.AIGMSystem.EnsureInitialized(GameManager.Instance);
+            var gmCtl = NBAHeadCoach.Core.AI.AIGMController.Instance;
+            var result = gmCtl.ProcessRequest(request);
+
+            if (result?.IsApproved == true)
+            {
+                onApproved?.Invoke();
+                _status = $"GM approved: \"{result.GMResponse}\"";
+            }
+            else
+            {
+                _status = $"GM declined: \"{result?.GMResponse ?? "No answer."}\"";
+            }
+
+            NBAHeadCoach.Core.Manager.InboxService.Instance?.Publish(
+                NBAHeadCoach.Core.Manager.InboxMessageType.League,
+                gmCtl.GMName ?? "Front Office",
+                result?.IsApproved == true ? "Request approved" : "Request denied",
+                result?.GMResponse ?? "", deepLinkPanelId: "FrontOffice");
+            Refresh();
+        }
+
+        private void BuildGMDeskCard(RectTransform scroll)
+        {
+            if (NBAHeadCoach.Core.Data.RolePermissions.CanMakeRosterMoves) return;
+
+            NBAHeadCoach.Core.Manager.AIGMSystem.EnsureInitialized(GameManager.Instance);
+            var card = B.Card(scroll, "YOUR GENERAL MANAGER", _teamColor);
+            card.gameObject.AddComponent<LayoutElement>().preferredHeight = 110;
+            var body = CardBody(card);
+            var t = B.Text(body, "Desc",
+                NBAHeadCoach.Core.AI.AIGMController.Instance.GetKnownPersonalityDescription(),
+                11, FontStyle.Normal, UITheme.TextSecondary);
+            t.gameObject.AddComponent<LayoutElement>().flexibleHeight = 1;
+        }
+
         private void BuildInSeasonMarket(RectTransform scroll, GameManager gm, FreeAgentManager fam)
         {
             if (!string.IsNullOrEmpty(_status))
@@ -177,14 +223,21 @@ namespace NBAHeadCoach.UI.GamePanels
                 if (!hasRoom) continue;
 
                 string pid = fa.PlayerId;
-                RowButton(row, "Sign", "SIGN", UITheme.Success, () =>
+                bool viaGM = !NBAHeadCoach.Core.Data.RolePermissions.CanMakeRosterMoves;
+                RowButton(row, "Sign", viaGM ? "ASK GM" : "SIGN", UITheme.Success, () =>
                 {
-                    string why = "desk unavailable.";
-                    bool ok = gm.InSeasonSigning != null &&
-                              gm.InSeasonSigning.SignFreeAgentToPlayerTeam(gm, pid, out why);
-                    _status = ok ? $"{player.FullName} signed for the rest of the season."
-                                 : $"Signing blocked: {why}";
-                    Refresh();
+                    Action doSign = () =>
+                    {
+                        string why = "desk unavailable.";
+                        bool ok = gm.InSeasonSigning != null &&
+                                  gm.InSeasonSigning.SignFreeAgentToPlayerTeam(gm, pid, out why);
+                        _status = ok ? $"{player.FullName} signed for the rest of the season."
+                                     : $"Signing blocked: {why}";
+                    };
+                    if (viaGM)
+                        AskGM(NBAHeadCoach.Core.Data.RosterRequest.CreateSigningRequest(
+                            pid, player.FullName, "We need this player for the stretch run."), doSign);
+                    else { doSign(); Refresh(); }
                 });
             }
         }
@@ -217,12 +270,19 @@ namespace NBAHeadCoach.UI.GamePanels
                 if (canSign)
                 {
                     string pid = fa.PlayerId;
-                    RowButton(row, "Sign", fa.PreviousTeamId == _team.TeamId ? "RE-SIGN" : "SIGN",
-                        UITheme.Success, () =>
+                    bool viaGM = !NBAHeadCoach.Core.Data.RolePermissions.CanMakeRosterMoves;
+                    string label = viaGM ? "ASK GM" : (fa.PreviousTeamId == _team.TeamId ? "RE-SIGN" : "SIGN");
+                    RowButton(row, "Sign", label, UITheme.Success, () =>
                     {
-                        bool ok = off.SignFreeAgentToPlayerTeam(GameManager.Instance, pid, 2, out string why);
-                        if (!ok) Debug.LogWarning($"[FrontOffice] Signing failed: {why}");
-                        Refresh();
+                        Action doSign = () =>
+                        {
+                            bool ok = off.SignFreeAgentToPlayerTeam(GameManager.Instance, pid, 2, out string why);
+                            if (!ok) Debug.LogWarning($"[FrontOffice] Signing failed: {why}");
+                        };
+                        if (viaGM)
+                            AskGM(NBAHeadCoach.Core.Data.RosterRequest.CreateSigningRequest(
+                                pid, player.FullName, "I want this player in camp."), doSign);
+                        else { doSign(); Refresh(); }
                     });
                 }
             }
@@ -438,10 +498,21 @@ namespace NBAHeadCoach.UI.GamePanels
                     ph.childControlWidth = true; ph.childControlHeight = true;
                     ph.childForceExpandWidth = false; ph.spacing = 8;
 
-                    RowButton(proposeRow, "Propose", "PROPOSE TRADE", UITheme.AccentPrimary, () =>
+                    bool tradeViaGM = !NBAHeadCoach.Core.Data.RolePermissions.CanMakeRosterMoves;
+                    RowButton(proposeRow, "Propose", tradeViaGM ? "SUGGEST TO GM" : "PROPOSE TRADE",
+                        UITheme.AccentPrimary, () =>
                     {
-                        SubmitProposal(gm);
-                        Refresh();
+                        if (tradeViaGM)
+                        {
+                            string targetId = _getIds.FirstOrDefault();
+                            string awayId = _sendIds.FirstOrDefault();
+                            var req = NBAHeadCoach.Core.Data.RosterRequest.CreateTradeRequest(
+                                targetId, gm.PlayerDatabase.GetPlayer(targetId)?.FullName ?? "target",
+                                awayId, gm.PlayerDatabase.GetPlayer(awayId)?.FullName ?? "outgoing",
+                                "This deal makes us better. I want it done.");
+                            AskGM(req, () => SubmitProposal(gm));
+                        }
+                        else { SubmitProposal(gm); Refresh(); }
                     }, width: 140);
                 }
             }

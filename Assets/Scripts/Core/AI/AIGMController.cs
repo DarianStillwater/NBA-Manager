@@ -41,16 +41,59 @@ namespace NBAHeadCoach.Core.AI
         /// <summary>
         /// Initialize the AI GM for a specific team.
         /// </summary>
-        public void Initialize(string gmProfileId, string gmName, string teamId)
+        public void Initialize(string gmProfileId, string gmName, string teamId, System.Random rng = null)
         {
             _gmProfileId = gmProfileId;
             _gmName = gmName;
             _teamId = teamId;
+            if (rng != null) _rng = rng;
 
-            // Generate hidden personality
-            _personality = AIGMPersonality.GenerateRandom(_rng);
+            // Generate hidden personality — deterministic per profile so the same
+            // GM keeps the same style across sessions
+            _personality = AIGMPersonality.GenerateRandom(
+                rng ?? new System.Random(gmProfileId?.GetHashCode() ?? 0));
 
             Debug.Log($"[AIGMController] Initialized for {gmName} ({teamId}). Personality generated.");
+        }
+
+        /// <summary>Whether this controller already runs the given team's front office.</summary>
+        public bool IsInitializedFor(string teamId) =>
+            _personality != null && _teamId == teamId;
+
+        public string GMName => _gmName;
+
+        // ==================== PERSISTENCE ====================
+
+        public AIGMSaveData GetSaveData()
+        {
+            return new AIGMSaveData
+            {
+                GmProfileId = _gmProfileId,
+                GmName = _gmName,
+                TeamId = _teamId,
+                Personality = _personality,
+                DiscoveredTraits = new List<string>(_discoveredTraits),
+                TotalRequests = _requestHistory?.TotalRequests ?? 0,
+                ApprovedRequests = _requestHistory?.ApprovedRequests ?? 0,
+                DeniedRequests = _requestHistory?.DeniedRequests ?? 0
+            };
+        }
+
+        public void LoadSaveData(AIGMSaveData data)
+        {
+            if (data == null || string.IsNullOrEmpty(data.TeamId)) return;
+            _gmProfileId = data.GmProfileId;
+            _gmName = data.GmName;
+            _teamId = data.TeamId;
+            _personality = data.Personality ?? AIGMPersonality.GenerateRandom(
+                new System.Random(data.GmProfileId?.GetHashCode() ?? 0));
+            _discoveredTraits = data.DiscoveredTraits ?? new List<string>();
+            _requestHistory = new RosterRequestHistory
+            {
+                TotalRequests = data.TotalRequests,
+                ApprovedRequests = data.ApprovedRequests,
+                DeniedRequests = data.DeniedRequests
+            };
         }
 
         /// <summary>
@@ -462,6 +505,20 @@ namespace NBAHeadCoach.Core.AI
 
             return description;
         }
+    }
+
+    /// <summary>JsonUtility-safe snapshot of the AI GM's identity, hidden personality, and relationship history.</summary>
+    [Serializable]
+    public class AIGMSaveData
+    {
+        public string GmProfileId;
+        public string GmName;
+        public string TeamId;
+        public AIGMPersonality Personality;
+        public List<string> DiscoveredTraits = new List<string>();
+        public int TotalRequests;
+        public int ApprovedRequests;
+        public int DeniedRequests;
     }
 
     /// <summary>

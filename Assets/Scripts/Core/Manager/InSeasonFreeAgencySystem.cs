@@ -58,7 +58,8 @@ namespace NBAHeadCoach.Core.Manager
             int signed = 0;
             foreach (var team in _allTeams())
             {
-                if (team == null || team.TeamId == playerTeamId) continue;
+                if (team == null) continue;
+                if (team.TeamId == playerTeamId && Data.RolePermissions.CanMakeRosterMoves) continue;
                 if (team.RosterPlayerIds.Count >= 15) continue;
                 if (CountActive(team) >= AI_TARGET_ACTIVE) continue;
 

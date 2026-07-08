@@ -612,7 +612,8 @@ namespace NBAHeadCoach.Core.Manager
                 string teamId = _draft.GetTeamAtPick(_nextPick);
                 if (string.IsNullOrEmpty(teamId)) { _nextPick++; continue; }
 
-                if (teamId == pid && !string.IsNullOrEmpty(pid))
+                if (teamId == pid && !string.IsNullOrEmpty(pid) &&
+                    Data.RolePermissions.CanMakeRosterMoves)
                 {
                     _onTheClock = true;
                     inbox?.Publish(InboxMessageType.League, "League Office",
@@ -676,6 +677,15 @@ namespace NBAHeadCoach.Core.Manager
         {
             var selection = _draft.AISelectPick(pick, teamId);
             var drafted = selection?.DraftedPlayer;
+            if (drafted != null && teamId == gm.PlayerTeamId)
+            {
+                // Coach-only: the GM ran the war room
+                InboxService.Instance?.Publish(InboxMessageType.League,
+                    Data.RolePermissions.AIGMName,
+                    $"We took {drafted.FullName} at #{pick}",
+                    $"{drafted.FullName} ({drafted.Position}) is our pick. Get him ready.",
+                    highPriority: true, deepLinkPanelId: "Roster", deepLinkPayload: drafted.PlayerId);
+            }
             if (drafted == null) return;
 
             SyncDraftedPlayer(gm, teamId, drafted);
@@ -813,7 +823,9 @@ namespace NBAHeadCoach.Core.Manager
                 var suitors = gm.AllTeams.Where(t =>
                         t != null &&
                         t.RosterPlayerIds.Count < 15 &&
-                        (t.TeamId != gm.PlayerTeamId || t.RosterPlayerIds.Count < 13))
+                        (t.TeamId != gm.PlayerTeamId ||
+                         !Data.RolePermissions.CanMakeRosterMoves ||
+                         t.RosterPlayerIds.Count < 13))
                     .OrderByDescending(t => gm.SalaryCapManager.GetCapSpace(t.TeamId))
                     .ToList();
                 if (suitors.Count == 0) return;
