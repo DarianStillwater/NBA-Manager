@@ -1388,7 +1388,14 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
                     {
                         float span = _keys[i + 1].T - _keys[i].T;
                         float u = span <= 0.0001f ? 1f : (t - _keys[i].T) / span;
-                        u = u * u * (3f - 2f * u); // smoothstep
+                        // Smoothstep peaks at 1.5x the segment's average speed; a
+                        // deadline-bound leg authored near the sprint limit would spike
+                        // past the per-tick movement cap. Fast legs run linear instead
+                        // (peak == average), keeping every authored move under the cap.
+                        float dist = _keys[i].Pos.DistanceTo(_keys[i + 1].Pos);
+                        bool nearCap = span > 0.0001f && dist / span * 1.5f > 38f;
+                        if (!nearCap)
+                            u = u * u * (3f - 2f * u); // smoothstep
                         var pos = new CourtPosition(
                             _keys[i].Pos.X + (_keys[i + 1].Pos.X - _keys[i].Pos.X) * u,
                             _keys[i].Pos.Y + (_keys[i + 1].Pos.Y - _keys[i].Pos.Y) * u);

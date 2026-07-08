@@ -40,6 +40,7 @@ namespace NBAHeadCoach.Core.Simulation
         private string _defenseTeamId;
         private GameContext _gameContext;
         private ViolationEventDetail _currentViolation;  // Stores violation from DeterminePossessionOutcome
+        private HalfCourtAction _currentAction;          // Action family decided per possession
 
         public PossessionSimulator(int? seed = null, FoulSystem foulSystem = null)
         {
@@ -119,18 +120,32 @@ namespace NBAHeadCoach.Core.Simulation
 
             // Initialize positions
             InitializePositions(isOffenseHome);
-            
-            // Determine possession duration (8-16 seconds, influenced by pace)
-            float paceMultiplier = Mathf.Lerp(1.15f, 0.85f, _offenseStrategy.Pace / 100f);
-            float possessionDuration = AVG_POSSESSION_TIME * paceMultiplier;
-            possessionDuration += (float)(_random.NextDouble() * 4.0 - 2.0); // +/- 2 seconds variance
-            possessionDuration = Mathf.Clamp(possessionDuration, MIN_POSSESSION_TIME, SHOT_CLOCK - 2f);
-            
-            // Don't exceed remaining game clock
-            possessionDuration = Mathf.Min(possessionDuration, gameClock);
 
             // Select primary ball handler (weighted by position and skill)
             _ballHandlerIndex = SelectBallHandler();
+
+            // Pick the half-court action family from the offense's system frequencies.
+            // Shapes possession duration, turnover risk, shooter selection, and shot
+            // zones below — all on the decision RNG, identical at every SpatialDetail.
+            _currentAction = SelectAction();
+
+            // Determine possession duration (influenced by pace, shot-clock philosophy, action)
+            float paceMultiplier = Mathf.Lerp(1.15f, 0.85f, _offenseStrategy.Pace / 100f);
+            float possessionDuration = AVG_POSSESSION_TIME * paceMultiplier;
+            possessionDuration += DurationShiftForApproach();
+            possessionDuration += _currentAction switch
+            {
+                HalfCourtAction.Isolation => 1.0f,   // clear-outs burn clock
+                HalfCourtAction.PostUp => 0.8f,      // post entries take time
+                HalfCourtAction.Cut => -0.5f,        // quick hitters
+                HalfCourtAction.Handoff => -0.5f,
+                _ => 0f
+            };
+            possessionDuration += (float)(_random.NextDouble() * 4.0 - 2.0); // +/- 2 seconds variance
+            possessionDuration = Mathf.Clamp(possessionDuration, MIN_POSSESSION_TIME, SHOT_CLOCK - 2f);
+
+            // Don't exceed remaining game clock
+            possessionDuration = Mathf.Min(possessionDuration, gameClock);
 
             // Determine possession outcome FIRST (shot, turnover, or foul)
             PossessionOutcomeType outcomeType = DeterminePossessionOutcome();
@@ -404,6 +419,24 @@ namespace NBAHeadCoach.Core.Simulation
                 turnoverChance -= (effortMod - 1f) * 0.1f; // High effort = fewer turnovers
             }
 
+            // Action risk: screen-and-exchange actions add traffic; clear-outs are safe
+            turnoverChance += _currentAction switch
+            {
+                HalfCourtAction.Handoff => 0.010f,
+                HalfCourtAction.PickAndRoll => 0.005f,
+                HalfCourtAction.Cut => 0.005f,
+                HalfCourtAction.Isolation => -0.010f,
+                _ => 0f
+            };
+
+            // Ball-movement philosophy: more passes carry a little more risk
+            var osys = _offenseStrategy.OffensiveSystem;
+            if (osys != null)
+            {
+                turnoverChance += (osys.BallMovementPriority - 70) / 100f * 0.01f;
+                if (osys.ExtraPassPhilosophy) turnoverChance += 0.005f;
+            }
+
             turnoverChance = Mathf.Clamp(turnoverChance, 0.05f, 0.25f);
 
             return _random.NextDouble() < turnoverChance
@@ -439,6 +472,66 @@ namespace NBAHeadCoach.Core.Simulation
         private enum PossessionOutcomeType { Shot, Turnover, Violation, Foul }
 
         /// <summary>
+        /// Picks the half-court action family for this possession from the offense's
+        /// OffensiveSystem frequencies. Neutral at defaults: a motion-led mix with
+        /// PnR as the most common set action (matching today's implicit behavior).
+        /// </summary>
+        private HalfCourtAction SelectAction()
+        {
+            var sys = _offenseStrategy.OffensiveSystem;
+            float pnr = sys?.PickAndRollFrequency ?? 30;
+            float iso = sys?.IsolationFrequency ?? 15;
+            float post = Mathf.Max(_offenseStrategy.PostUpFrequency, sys?.PostUpFrequency ?? 10);
+            float handoff = (sys?.HandoffFrequency ?? 30) * 0.5f;
+            float cut = (sys?.CuttingFrequency ?? 50) * 0.4f;
+            float motion = 25f + (sys?.BallMovementPriority ?? 70) * 0.25f;
+
+            // The declared system identity tilts the mix — this is what makes the
+            // pre-game scheme picker and the strategy templates play differently
+            switch (sys?.PrimarySystem)
+            {
+                case OffensiveSystemType.PickAndRollHeavy: pnr *= 1.5f; break;
+                case OffensiveSystemType.IsoHeavy: iso *= 1.6f; break;
+                case OffensiveSystemType.PostUpFocused: post *= 1.6f; break;
+                case OffensiveSystemType.TriangleOffense: post *= 1.3f; cut *= 1.3f; break;
+                case OffensiveSystemType.PrincetonOffense: cut *= 1.6f; break;
+                case OffensiveSystemType.FlexOffense: cut *= 1.3f; handoff *= 1.2f; break;
+                case OffensiveSystemType.HornsSet: pnr *= 1.3f; break;
+                case OffensiveSystemType.MotionOffense: motion *= 1.3f; cut *= 1.2f; break;
+                case OffensiveSystemType.FiveOut: motion *= 1.2f; break;
+            }
+
+            float roll = (float)_random.NextDouble() * (pnr + iso + post + handoff + cut + motion);
+            if ((roll -= pnr) < 0) return HalfCourtAction.PickAndRoll;
+            if ((roll -= iso) < 0) return HalfCourtAction.Isolation;
+            if ((roll -= post) < 0) return HalfCourtAction.PostUp;
+            if ((roll -= handoff) < 0) return HalfCourtAction.Handoff;
+            if ((roll -= cut) < 0) return HalfCourtAction.Cut;
+            return HalfCourtAction.Motion;
+        }
+
+        /// <summary>
+        /// Possession-length shift from shot-clock philosophy. Zero at defaults
+        /// (Balanced approach, entry at 14).
+        /// </summary>
+        private float DurationShiftForApproach()
+        {
+            var sys = _offenseStrategy.OffensiveSystem;
+            if (sys == null) return 0f;
+
+            float shift = sys.ShotClockApproach switch
+            {
+                ShotClockApproach.EarlyGoodShot => -1.5f,
+                ShotClockApproach.WorkForBestShot => 1.5f,
+                ShotClockApproach.RunClockLate => 3f,
+                _ => 0f
+            };
+            // Entry at 18 = looking to score early (shorter); entry at 8 = patient (longer)
+            shift += (sys.TargetShotClockEntry - 14) * -0.15f;
+            return shift;
+        }
+
+        /// <summary>
         /// Selects the ball handler based on position and playmaking skill.
         /// </summary>
         private int SelectBallHandler()
@@ -464,7 +557,7 @@ namespace NBAHeadCoach.Core.Simulation
         }
 
         /// <summary>
-        /// Selects the shooter based on shooting skill, strategy, and tendencies.
+        /// Selects the shooter based on shooting skill, strategy, action, and tendencies.
         /// </summary>
         private int SelectShooter()
         {
@@ -483,6 +576,25 @@ namespace NBAHeadCoach.Core.Simulation
                     weights[i] += p.Shot_Three * 0.3f;
                 if (_offenseStrategy.PostUpFrequency > 50 && (i == 3 || i == 4))
                     weights[i] += p.Finishing_PostMoves * 0.3f;
+
+                // Action shaping: who the chosen set actually creates shots for
+                switch (_currentAction)
+                {
+                    case HalfCourtAction.PickAndRoll:
+                        if (i == _ballHandlerIndex) weights[i] *= 1.6f;          // handler pull-up/drive
+                        if (i == 3 || i == 4) weights[i] += p.Finishing_Rim * 0.35f; // roll man
+                        break;
+                    case HalfCourtAction.PostUp:
+                        if (i == 3 || i == 4) weights[i] += p.Finishing_PostMoves * 0.5f;
+                        else weights[i] *= 0.75f;
+                        break;
+                    case HalfCourtAction.Cut:
+                        weights[i] += p.Finishing_Rim * 0.15f;
+                        break;
+                    case HalfCourtAction.Handoff:
+                        if (i <= 2) weights[i] *= 1.15f;                          // perimeter chain
+                        break;
+                }
 
                 // TENDENCY INTEGRATION: Shot selection tendencies affect usage
                 if (p.Tendencies != null)
@@ -504,6 +616,38 @@ namespace NBAHeadCoach.Core.Simulation
                         weights[i] *= 1.15f; // 15% more likely to take shots
                     }
                 }
+            }
+
+            // Isolation: clear out for the best creator on the floor — and the man
+            // with the ball tends to BE that creator (self-created, unassisted looks)
+            if (_currentAction == HalfCourtAction.Isolation)
+            {
+                int star = 0;
+                float best = float.MinValue;
+                for (int i = 0; i < 5; i++)
+                {
+                    var p = _offensePlayers[i];
+                    float isoSkill = (p.Shot_Three + p.Shot_MidRange + p.Finishing_Rim) / 3f * 0.6f
+                                     + p.BallHandling * 0.4f;
+                    if (isoSkill > best) { best = isoSkill; star = i; }
+                }
+                weights[star] *= 3.5f;
+                weights[_ballHandlerIndex] *= 1.5f;
+            }
+
+            // Ball-movement philosophy shapes who shoots: low-movement offenses run
+            // through the handler (unassisted); high-movement teams spread usage
+            // toward the open man. Neutral in the 60-70 default band.
+            float bmp = _offenseStrategy.OffensiveSystem?.BallMovementPriority ?? 70;
+            if (bmp < 60)
+            {
+                weights[_ballHandlerIndex] *= 1f + (60f - bmp) / 60f; // up to x2 at BMP 0
+            }
+            else if (bmp > 70)
+            {
+                float avg = weights.Average();
+                float flatten = (bmp - 70f) / 30f * 0.5f; // up to 50% toward even usage
+                for (int i = 0; i < 5; i++) weights[i] = Mathf.Lerp(weights[i], avg, flatten);
             }
 
             float total = weights.Sum();
@@ -529,6 +673,22 @@ namespace NBAHeadCoach.Core.Simulation
             float threeWeight = Mathf.Max(_offenseStrategy.ThreePointFrequency, 1f);
             float midWeight = Mathf.Max(_offenseStrategy.MidRangeFrequency, 1f);
             float rimWeight = Mathf.Max(_offenseStrategy.RimAttackFrequency, 1f);
+
+            // The action tilts where the shot comes from
+            switch (_currentAction)
+            {
+                case HalfCourtAction.PickAndRoll:
+                    rimWeight *= 1.3f; threeWeight *= 1.1f; midWeight *= 0.85f; break;
+                case HalfCourtAction.PostUp:
+                    midWeight *= 1.5f; rimWeight *= 1.3f; threeWeight *= 0.55f; break;
+                case HalfCourtAction.Isolation:
+                    midWeight *= 1.3f; threeWeight *= 1.1f; break;
+                case HalfCourtAction.Cut:
+                    rimWeight *= 1.7f; midWeight *= 0.7f; threeWeight *= 0.75f; break;
+                case HalfCourtAction.Handoff:
+                    threeWeight *= 1.25f; break;
+            }
+
             float total = threeWeight + midWeight + rimWeight;
 
             float roll = (float)_random.NextDouble() * total;
@@ -578,6 +738,17 @@ namespace NBAHeadCoach.Core.Simulation
             // shooter relocated — the old proportional lag left deep threes wide open by
             // construction (bigger relocation ⇒ bigger leftover gap ⇒ +open bonus every time).
             float trail = 0.5f + (float)_random.NextDouble() * 4.5f;
+
+            // Floor spacing stretches closeouts; packed spacing shrinks them
+            trail += _offenseStrategy.OffensiveSystem?.SpacingWidth switch
+            {
+                SpacingLevel.Tight => -0.4f,
+                SpacingLevel.Wide => 0.3f,
+                SpacingLevel.ExtraWide => 0.6f,
+                _ => 0f
+            };
+            trail = Mathf.Max(0.2f, trail);
+
             float gap = _defensePositions[shooterIndex].DistanceTo(newPos);
             _defensePositions[shooterIndex] = _defensePositions[shooterIndex].MoveTowards(newPos,
                 Mathf.Max(0f, gap - trail));
@@ -620,12 +791,21 @@ namespace NBAHeadCoach.Core.Simulation
                 shooter, position, defender, defenderDistance, shotType,
                 isFastBreak: false, secondsRemaining: possessionClock, isHomeTeam: _isOffenseHome);
 
+            // Ball-movement teams find the open man: small bonus on assisted looks
+            var osys = _offenseStrategy.OffensiveSystem;
+            if (osys != null && _script != null && _script.BallHandlerPassedToShooter)
+            {
+                float moveBonus = (osys.BallMovementPriority - 70) / 100f * 0.05f;
+                if (osys.ExtraPassPhilosophy) moveBonus += 0.015f;
+                shotProb *= 1f + Mathf.Clamp(moveBonus, -0.03f, 0.05f);
+            }
+
             // TENDENCY INTEGRATION: Apply tendency-based modifiers
             if (shooter.Tendencies != null)
             {
-                // Clutch behavior in late game situations
-                bool isClutch = (quarter >= 4 && gameClock <= 120f) || // Last 2 min of 4th+ quarter
-                                (quarter >= 4 && Mathf.Abs(0) <= 5); // Would need score margin, simplified
+                // Clutch behavior in late game situations: last 2 minutes of the 4th+,
+                // or any close-and-late situation the game context already flags
+                bool isClutch = _gameContext.IsClutchTime || (quarter >= 4 && gameClock <= 120f);
                 float clutchMod = shooter.Tendencies.GetClutchModifier(isClutch);
                 shotProb *= clutchMod;
 
@@ -900,6 +1080,20 @@ namespace NBAHeadCoach.Core.Simulation
         Block,
         Foul,
         EndOfQuarter
+    }
+
+    /// <summary>
+    /// Half-court action families the offense can run. Decided per possession from
+    /// OffensiveSystem frequencies (decision-side only — never touches choreography RNG).
+    /// </summary>
+    public enum HalfCourtAction
+    {
+        Motion,
+        PickAndRoll,
+        Isolation,
+        PostUp,
+        Handoff,
+        Cut
     }
 
     /// <summary>

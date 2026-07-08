@@ -150,8 +150,11 @@ namespace NBAHeadCoach.Core.Simulation
                 // Get active players
                 var offensePlayers = GetActivePlayers(_homeHasPossession ? _homeTeam : _awayTeam);
                 var defensePlayers = GetActivePlayers(_homeHasPossession ? _awayTeam : _homeTeam);
+                // One strategy object per team is the authority for BOTH ends
+                // (Team.Strategy alias) — the defending team's DefensiveSystem lives
+                // on it. Matches the interactive path; DefensiveStrategy is legacy.
                 var offenseStrategy = _homeHasPossession ? _homeTeam.OffensiveStrategy : _awayTeam.OffensiveStrategy;
-                var defenseStrategy = _homeHasPossession ? _awayTeam.DefensiveStrategy : _homeTeam.DefensiveStrategy;
+                var defenseStrategy = _homeHasPossession ? _awayTeam.OffensiveStrategy : _homeTeam.OffensiveStrategy;
 
                 // Determine team IDs for this possession
                 string offenseTeamId = _homeHasPossession ? _homeTeam.TeamId : _awayTeam.TeamId;
