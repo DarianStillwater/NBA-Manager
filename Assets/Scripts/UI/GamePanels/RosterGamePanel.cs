@@ -287,7 +287,8 @@ namespace NBAHeadCoach.UI.GamePanels
                 int gamesObserved = p.CurrentSeasonStats?.GamesPlayed ?? 0;
                 try
                 {
-                    report = generator.GenerateReport(p, scout, 0, gamesObserved);
+                    report = generator.GenerateReport(p, scout,
+                        gm.Scouting?.GetTimesScouted(p.PlayerId) ?? 0, gamesObserved);
                     _reportCache[p.PlayerId] = report;
                 }
                 catch (Exception ex)

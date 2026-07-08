@@ -95,6 +95,9 @@ namespace NBAHeadCoach.Core.Data
         [Header("Development Desk")]
         public DevelopmentSaveData DevelopmentData;
 
+        [Header("Scouting")]
+        public ScoutingSaveData ScoutingData;
+
         /// <summary>
         /// Create a display-friendly summary of the save
         /// </summary>

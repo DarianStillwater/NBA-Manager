@@ -55,6 +55,7 @@ namespace NBAHeadCoach.Core.Manager
         public event Action<UnifiedCareerProfile, UnifiedRole, UnifiedRole> OnCareerTransition;
         public event Action<UnifiedCareerProfile> OnPersonnelRetired;
         public event Action<StaffTaskAssignment> OnStaffAssigned;
+        public event Action<StaffTaskAssignment> OnScoutAssignmentCompleted;
         public event Action<StaffTaskAssignment> OnStaffUnassigned;
         public event Action<StaffNegotiationSession> OnNegotiationStarted;
         public event Action<StaffNegotiationSession> OnNegotiationComplete;
@@ -801,7 +802,13 @@ namespace NBAHeadCoach.Core.Manager
                 assignment.AdvanceDay();
                 if (assignment.IsComplete)
                 {
-                    // Handle completion logic (e.g. generate report)
+                    // Completion produces real output — ScoutingSystem subscribes
+                    // and turns finished scout work into reports.
+                    try { OnScoutAssignmentCompleted?.Invoke(assignment); }
+                    catch (Exception ex)
+                    {
+                        Debug.LogWarning($"[PersonnelManager] Assignment completion handler failed: {ex.Message}");
+                    }
                     UnassignStaff(assignment.StaffId);
                 }
             }

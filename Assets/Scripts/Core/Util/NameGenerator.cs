@@ -39,6 +39,22 @@ namespace NBAHeadCoach.Core.Util
         private static bool _initialized = false;
         private static System.Random _rng = new System.Random();
 
+        /// <summary>
+        /// Reseed the shared name stream, including every nationality's Markov
+        /// chain. Draft-class generation calls this so a seeded class gets the
+        /// SAME names every time it is regenerated — the in-season scouting
+        /// preview and the June draft must agree on who's who.
+        /// </summary>
+        public static void Reseed(int seed)
+        {
+            _rng = new System.Random(seed);
+            EnsureInitialized();
+
+            int offset = 1;
+            foreach (var chain in _firstNameModels.Values) chain.Reseed(seed + offset++);
+            foreach (var chain in _lastNameModels.Values) chain.Reseed(seed + offset++);
+        }
+
         // ==================== PUBLIC API ====================
 
         /// <summary>
@@ -415,6 +431,9 @@ namespace NBAHeadCoach.Core.Util
         private List<string> _starters = new List<string>();
         private int _order;
         private System.Random _rng = new System.Random();
+
+        /// <summary>Pin this chain's random stream (deterministic name runs).</summary>
+        public void Reseed(int seed) => _rng = new System.Random(seed);
 
         public MarkovChain(int order = 2)
         {

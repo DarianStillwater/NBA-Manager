@@ -619,8 +619,13 @@ namespace NBAHeadCoach.UI.GamePanels
 
             foreach (var prospect in available)
             {
+                string intel = gm?.Scouting != null
+                    ? (gm.Scouting.IsScouted(prospect.ProspectId)
+                        ? $"<color=white>{gm.Scouting.DescribeProspect(prospect.ProspectId)}</color>"
+                        : "<color=#EAB308>unscouted — drafting blind</color>")
+                    : prospect.Tier.ToString();
                 var row = PlayerRow(rt, $"P_{prospect.ProspectId}",
-                    $"Mock #{prospect.MockDraftPosition}  {prospect.FirstName} {prospect.LastName}  ·  {prospect.Position}  ·  {prospect.Age}y  ·  {prospect.College}  ·  {prospect.Tier}");
+                    $"Mock #{prospect.MockDraftPosition}  {prospect.FirstName} {prospect.LastName}  ·  {prospect.Position}  ·  {prospect.Age}y  ·  {prospect.College}  ·  {intel}");
 
                 if (off.PlayerOnClock)
                 {

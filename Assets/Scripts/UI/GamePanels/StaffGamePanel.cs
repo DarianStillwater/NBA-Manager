@@ -60,6 +60,7 @@ namespace NBAHeadCoach.UI.GamePanels
 
             BuildEffectsSummary(scroll, gm, personnel);
             BuildCurrentStaff(scroll, gm, personnel);
+            BuildScoutingDesk(scroll, gm, personnel);
             BuildHiringMarket(scroll, gm, personnel);
         }
 
@@ -135,6 +136,82 @@ namespace NBAHeadCoach.UI.GamePanels
                 {
                     var (ok, message) = personnel.FirePersonnel(profileId, "Front office restructuring");
                     _status = ok ? $"{personName} has been let go." : $"Can't do that: {message}";
+                    Refresh();
+                });
+            }
+        }
+
+        // ==================== SCOUTING DESK ====================
+
+        private void BuildScoutingDesk(RectTransform scroll, GameManager gm, PersonnelManager personnel)
+        {
+            var scouting = gm.Scouting;
+            if (scouting == null) return;
+
+            var scouts = personnel.GetScouts(_team.TeamId);
+            var assignments = personnel.GetActiveAssignments(_team.TeamId);
+
+            // Scouts and what they're working on
+            var deskCard = B.Card(scroll, "SCOUTING DESK", _teamColor);
+            deskCard.gameObject.AddComponent<LayoutElement>().preferredHeight =
+                Mathf.Max(70, 44 + Mathf.Max(1, scouts.Count) * 24);
+            var deskRt = CardBody(deskCard);
+
+            if (scouts.Count == 0)
+            {
+                var none = B.Text(deskRt, "None",
+                    "No scouts on staff — hire one below or you're drafting blind.",
+                    12, FontStyle.Italic, UITheme.Warning);
+                none.gameObject.AddComponent<LayoutElement>().preferredHeight = 20;
+            }
+
+            string idleScoutId = null;
+            foreach (var scout in scouts)
+            {
+                var job = assignments.FirstOrDefault(a => a.StaffId == scout.ProfileId);
+                string line;
+                if (job != null)
+                {
+                    var preview = scouting.GetProspectPreview(gm.CurrentSeason);
+                    string targetId = job.ScoutTargetPlayerIds?.FirstOrDefault();
+                    string targetName = preview.FirstOrDefault(p => p.ProspectId == targetId)?.FullName
+                        ?? gm.PlayerDatabase?.GetPlayer(targetId)?.FullName ?? "a target";
+                    line = $"{scout.PersonName}  ·  watching {targetName}  ·  {job.Progress:P0} done";
+                }
+                else
+                {
+                    line = $"{scout.PersonName}  ·  <color=#EAB308>idle — pick a prospect below</color>";
+                    idleScoutId = idleScoutId ?? scout.ProfileId;
+                }
+                StaffRow(deskRt, $"Sc_{scout.ProfileId}", line);
+            }
+
+            // Draft class preview — the fog of war
+            var prospects = scouting.GetProspectPreview(gm.CurrentSeason).Take(15).ToList();
+            if (prospects.Count == 0) return;
+
+            var board = B.Card(scroll, "NEXT DRAFT CLASS — SCOUTED PROSPECTS STOP BEING GAMBLES", _teamColor);
+            board.gameObject.AddComponent<LayoutElement>().preferredHeight = 44 + prospects.Count * 26;
+            var rt = CardBody(board);
+
+            foreach (var prospect in prospects)
+            {
+                bool scouted = scouting.IsScouted(prospect.ProspectId);
+                var row = StaffRow(rt, $"Pr_{prospect.ProspectId}",
+                    $"Mock #{prospect.MockDraftPosition}  {prospect.FullName}  ·  {prospect.Position}  ·  {prospect.College}  ·  " +
+                    (scouted
+                        ? $"<color=white>{scouting.DescribeProspect(prospect.ProspectId)}</color>"
+                        : "<color=#EAB308>unscouted</color>"));
+
+                if (idleScoutId == null) continue;
+                string pid = prospect.ProspectId;
+                string sid = idleScoutId;
+                RowButton(row, "Scout", scouted ? "RE-SCOUT" : "SCOUT", UITheme.AccentSecondary, () =>
+                {
+                    var (ok, message) = gm.Scouting.AssignScoutToProspect(sid, pid, gm.CurrentSeason);
+                    _status = ok
+                        ? $"Scout dispatched — the report lands in about two weeks."
+                        : $"Assignment failed: {message}";
                     Refresh();
                 });
             }

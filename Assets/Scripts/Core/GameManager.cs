@@ -84,6 +84,8 @@ namespace NBAHeadCoach.Core
         public FinanceSystem FinanceSystem => _financeSystem;
         private DevelopmentSystem _developmentDesk;
         public DevelopmentSystem DevelopmentDesk => _developmentDesk;
+        private ScoutingSystem _scoutingSystem;
+        public ScoutingSystem Scouting => _scoutingSystem;
         private FreeAgentManager _freeAgentManager;
         public FreeAgentManager FreeAgents => _freeAgentManager;
         private DraftSystem _draftSystem;
@@ -387,6 +389,11 @@ namespace NBAHeadCoach.Core
             // training for the player's team (also boots the lazy engines).
             _developmentDesk = DevelopmentSystem.CreateDefault(this);
             Systems.Register(_developmentDesk);
+
+            // Scouting fog of war: assignments become reports; the draft-class
+            // preview shares the June draft's deterministic seed.
+            _scoutingSystem = ScoutingSystem.CreateDefault(this);
+            Systems.Register(_scoutingSystem);
             Systems.Register(_personnelManager);      // also ISaveSection (unified careers)
             Systems.Register(_jobMarketManager);
             Systems.Register(_mentorshipManager);
