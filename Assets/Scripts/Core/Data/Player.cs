@@ -572,7 +572,9 @@ namespace NBAHeadCoach.Core.Data
         {
             float energyMod = Mathf.Lerp(0.7f, 1.0f, Energy / 100f);
             float moraleMod = Mathf.Lerp(0.9f, 1.1f, Morale / 100f);
-            float formMod = Mathf.Lerp(0.85f, 1.15f, Form / 100f);
+            // Form is a real hot/cold streak (FormTracker) — keep its sim effect
+            // small and capped: ±5% at the extremes.
+            float formMod = Mathf.Lerp(0.95f, 1.05f, Form / 100f);
             return energyMod * moraleMod * formMod;
         }
 

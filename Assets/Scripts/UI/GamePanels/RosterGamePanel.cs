@@ -55,8 +55,10 @@ namespace NBAHeadCoach.UI.GamePanels
                 B.TableCell(row, stats != null && stats.GamesPlayed > 0 ? stats.RPG.ToString("0.0") : "—", 45, FontStyle.Normal, UITheme.TextSecondary);
                 B.TableCell(row, stats != null && stats.GamesPlayed > 0 ? stats.APG.ToString("0.0") : "—", 45, FontStyle.Normal, UITheme.TextSecondary);
 
-                string status = p.IsInjured ? "INJURED" : p.Energy < 50 ? "TIRED" : "OK";
-                Color statusColor = p.IsInjured ? UITheme.Danger : p.Energy < 50 ? UITheme.Warning : UITheme.Success;
+                string status = p.IsInjured ? "INJURED" : p.Energy < 50 ? "TIRED"
+                    : p.Form >= 65 ? "HOT" : p.Form <= 35 ? "COLD" : "OK";
+                Color statusColor = p.IsInjured ? UITheme.Danger : p.Energy < 50 ? UITheme.Warning
+                    : p.Form >= 65 ? UITheme.AccentPrimary : p.Form <= 35 ? UITheme.AccentSecondary : UITheme.Success;
                 B.TableCell(row, status, 70, FontStyle.Bold, statusColor);
 
                 var player = p;

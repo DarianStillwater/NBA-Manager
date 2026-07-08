@@ -65,6 +65,7 @@ namespace NBAHeadCoach.Tests
             RunTest<TradeDeskTest>("Trade Desk");
             RunTest<FinanceFlowTest>("Finance Flow");
             RunTest<StaffEffectsTest>("Staff Effects");
+            RunTest<LoadManagementFormTest>("Load Management & Form");
 
             // Summary
             Debug.Log("\n" + new string('=', 70));

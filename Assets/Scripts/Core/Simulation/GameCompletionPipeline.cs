@@ -114,6 +114,17 @@ namespace NBAHeadCoach.Core.Simulation
             GameStatRecorder.Record(result, ctx.GameEvent.EventId, ctx.GameEvent.Date,
                 _db, homeTeam, awayTeam, ctx.IsPlayoff, ctx.PlayoffRound);
 
+            // 1b. Form: recompute each participant's hot/cold streak from their
+            //     freshly-recorded recent games.
+            if (result.BoxScore?.PlayerStats != null && _db != null)
+            {
+                foreach (var stats in result.BoxScore.PlayerStats.Values)
+                {
+                    if (stats == null || stats.Minutes <= 0) continue;
+                    FormTracker.Recompute(_db.GetPlayer(stats.PlayerId));
+                }
+            }
+
             // 2. Standings + calendar completion (Team.Wins/Losses is the record authority)
             _season?.RecordGameResult(ctx.GameEvent, result.HomeScore, result.AwayScore);
 

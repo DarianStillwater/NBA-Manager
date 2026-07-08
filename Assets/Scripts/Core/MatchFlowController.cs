@@ -156,7 +156,7 @@ namespace NBAHeadCoach.Core
             Team awayTeam = _isHomeGame ? _opponentTeam : _playerTeam;
 
             // Simulate the game
-            var gameResult = _simulator.SimulateGame(homeTeam, awayTeam);
+            var gameResult = _simulator.SimulateGame(homeTeam, awayTeam, _currentGame?.IsPlayoffGame ?? false);
             _matchResult = gameResult.BoxScore;
 
             // Complete the match

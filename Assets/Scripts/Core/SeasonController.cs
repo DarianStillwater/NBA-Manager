@@ -525,10 +525,16 @@ namespace NBAHeadCoach.Core
                     }
                 }
 
-                // Recover energy (higher on rest days)
+                // Recover energy (higher on rest days; a genuinely gassed player
+                // recovers fastest — the payoff of a DNP-rest night)
                 bool hasGameToday = HasGameOnDate(player.TeamId, CurrentDate);
-                float energyRecovery = hasGameToday ? 5f : 15f;
+                float energyRecovery = hasGameToday ? 5f : (player.Energy < 40f ? 22f : 15f);
                 player.Energy = Mathf.Min(100, player.Energy + energyRecovery);
+
+                // Form cools toward neutral on idle days; game days recompute it
+                // from results in the completion pipeline.
+                if (!hasGameToday)
+                    Simulation.FormTracker.DriftTowardNeutral(player);
 
                 // Clean up old minutes tracking (keep last 14 days)
                 if (player.RecentMinutes != null && CurrentDate.Year > 1)

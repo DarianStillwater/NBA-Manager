@@ -54,7 +54,7 @@ namespace NBAHeadCoach.Core.Simulation
         /// <summary>
         /// Simulates a complete game between two teams.
         /// </summary>
-        public GameResult SimulateGame(Team homeTeam, Team awayTeam)
+        public GameResult SimulateGame(Team homeTeam, Team awayTeam, bool isPlayoff = false)
         {
             _homeTeam = homeTeam;
             _awayTeam = awayTeam;
@@ -68,10 +68,6 @@ namespace NBAHeadCoach.Core.Simulation
             InitializePlayerStats(homeTeam);
             InitializePlayerStats(awayTeam);
 
-            // Initialize on-court lineups (starters) — fill nulls from roster
-            SetupLineup(_homeOnCourt, homeTeam);
-            SetupLineup(_awayOnCourt, awayTeam);
-
             // Energy carries over between games — players tip off with whatever the
             // season (rest days, back-to-backs) left them. Guard only against raw
             // never-initialized Players from tools/tests.
@@ -81,6 +77,15 @@ namespace NBAHeadCoach.Core.Simulation
                 var p = _playerDatabase.GetPlayer(pid);
                 if (p != null && p.Energy <= 0f) p.Energy = 100f;
             }
+
+            // Game-day availability: injuries always sit; gassed players get a
+            // rest night in the regular season (never in the playoffs).
+            BuildAvailability(homeTeam, _homeUnavailable, isPlayoff);
+            BuildAvailability(awayTeam, _awayUnavailable, isPlayoff);
+
+            // Initialize on-court lineups (starters) — fill nulls from roster
+            SetupLineup(_homeOnCourt, homeTeam);
+            SetupLineup(_awayOnCourt, awayTeam);
 
             // Simulate 4 regular quarters
             int quartersPlayed = 0;
@@ -243,19 +248,77 @@ namespace NBAHeadCoach.Core.Simulation
             return false;
         }
 
+        // ==================== GAME-DAY AVAILABILITY ====================
+
+        private const float REST_ENERGY_HARD = 35f;   // this gassed, anyone sits
+        private const float REST_ENERGY_SOFT = 50f;   // cautious coaches rest below this
+        private const int MIN_AVAILABLE = 8;
+
+        private readonly HashSet<string> _homeUnavailable = new HashSet<string>();
+        private readonly HashSet<string> _awayUnavailable = new HashSet<string>();
+
+        private HashSet<string> UnavailableFor(Team team) =>
+            team.TeamId == _homeTeam.TeamId ? _homeUnavailable : _awayUnavailable;
+
+        /// <summary>
+        /// Who dresses tonight. Injured players never play; exhausted players get
+        /// a DNP-rest in the regular season (coaches with a high load-management
+        /// tendency rest merely-tired players too). Never below 8 available —
+        /// rested players get un-rested freshest-first; injuries stay out.
+        /// </summary>
+        private void BuildAvailability(Team team, HashSet<string> unavailable, bool isPlayoff)
+        {
+            unavailable.Clear();
+            var rosterIds = team.RosterPlayerIds?.Where(id => !string.IsNullOrEmpty(id)).ToList()
+                            ?? new List<string>();
+
+            int loadTendency = team.CoachPersonality?.LoadManagementTendency ?? 40;
+
+            foreach (var id in rosterIds)
+            {
+                var p = _playerDatabase.GetPlayer(id);
+                if (p == null) continue;
+
+                if (p.IsInjured) { unavailable.Add(id); continue; }
+                if (isPlayoff) continue; // nobody rests in the playoffs
+
+                if (p.Energy < REST_ENERGY_HARD) unavailable.Add(id);
+                else if (p.Energy < REST_ENERGY_SOFT && loadTendency >= 60) unavailable.Add(id);
+            }
+
+            int available = rosterIds.Count(id => !unavailable.Contains(id));
+            if (available >= MIN_AVAILABLE) return;
+
+            var unrest = rosterIds
+                .Where(id => unavailable.Contains(id))
+                .Select(id => _playerDatabase.GetPlayer(id))
+                .Where(p => p != null && !p.IsInjured)
+                .OrderByDescending(p => p.Energy)
+                .ToList();
+
+            foreach (var p in unrest)
+            {
+                if (available >= MIN_AVAILABLE) break;
+                unavailable.Remove(p.PlayerId);
+                available++;
+            }
+        }
+
         /// <summary>
         /// Sets up the 5-player on-court lineup, falling back to roster if StartingLineupIds has nulls.
         /// </summary>
         private void SetupLineup(string[] onCourt, Team team)
         {
+            var unavailable = UnavailableFor(team);
             var starters = team.StartingLineupIds;
-            var rosterIds = team.RosterPlayerIds?.Where(id => !string.IsNullOrEmpty(id)).ToList()
+            var rosterIds = team.RosterPlayerIds?.Where(id => !string.IsNullOrEmpty(id) && !unavailable.Contains(id)).ToList()
                             ?? new List<string>();
             var used = new HashSet<string>();
 
             for (int i = 0; i < 5; i++)
             {
-                if (starters != null && i < starters.Length && !string.IsNullOrEmpty(starters[i]))
+                if (starters != null && i < starters.Length && !string.IsNullOrEmpty(starters[i]) &&
+                    !unavailable.Contains(starters[i]) && !used.Contains(starters[i]))
                 {
                     onCourt[i] = starters[i];
                     used.Add(starters[i]);
@@ -290,10 +353,12 @@ namespace NBAHeadCoach.Core.Simulation
                 }
                 else
                 {
-                    // Fallback: grab any roster player not already on court
+                    // Fallback: grab any available roster player not already on court
+                    var unavailable = UnavailableFor(team);
                     foreach (var p in team.Roster)
                     {
-                        if (p != null && !string.IsNullOrEmpty(p.PlayerId) && !usedIds.Contains(p.PlayerId))
+                        if (p != null && !string.IsNullOrEmpty(p.PlayerId) &&
+                            !usedIds.Contains(p.PlayerId) && !unavailable.Contains(p.PlayerId))
                         {
                             players[i] = p;
                             onCourt[i] = p.PlayerId;
@@ -323,9 +388,10 @@ namespace NBAHeadCoach.Core.Simulation
                 string bestSub = null;
                 int bestFouls = 6;
 
+                var unavailable = UnavailableFor(team);
                 foreach (var pid in team.RosterPlayerIds)
                 {
-                    if (onCourtSet.Contains(pid)) continue;
+                    if (onCourtSet.Contains(pid) || unavailable.Contains(pid)) continue;
                     var stats = _boxScore.PlayerStats.ContainsKey(pid) ? _boxScore.PlayerStats[pid] : null;
                     int fouls = stats?.PersonalFouls ?? 0;
                     if (fouls < bestFouls) // only sub in someone who hasn't also fouled out
@@ -362,9 +428,10 @@ namespace NBAHeadCoach.Core.Simulation
                 string bestSub = null;
                 float bestEnergy = 0f;
 
+                var unavailable = UnavailableFor(team);
                 foreach (var pid in team.RosterPlayerIds)
                 {
-                    if (onCourtSet.Contains(pid)) continue;
+                    if (onCourtSet.Contains(pid) || unavailable.Contains(pid)) continue;
                     var bench = _playerDatabase.GetPlayer(pid);
                     if (bench == null) continue;
                     // Never rotate a fouled-out player back onto the court

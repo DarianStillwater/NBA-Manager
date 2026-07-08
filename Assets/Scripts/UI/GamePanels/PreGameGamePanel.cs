@@ -429,7 +429,7 @@ namespace NBAHeadCoach.UI.GamePanels
                 var homeTeam = isHome ? playerTeam : oppTeam;
                 var awayTeam = isHome ? oppTeam : playerTeam;
                 var simulator = new NBAHeadCoach.Core.Simulation.GameSimulator(gm.PlayerDatabase);
-                var result = simulator.SimulateGame(homeTeam, awayTeam);
+                var result = simulator.SimulateGame(homeTeam, awayTeam, gameEvent.IsPlayoffGame);
                 gm?.GameCompletion?.Complete(new NBAHeadCoach.Core.Simulation.GameCompletionContext(
                     gameEvent, result, NBAHeadCoach.Core.Simulation.GameSource.QuickSim,
                     gm.PlayerTeamId, gameEvent.IsPlayoffGame, gameEvent.PlayoffRound));

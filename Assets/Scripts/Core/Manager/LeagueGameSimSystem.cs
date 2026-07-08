@@ -57,7 +57,7 @@ namespace NBAHeadCoach.Core.Manager
 
                 try
                 {
-                    var result = simulator.SimulateGame(homeTeam, awayTeam);
+                    var result = simulator.SimulateGame(homeTeam, awayTeam, game.IsPlayoffGame);
                     _gm.GameCompletion.Complete(new Simulation.GameCompletionContext(
                         game, result, Simulation.GameSource.LeagueAutoSim,
                         _gm.PlayerTeamId, game.IsPlayoffGame, game.PlayoffRound), deferAggregates: true);
