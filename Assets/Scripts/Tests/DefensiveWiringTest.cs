@@ -244,8 +244,14 @@ namespace NBAHeadCoach.Tests
             var drop = TeamStrategy.CreateDefault("LAL");
             drop.DefensiveSystem.PickAndRollCoverage = PnRCoverage.DropCoverage;
 
-            int blitzTOs = RunBatch(pnrOffense, blitz, 888).Turnovers;
-            int dropTOs = RunBatch(pnrOffense, drop, 888).Turnovers;
+            // Aggregate three seeds: the blitz edge (~+3pp on PnR trips) is real but
+            // small enough that a single 800-possession seed can noise out.
+            int blitzTOs = 0, dropTOs = 0;
+            foreach (int seed in new[] { 888, 1777, 2666 })
+            {
+                blitzTOs += RunBatch(pnrOffense, blitz, seed).Turnovers;
+                dropTOs += RunBatch(pnrOffense, drop, seed).Turnovers;
+            }
 
             AssertGreaterThan(blitzTOs, dropTOs + 5,
                 $"Blitzing the PnR forces turnovers ({blitzTOs} vs {dropTOs})");

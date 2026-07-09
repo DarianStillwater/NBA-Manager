@@ -90,6 +90,12 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
         // Free throws (from the foul event; presentational make/miss ordering only)
         public FreeThrowResult FreeThrows;
 
+        // Execution variance facts (decided in the outcome layer; drawn here).
+        public LapseType Lapse = LapseType.None;
+        public int LapseDefenderIndex = -1;
+        public OffensiveDeviation Deviation = OffensiveDeviation.None;
+        public int OffDeviatorIndex = -1;
+
         // Presentation hints
         public bool IsFastBreak;             // short possession → faster advance phase
 

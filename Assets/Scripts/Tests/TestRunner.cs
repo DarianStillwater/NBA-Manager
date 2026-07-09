@@ -90,6 +90,7 @@ namespace NBAHeadCoach.Tests
             RunTest<StrategyOverlayWiringTest>("Strategy Overlay Wiring");
             RunTest<ZoneBehaviorTest>("Zone Behavior");
             RunTest<ZoneMovementTest>("Zone Movement");
+            RunTest<DefensiveLapseTest>("Defensive Lapses");
 
             // Summary
             Debug.Log("\n" + new string('=', 70));

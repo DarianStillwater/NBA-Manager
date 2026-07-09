@@ -193,6 +193,18 @@ namespace NBAHeadCoach.Core.Simulation
                 Events = result.Events
             };
 
+            // Player execution: does the defense blow an assignment this trip?
+            // Rolled once on the outcome RNG; the effect lands in the shot math and
+            // the fact is recorded on the script so the playback draws the same story.
+            var (lapse, lapseIdx) = ExecutionVariance.RollDefensiveLapse(
+                _defensePlayers,
+                _defenseStrategy?.DefensiveSystem?.PrimaryScheme ?? DefensiveSchemeType.ManToManStandard,
+                DefensiveFamiliarityMult(), _random);
+            _script.Lapse = lapse;
+            _script.LapseDefenderIndex = lapseIdx;
+            result.Lapse = lapse;
+            result.LapseDefenderIndex = lapseIdx;
+
             // Shot clock remaining at the end of the possession (the legacy tick loop
             // decremented this in 0.5s steps; preserved exactly for decision parity —
             // it feeds the shot-clock-pressure modifier in ExecuteShot).
@@ -1078,7 +1090,8 @@ namespace NBAHeadCoach.Core.Simulation
         {
             var position = _offensePositions[shooterIndex];
             var defender = _defensePlayers[shooterIndex];
-            float defenderDistance = position.DistanceTo(_defensePositions[shooterIndex]);
+            float defenderDistance = ApplyLapseToDefenderDistance(
+                position.DistanceTo(_defensePositions[shooterIndex]));
             var shotZone = position.GetZone(_isOffenseHome);
 
             // Calculate shot probability
@@ -1088,6 +1101,11 @@ namespace NBAHeadCoach.Core.Simulation
 
             // Defensive scheme shapes the look by zone (neutral at scheme defaults)
             shotProb = ApplyDefenseSchemeModifiers(shotProb, shotZone, shooterIndex);
+
+            // Help that never arrived: easier finish inside
+            if (_script != null && _script.Lapse == LapseType.MissedHelp &&
+                (shotZone == CourtZone.RestrictedArea || shotZone == CourtZone.Paint))
+                shotProb = Mathf.Min(shotProb * 1.06f, 0.95f);
 
             // Ball-movement teams find the open man: small bonus on assisted looks
             var osys = _offenseStrategy.OffensiveSystem;
@@ -1268,6 +1286,25 @@ namespace NBAHeadCoach.Core.Simulation
             return Mathf.Clamp(prob * mod, 0.02f, 0.95f);
         }
 
+        /// <summary>Extra lapse risk right after a scheme change (fleshed out with the
+        /// familiarity window; neutral by default).</summary>
+        private float DefensiveFamiliarityMult() => 1f;
+
+        /// <summary>
+        /// A lapse loosens the shooter's look — added feet on the SAME distance that
+        /// feeds both shot probability and the drawn contest, so outcome and visual agree.
+        /// </summary>
+        private float ApplyLapseToDefenderDistance(float defenderDistance)
+        {
+            if (_script == null) return defenderDistance;
+            return _script.Lapse switch
+            {
+                LapseType.LateCloseout => Mathf.Min(defenderDistance + 2.5f, 9f),
+                LapseType.BlownRotation => Mathf.Min(defenderDistance + 4f, 9f),
+                _ => defenderDistance
+            };
+        }
+
         /// <summary>Index of the best player on the floor — the one a box-and-one keys on.</summary>
         private static int StarIndex(Player[] players)
         {
@@ -1386,7 +1423,8 @@ namespace NBAHeadCoach.Core.Simulation
             bool isThreePointer = zone == CourtZone.ThreePoint;
 
             // First, check if the shot was attempted and potentially made
-            float defenderDistance = position.DistanceTo(_defensePositions[shooterIndex]);
+            float defenderDistance = ApplyLapseToDefenderDistance(
+                position.DistanceTo(_defensePositions[shooterIndex]));
             float shotProb = ShotCalculator.CalculateShotProbability(
                 shooter, position, defender, defenderDistance, shotType,
                 isFastBreak: _isFastBreak, secondsRemaining: possessionClock, isHomeTeam: _isOffenseHome);
@@ -1498,6 +1536,12 @@ namespace NBAHeadCoach.Core.Simulation
 
         /// <summary>Decision metadata: this possession was a real transition push.</summary>
         public bool WasFastBreak;
+
+        /// <summary>Execution variance decided for this possession (None most trips).</summary>
+        public LapseType Lapse = LapseType.None;
+        public int LapseDefenderIndex = -1;
+        public OffensiveDeviation Deviation = OffensiveDeviation.None;
+        public int OffDeviatorIndex = -1;
 
         /// <summary>Decision metadata: the half-court action family this possession ran.</summary>
         public HalfCourtAction Action;
