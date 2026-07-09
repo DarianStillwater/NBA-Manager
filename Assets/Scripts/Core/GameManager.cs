@@ -207,6 +207,24 @@ namespace NBAHeadCoach.Core
 
         #region Unity Lifecycle
 
+        /// <summary>
+        /// Direct-play safety net: the runtime menu is injected by MenuInjector,
+        /// which lives on the GameManager from the Boot scene. Pressing Play with
+        /// the MainMenu scene open used to fall back to the deleted legacy
+        /// MainMenuController — instead, bootstrap a GameManager so the real menu
+        /// builds. Skipped during headless test runs (__TestRunner__ present).
+        /// </summary>
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+        private static void BootstrapForDirectScenePlay()
+        {
+            if (Instance != null) return;
+            if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name != "MainMenu") return;
+            if (GameObject.Find("__TestRunner__") != null) return;
+
+            Debug.Log("[GameManager] MainMenu scene played directly — bootstrapping GameManager");
+            new GameObject("GameManager").AddComponent<GameManager>();
+        }
+
         private void Awake()
         {
             if (Instance == null)
