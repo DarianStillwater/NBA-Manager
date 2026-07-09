@@ -34,6 +34,10 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
 
         private readonly System.Random _rng;
 
+        /// <summary>Defending team's scheme for the CURRENT possession — set by the
+        /// simulator before Choreograph so zone defenses render as zones.</summary>
+        public DefensiveSchemeType DefensiveScheme = DefensiveSchemeType.ManToManStandard;
+
         // Per-possession working state
         private PossessionScript _s;
         private float _rimX;
@@ -100,7 +104,7 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
             _action = ActionLibrary.Choose(script, _rng);
 
             BuildOffenseAndBall();
-            _defPlan = DefenseChoreographer.BuildPlan(_action, script, _rng);
+            _defPlan = DefenseChoreographer.BuildPlan(_action, script, _rng, DefensiveScheme);
 
             // Builders don't run in strict time order — sort and clamp for consumers.
             for (int i = 0; i < _beats.Count; i++)
@@ -1293,6 +1297,13 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
                     // Low man tags the roller/popper, then recovers to his own man.
                     var roller = _offense[_defPlan[i].TagIndex].PositionAt(t);
                     target = Blend(roller, rim, 0.4f);
+                }
+                else if (_defPlan[i].IsZone)
+                {
+                    // Zone: hold the formation anchor, shading toward the ball —
+                    // never chasing a man across the floor.
+                    var ballPos = new CourtPosition(ball.X, ball.Y);
+                    target = Blend(_defPlan[i].ZoneSpot, ballPos, 0.30f);
                 }
                 else
                 {

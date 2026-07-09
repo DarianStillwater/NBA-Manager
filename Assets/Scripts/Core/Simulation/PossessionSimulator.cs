@@ -395,6 +395,8 @@ namespace NBAHeadCoach.Core.Simulation
             if (SpatialDetail == SpatialDetailLevel.Full)
             {
                 _choreographer ??= new PossessionChoreographer(_choreoRandom);
+                _choreographer.DefensiveScheme =
+                    _defenseStrategy?.DefensiveSystem?.PrimaryScheme ?? DefensiveSchemeType.ManToManStandard;
                 result.SpatialStates = _choreographer.Choreograph(_script);
                 result.PresentationSeconds = _choreographer.TotalSeconds;
                 result.LiveSeconds = _choreographer.LiveSeconds;
@@ -510,6 +512,8 @@ namespace NBAHeadCoach.Core.Simulation
             if (SpatialDetail == SpatialDetailLevel.Full)
             {
                 _choreographer ??= new PossessionChoreographer(_choreoRandom);
+                _choreographer.DefensiveScheme =
+                    _defenseStrategy?.DefensiveSystem?.PrimaryScheme ?? DefensiveSchemeType.ManToManStandard;
                 result.SpatialStates = _choreographer.Choreograph(_script);
                 result.PresentationSeconds = _choreographer.TotalSeconds;
                 result.LiveSeconds = _choreographer.LiveSeconds;
