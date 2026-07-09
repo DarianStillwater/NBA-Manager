@@ -774,7 +774,7 @@ namespace NBAHeadCoach.UI.Match
             // Pace
             string[] paceNames = Enum.GetNames(typeof(PacePreference));
             int paceIdx = (int)strat.PacePreference;
-            MkOverlayCycle(panel, "Pace", paceNames, paceIdx, v => strat.PacePreference = (PacePreference)v);
+            MkOverlayCycle(panel, "Pace", paceNames, paceIdx, v => strat.ApplyPacePreference((PacePreference)v));
         }
 
         private void MkOverlayCycle(RectTransform parent, string label, string[] options, int currentIndex, Action<int> onChange)

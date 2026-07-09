@@ -130,7 +130,7 @@ namespace NBAHeadCoach.UI.GamePanels
                     playerTeam.Strategy.OffensiveSystem.PrimarySystem = _offense;
                 if (playerTeam.Strategy.DefensiveSystem != null)
                     playerTeam.Strategy.DefensiveSystem.PrimaryScheme = _defense;
-                playerTeam.Strategy.PacePreference = _pace;
+                playerTeam.Strategy.ApplyPacePreference(_pace);
             }
         }
 

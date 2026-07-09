@@ -29,6 +29,26 @@ namespace NBAHeadCoach.Core.Data
         [Range(80, 110)] public float TargetPace = 100f;  // Possessions per 48 minutes
         public PacePreference PacePreference = PacePreference.Balanced;
 
+        /// <summary>
+        /// Set pace via preference, keeping the two pace fields coherent: the sim's
+        /// possession loop reads TargetPace (via Pace), while GameCoach snapshots
+        /// PacePreference — a UI that writes only the enum changes nothing on court.
+        /// </summary>
+        public void ApplyPacePreference(PacePreference preference)
+        {
+            PacePreference = preference;
+            TargetPace = TargetPaceFor(preference);
+        }
+
+        public static float TargetPaceFor(PacePreference preference) => preference switch
+        {
+            PacePreference.Deliberate => 92f,
+            PacePreference.Balanced => 100f,
+            PacePreference.PushWhenPossible => 104f,
+            PacePreference.AlwaysPush => 108f,
+            _ => 100f
+        };
+
         // ==================== SHOT SELECTION ====================
         [Header("Shot Selection")]
         [Range(0, 100)] public int ThreePointFrequency = 40;       // % of FGA that are 3s
