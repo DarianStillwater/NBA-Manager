@@ -52,6 +52,7 @@ namespace NBAHeadCoach.Tests
             RunTest<PersonnelCareerTest>("Personnel & Career");
             RunTest<TimeoutIntelligenceTest>("Timeout Intelligence");
             RunTest<PlaybackDeciderTest>("Playback Decider");
+            RunTest<BenchCoachRenderTest>("Bench & Coach Render");
             RunTest<ChoreographyTest>("Possession Choreography");
             RunTest<RegistryOrderTest>("System Registry Order");
             RunTest<GameCompletionParityTest>("Game Completion Parity");

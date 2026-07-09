@@ -40,6 +40,15 @@ namespace NBAHeadCoach.UI.Components
         private CanvasGroup _dimGroup;
         private Text _ffBadge;
 
+        // Ambient (non-timeline) actors: benches + coaches. Purely decorative — driven by
+        // discrete events (subs, timeouts, ejections), never by the possession SpatialStates.
+        private readonly Dictionary<string, AnimatedPlayerDot> _benchDots = new Dictionary<string, AnimatedPlayerDot>();
+        private readonly List<string> _homeBench = new List<string>();
+        private readonly List<string> _awayBench = new List<string>();
+        private CoachView _homeCoach;
+        private CoachView _awayCoach;
+        private const int MaxBench = 10;
+
         // Active possession timeline
         private List<SpatialState> _timeline;
         private float[] _relTimes;          // seconds from possession start per state
@@ -84,8 +93,93 @@ namespace NBAHeadCoach.UI.Components
 
             _ball = MatchBallView.Create(_courtRect, _dotSize * 0.72f, PixelsPerFoot);
 
+            BuildBenchAndCoach(homeTeam, homeLineup, true);
+            BuildBenchAndCoach(awayTeam, awayLineup, false);
+
             BuildFastForwardBadge();
         }
+
+        #region Bench & coach (ambient actors)
+
+        /// <summary>Bench occupants = the team's roster ids not currently on the floor. Reads the raw
+        /// RosterPlayerIds (not Team.Roster) so it never depends on the PlayerDatabase being loaded.</summary>
+        private void BuildBenchAndCoach(Team team, List<string> lineup, bool isHome)
+        {
+            var bench = isHome ? _homeBench : _awayBench;
+            bench.Clear();
+
+            var onCourt = new HashSet<string>(lineup);
+            var ids = team?.RosterPlayerIds ?? new List<string>();
+            foreach (var id in ids)
+            {
+                if (string.IsNullOrEmpty(id) || onCourt.Contains(id)) continue;
+                bench.Add(id);
+                if (bench.Count >= MaxBench) break;
+            }
+
+            float benchSize = _dotSize * 0.62f;
+            for (int i = 0; i < bench.Count; i++)
+                CreateBenchDot(bench[i], team, isHome, BenchSlotPosition(i, bench.Count, isHome, benchSize));
+
+            var coach = CoachView.Create(_courtRect, _dotSize * 0.8f, isHome,
+                isHome ? _homeTeamColor : _awayTeamColor, CoachSlotPosition(isHome, benchSize));
+            if (isHome) _homeCoach = coach; else _awayCoach = coach;
+        }
+
+        /// <summary>Bench dots sit in a row just beyond the sideline (home below, away above the court
+        /// rect), spread across the middle of the court width, with the coach at the scorer's-table end.</summary>
+        private Vector2 BenchSlotPosition(int index, int count, bool isHome, float benchSize)
+        {
+            float h = _courtRect != null ? _courtRect.rect.height : 500f;
+            float w = _courtRect != null ? _courtRect.rect.width : 940f;
+            float y = (isHome ? -1f : 1f) * (h / 2f + benchSize * 0.85f);
+
+            float span = w * 0.62f;
+            float startX = -span / 2f + span * 0.14f;   // leave room at the left end for the coach
+            float step = count > 1 ? (span * 0.86f) / (count - 1) : 0f;
+            float x = startX + step * index;
+            return new Vector2(x, y);
+        }
+
+        private Vector2 CoachSlotPosition(bool isHome, float benchSize)
+        {
+            float h = _courtRect != null ? _courtRect.rect.height : 500f;
+            float w = _courtRect != null ? _courtRect.rect.width : 940f;
+            float y = (isHome ? -1f : 1f) * (h / 2f + benchSize * 0.85f);
+            return new Vector2(-w * 0.31f, y);
+        }
+
+        private void CreateBenchDot(string playerId, Team team, bool isHome, Vector2 pos)
+        {
+            if (string.IsNullOrEmpty(playerId) || _benchDots.ContainsKey(playerId)) return;
+
+            var player = GameManager.Instance?.PlayerDatabase?.GetPlayer(playerId);
+            int jersey = int.TryParse(player?.JerseyNumber, out var jn) ? jn : -1;
+            string name = player?.DisplayName ?? playerId;
+            var color = isHome ? _homeTeamColor : _awayTeamColor;
+
+            float benchSize = _dotSize * 0.62f;
+            var dot = AnimatedPlayerDot.CreateSimple(_courtRect, benchSize, playerId, jersey, name, color, isHome);
+            dot.SetPositionImmediate(pos);
+
+            // Seated on the bench: dimmed so it reads as off-court.
+            var cg = dot.gameObject.GetComponent<CanvasGroup>();
+            if (cg == null) cg = dot.gameObject.AddComponent<CanvasGroup>();
+            cg.alpha = 0.7f;
+
+            var outline = dot.gameObject.AddComponent<Outline>();
+            outline.effectColor = new Color(0f, 0f, 0f, 0.45f);
+            outline.effectDistance = new Vector2(1f, -1f);
+
+            _benchDots[playerId] = dot;
+        }
+
+        // Test/inspection accessors
+        public int BenchCount(bool isHome) => (isHome ? _homeBench : _awayBench).Count;
+        public bool IsOnBench(string playerId) => _benchDots.ContainsKey(playerId);
+        public bool HasCoach(bool isHome) => (isHome ? _homeCoach : _awayCoach) != null;
+
+        #endregion
 
         public void UpdateLineup(List<string> homeLineup, List<string> awayLineup)
         {
@@ -278,6 +372,16 @@ namespace NBAHeadCoach.UI.Components
             foreach (var kvp in _playerDots)
                 if (kvp.Value != null) Destroy(kvp.Value.gameObject);
             _playerDots.Clear();
+
+            foreach (var kvp in _benchDots)
+                if (kvp.Value != null) Destroy(kvp.Value.gameObject);
+            _benchDots.Clear();
+            _homeBench.Clear();
+            _awayBench.Clear();
+
+            if (_homeCoach != null) Destroy(_homeCoach.gameObject);
+            if (_awayCoach != null) Destroy(_awayCoach.gameObject);
+            _homeCoach = null; _awayCoach = null;
 
             foreach (var marker in _shotMarkers)
                 if (marker != null) marker.Remove();
