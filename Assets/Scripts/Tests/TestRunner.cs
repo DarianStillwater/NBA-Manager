@@ -88,6 +88,7 @@ namespace NBAHeadCoach.Tests
             RunTest<ZoneChoreographyTest>("Zone Choreography");
             RunTest<TimeoutEffectsTest>("Timeout Effects");
             RunTest<StrategyOverlayWiringTest>("Strategy Overlay Wiring");
+            RunTest<ZoneBehaviorTest>("Zone Behavior");
 
             // Summary
             Debug.Log("\n" + new string('=', 70));
