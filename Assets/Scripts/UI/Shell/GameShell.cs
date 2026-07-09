@@ -173,8 +173,11 @@ namespace NBAHeadCoach.UI.Shell
             // Team name
             var tn = UIBuilder.Text(hr, "TeamName", $"{team.City} {team.Name}".ToUpper(), 24, FontStyle.Bold, Color.white);
             var tnr = tn.GetComponent<RectTransform>();
-            tnr.anchorMin = new Vector2(0, 0.35f); tnr.anchorMax = new Vector2(0.6f, 0.85f);
+            tnr.anchorMin = new Vector2(0, 0.35f); tnr.anchorMax = new Vector2(0.68f, 0.85f);
             tnr.offsetMin = new Vector2(textLeft, 0); tn.alignment = TextAnchor.MiddleLeft;
+            tn.resizeTextForBestFit = true; tn.resizeTextMaxSize = 24; tn.resizeTextMinSize = 13;
+            tn.horizontalOverflow = HorizontalWrapMode.Wrap;
+            tn.verticalOverflow = VerticalWrapMode.Truncate;
 
             // Coach name
             var cn = UIBuilder.Text(hr, "CoachName", $"Coach {GameManager.Instance?.Career?.PersonName ?? "Player"}", 13, FontStyle.Normal, UITheme.TextSecondary);
@@ -222,10 +225,27 @@ namespace NBAHeadCoach.UI.Shell
             sidebarImg.color = Color.white;
             UIBuilder.ApplyGradient(sidebar, UITheme.TeamSidebarGradientTop(teamColor), UITheme.TeamSidebarGradientBottom(teamColor));
 
-            var vlg = sidebar.AddComponent<VerticalLayoutGroup>();
-            vlg.childControlWidth = true; vlg.childControlHeight = false;
+            // Two zones: the nav list fills the top; Continue/Menu are pinned to
+            // the bottom so they can never be pushed off-screen as nav items grow.
+            const float actionsHeight = 96f;
+
+            var navZone = UIBuilder.Child(sidebar.GetComponent<RectTransform>(), "NavZone");
+            var nzr = navZone.GetComponent<RectTransform>();
+            nzr.anchorMin = new Vector2(0, 0); nzr.anchorMax = Vector2.one;
+            nzr.offsetMin = new Vector2(0, actionsHeight); nzr.offsetMax = Vector2.zero;
+            var vlg = navZone.AddComponent<VerticalLayoutGroup>();
+            vlg.childControlWidth = true; vlg.childControlHeight = true;
             vlg.childForceExpandWidth = true; vlg.childForceExpandHeight = false;
-            vlg.padding = new RectOffset(0, 0, 4, 4); vlg.spacing = 1;
+            vlg.padding = new RectOffset(0, 0, 4, 0); vlg.spacing = 1;
+
+            var actionZone = UIBuilder.Child(sidebar.GetComponent<RectTransform>(), "ActionZone");
+            var azr = actionZone.GetComponent<RectTransform>();
+            azr.anchorMin = Vector2.zero; azr.anchorMax = new Vector2(1, 0);
+            azr.pivot = new Vector2(0.5f, 0); azr.sizeDelta = new Vector2(0, actionsHeight);
+            var avlg = actionZone.AddComponent<VerticalLayoutGroup>();
+            avlg.childControlWidth = true; avlg.childControlHeight = false;
+            avlg.childForceExpandWidth = true; avlg.childForceExpandHeight = false;
+            avlg.padding = new RectOffset(0, 0, 0, 4); avlg.spacing = 1;
 
             string[][] navItems = {
                 new[] { "\u25A3", "Home",      "Dashboard" },
@@ -245,11 +265,23 @@ namespace NBAHeadCoach.UI.Shell
             };
 
             var navGOs = new Dictionary<string, GameObject>();
+            int visibleCount = 0;
+            foreach (var nav in navItems)
+                if (!Core.Data.RolePermissions.IsPanelHidden(nav[2])) visibleCount++;
+
+            // Fit the list to the zone: shrink rows when there are many panels.
+            float zoneHeight = ((RectTransform)transform).rect.height
+                - UITheme.FMHeaderHeight - UITheme.FMAccentLineHeight - actionsHeight - 8;
+            float navHeight = Mathf.Clamp(
+                zoneHeight > 0 ? zoneHeight / Mathf.Max(1, visibleCount) - 1 : UITheme.FMNavItemHeight,
+                28f, UITheme.FMNavItemHeight);
+
             foreach (var nav in navItems)
             {
                 if (Core.Data.RolePermissions.IsPanelHidden(nav[2])) continue;
                 bool isActive = nav[2] == "Dashboard";
-                var navGo = CreateNavItem(sidebar.transform, nav[0], nav[1], nav[2], teamColor, isActive);
+                var navGo = CreateNavItem(navZone.transform, nav[0], nav[1], nav[2], teamColor, isActive);
+                navGo.GetComponent<LayoutElement>().preferredHeight = navHeight;
                 navGOs[nav[2]] = navGo;
             }
 
@@ -262,14 +294,14 @@ namespace NBAHeadCoach.UI.Shell
             if (navGOs.ContainsKey("Schedule") && GameManager.Instance?.SeasonController?.GetTodaysGame() != null)
                 AddActivityDot(navGOs["Schedule"], UITheme.Success);
 
-            CreateDivider(sidebar.transform);
+            CreateDivider(actionZone.transform);
 
-            CreateActionButton(sidebar.transform, "\u25B6  Continue", UITheme.Success, () =>
+            CreateActionButton(actionZone.transform, "\u25B6  Continue", UITheme.Success, () =>
             {
                 if (_continueRunning) return;
                 StartCoroutine(ContinueCoroutine());
             });
-            CreateActionButton(sidebar.transform, "\u2699  Menu", UITheme.FMNavHover, () => ShowPanel("Settings"));
+            CreateActionButton(actionZone.transform, "\u2699  Menu", UITheme.FMNavHover, () => ShowPanel("Settings"));
         }
 
         private GameObject CreateNavItem(Transform parent, string icon, string label, string panelId, Color teamColor, bool active)
