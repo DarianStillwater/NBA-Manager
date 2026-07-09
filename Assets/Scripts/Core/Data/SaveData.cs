@@ -108,6 +108,7 @@ namespace NBAHeadCoach.Core.Data
         public HistorySectionData HistoryData;
         public NBAHeadCoach.Core.AI.AIGMSaveData AIGMData;
         public NBAHeadCoach.Core.Manager.AllStarSaveData AllStarData;
+        public NBAHeadCoach.Core.Manager.SummerLeagueSaveData SummerLeagueData;
 
         /// <summary>
         /// Create a display-friendly summary of the save

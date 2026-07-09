@@ -173,7 +173,7 @@ namespace NBAHeadCoach.Core.Manager
     /// <summary>
     /// Manages Summer League with skippable option and development impact
     /// </summary>
-    public class SummerLeagueManager
+    public class SummerLeagueManager : ISaveSection
     {
         public static SummerLeagueManager Instance { get; private set; }
 
@@ -216,6 +216,28 @@ namespace NBAHeadCoach.Core.Manager
         /// <summary>
         /// Start Summer League for the season
         /// </summary>
+        public string SystemId => "SummerLeague";
+
+        /// <summary>Resolves real players for stat grounding and development. Test seam.</summary>
+        public Func<string, Data.Player> PlayerSource;
+
+        private Data.Player Resolve(string playerId) =>
+            PlayerSource != null ? PlayerSource(playerId)
+            : GameManager.Instance?.PlayerDatabase?.GetPlayer(playerId);
+
+        /// <summary>
+        /// Start the summer league on REAL rosters: each NBA team fields its rookies,
+        /// second-year players, and fringe bench pieces.
+        /// </summary>
+        public SummerLeagueSummary StartSummerLeague(int season, List<Data.Team> teams,
+            SummerLeagueType leagueType = SummerLeagueType.LasVegas)
+        {
+            _realTeams = teams;
+            return StartSummerLeague(season, leagueType);
+        }
+
+        private List<Data.Team> _realTeams;
+
         public SummerLeagueSummary StartSummerLeague(int season, SummerLeagueType leagueType = SummerLeagueType.LasVegas)
         {
             currentSeason = season;
@@ -349,33 +371,39 @@ namespace NBAHeadCoach.Core.Manager
 
         private void SimulateTeamPlayerPerformances(SummerLeagueTeamResult teamResult, int teamScore)
         {
-            // Distribute stats among roster
+            // Distribute stats among roster, grounded in each player's hidden
+            // skills — the future star looks like one in Vegas.
             foreach (var player in teamResult.RosterStats)
             {
                 player.GamesPlayed++;
 
-                // Simulate individual game stats
                 float minutes = SimulateMinutes(player);
                 float minutesFactor = minutes / 36f;
 
-                int points = Mathf.RoundToInt(UnityEngine.Random.Range(5, 25) * minutesFactor);
-                int rebounds = Mathf.RoundToInt(UnityEngine.Random.Range(2, 10) * minutesFactor);
-                int assists = Mathf.RoundToInt(UnityEngine.Random.Range(1, 8) * minutesFactor);
+                var real = Resolve(player.PlayerId);
+                float scoring = real != null
+                    ? (real.Shot_Close + real.Finishing_Rim + real.Shot_MidRange) / 3f / 70f : 1f;
+                float boards = real != null ? real.DefensiveRebound / 60f : 1f;
+                float vision = real != null ? real.Passing / 60f : 1f;
 
-                // Update totals
+                int points = Mathf.RoundToInt(UnityEngine.Random.Range(5f, 22f) * minutesFactor * scoring);
+                int rebounds = Mathf.RoundToInt(UnityEngine.Random.Range(2f, 8f) * minutesFactor * boards);
+                int assists = Mathf.RoundToInt(UnityEngine.Random.Range(1f, 6f) * minutesFactor * vision);
+
                 player.TotalPoints += points;
                 player.TotalRebounds += rebounds;
                 player.TotalAssists += assists;
 
-                // Update averages
                 player.MinutesPerGame = (player.MinutesPerGame * (player.GamesPlayed - 1) + minutes) / player.GamesPlayed;
                 player.PointsPerGame = (float)player.TotalPoints / player.GamesPlayed;
                 player.ReboundsPerGame = (float)player.TotalRebounds / player.GamesPlayed;
                 player.AssistsPerGame = (float)player.TotalAssists / player.GamesPlayed;
 
-                // Shooting percentages
-                player.FieldGoalPercentage = UnityEngine.Random.Range(0.35f, 0.55f);
-                player.ThreePointPercentage = UnityEngine.Random.Range(0.25f, 0.45f);
+                // Shooting splits center on the player's real (hidden) touch
+                float touch = real != null ? real.Shot_Close / 100f : 0.45f;
+                float range = real != null ? real.Shot_Three / 100f : 0.33f;
+                player.FieldGoalPercentage = Mathf.Clamp(touch * 0.7f + UnityEngine.Random.Range(-0.06f, 0.06f), 0.30f, 0.60f);
+                player.ThreePointPercentage = Mathf.Clamp(range * 0.5f + UnityEngine.Random.Range(-0.07f, 0.07f), 0.18f, 0.48f);
                 player.FreeThrowPercentage = UnityEngine.Random.Range(0.60f, 0.85f);
             }
         }
@@ -489,9 +517,40 @@ namespace NBAHeadCoach.Core.Manager
                 {
                     EvaluatePlayerPerformance(player);
                     var impact = CalculateDevelopmentImpact(player);
+                    ApplyImpactToRealPlayer(player, impact);
                     OnPlayerDevelopmentApplied?.Invoke(impact);
                 }
             }
+        }
+
+        /// <summary>
+        /// Summer reps become real, small, hard-capped growth for young players:
+        /// at most +3 attribute points total per player, only where they earned it,
+        /// never past 90. Confidence moves Form a touch either way.
+        /// </summary>
+        private void ApplyImpactToRealPlayer(SummerLeaguePlayerStats stats, SummerLeagueDevelopmentImpact impact)
+        {
+            var p = Resolve(stats.PlayerId);
+            if (p == null || p.YearsPro > 2) return;
+
+            int budget = 3;
+            int Bump(int current, float earned)
+            {
+                if (budget <= 0 || earned <= 0f || current >= 90) return current;
+                int gain = Mathf.Min(budget, earned >= 1.5f ? 2 : 1);
+                budget -= gain;
+                return Mathf.Min(90, current + gain);
+            }
+
+            float Earned(string key) =>
+                impact.AttributeChanges.TryGetValue(key, out var v) ? v : 0f;
+
+            p.Shot_Close = Bump(p.Shot_Close, Earned("Scoring"));
+            p.Passing = Bump(p.Passing, Earned("Playmaking"));
+            p.DefensiveRebound = Bump(p.DefensiveRebound, Earned("Rebounding"));
+            p.Shot_Three = Bump(p.Shot_Three, Earned("ThreePointShooting"));
+
+            p.Form = Mathf.Clamp(p.Form + impact.ConfidenceChange, 0f, 100f);
         }
 
         private void EvaluatePlayerPerformance(SummerLeaguePlayerStats stats)
@@ -612,8 +671,49 @@ namespace NBAHeadCoach.Core.Manager
 
         private void InitializeTeamResults()
         {
-            // Would integrate with team roster data
-            // Creates 30 team result placeholders
+            // Real rosters when the live league is available; placeholder shells
+            // only as a last-resort fallback (tools/legacy callers).
+            if (_realTeams != null && _realTeams.Count > 0)
+            {
+                foreach (var team in _realTeams)
+                {
+                    if (team == null) continue;
+                    var result = new SummerLeagueTeamResult
+                    {
+                        TeamId = team.TeamId,
+                        TeamName = team.Name ?? team.TeamId
+                    };
+
+                    var roster = (team.RosterPlayerIds ?? new List<string>())
+                        .Select(Resolve).Where(pl => pl != null && pl.RetirementYear == 0).ToList();
+
+                    // Rookies and second-year players headline; fringe pieces fill in
+                    var squad = roster.Where(pl => pl.YearsPro <= 1)
+                        .OrderBy(pl => pl.YearsPro).ToList();
+                    foreach (var fringe in roster.Where(pl => pl.YearsPro > 1)
+                                 .OrderBy(pl => pl.OverallRating))
+                    {
+                        if (squad.Count >= 6) break;
+                        squad.Add(fringe);
+                    }
+
+                    foreach (var pl in squad.Take(10))
+                    {
+                        result.RosterStats.Add(new SummerLeaguePlayerStats
+                        {
+                            PlayerId = pl.PlayerId,
+                            PlayerName = pl.FullName,
+                            Eligibility = pl.YearsPro == 0 ? SummerLeagueEligibility.Rookie
+                                : pl.YearsPro == 1 ? SummerLeagueEligibility.SecondYear
+                                : SummerLeagueEligibility.TwoWayContract
+                        });
+                    }
+
+                    teamResults.Add(result);
+                }
+                return;
+            }
+
             for (int i = 0; i < teamsInTournament; i++)
             {
                 var result = new SummerLeagueTeamResult
@@ -625,8 +725,6 @@ namespace NBAHeadCoach.Core.Manager
                     PointsFor = 0,
                     PointsAgainst = 0
                 };
-
-                // Add placeholder roster
                 for (int p = 0; p < 12; p++)
                 {
                     result.RosterStats.Add(new SummerLeaguePlayerStats
@@ -636,7 +734,6 @@ namespace NBAHeadCoach.Core.Manager
                         Eligibility = (SummerLeagueEligibility)(p % 6)
                     });
                 }
-
                 teamResults.Add(result);
             }
         }
@@ -648,12 +745,14 @@ namespace NBAHeadCoach.Core.Manager
             int gameNumber = 0;
 
             // Pool play - each team plays 4-5 games
+            int fieldSize = teamResults.Count;
+            if (fieldSize < 2) return;
             for (int round = 0; round < gamesPerTeam - 1; round++)
             {
-                for (int i = 0; i < teamsInTournament / 2; i++)
+                for (int i = 0; i < fieldSize / 2; i++)
                 {
-                    int homeIndex = (i + round) % teamsInTournament;
-                    int awayIndex = (teamsInTournament - 1 - i + round) % teamsInTournament;
+                    int homeIndex = (i + round) % fieldSize;
+                    int awayIndex = (fieldSize - 1 - i + round) % fieldSize;
 
                     if (homeIndex != awayIndex)
                     {
@@ -837,6 +936,29 @@ namespace NBAHeadCoach.Core.Manager
         /// </summary>
         public int RemainingGames => schedule.Count - currentGameIndex;
 
+        // ==================== PERSISTENCE ====================
+
+        public void WriteSave(Data.SaveData data)
+        {
+            if (data == null || teamResults.Count == 0) return;
+            data.SummerLeagueData = new SummerLeagueSaveData
+            {
+                Season = currentSeason,
+                Completed = !isActive || currentGameIndex >= schedule.Count,
+                TeamResults = teamResults
+            };
+        }
+
+        public void ReadSave(Data.SaveData data, in SaveReadContext ctx)
+        {
+            var dto = data?.SummerLeagueData;
+            if (dto?.TeamResults == null || dto.TeamResults.Count == 0) return;
+            currentSeason = dto.Season;
+            isActive = false;
+            teamResults.Clear();
+            teamResults.AddRange(dto.TeamResults);
+        }
+
         /// <summary>
         /// Get current standings
         /// </summary>
@@ -858,5 +980,14 @@ namespace NBAHeadCoach.Core.Manager
                 .Where(p => p.PlayerId == playerId)
                 .ToList();
         }
+    }
+
+    /// <summary>JsonUtility-safe snapshot of the most recent summer league.</summary>
+    [Serializable]
+    public class SummerLeagueSaveData
+    {
+        public int Season;
+        public bool Completed;
+        public List<SummerLeagueTeamResult> TeamResults = new List<SummerLeagueTeamResult>();
     }
 }

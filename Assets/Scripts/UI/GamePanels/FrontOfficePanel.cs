@@ -68,6 +68,7 @@ namespace NBAHeadCoach.UI.GamePanels
             var scroll = B.FixedArea(bodyGo.GetComponent<RectTransform>());
 
             BuildGMDeskCard(scroll);
+            if (_tab == "FREE AGENCY") BuildSummerLeagueReview(scroll, GameManager.Instance);
             if (_tab == "DRAFT") BuildDraft(scroll);
             else if (_tab == "TRADES") BuildTrades(scroll);
             else BuildFreeAgency(scroll);
@@ -186,6 +187,35 @@ namespace NBAHeadCoach.UI.GamePanels
                 NBAHeadCoach.Core.AI.AIGMController.Instance.GetKnownPersonalityDescription(),
                 11, FontStyle.Normal, UITheme.TextSecondary);
             t.gameObject.AddComponent<LayoutElement>().flexibleHeight = 1;
+        }
+
+        /// <summary>Post-Vegas review: your summer squad's lines and scout reads.</summary>
+        private void BuildSummerLeagueReview(RectTransform scroll, GameManager gm)
+        {
+            var sl = gm.SummerLeagueManager;
+            var mine = sl?.GetStandings()?.FirstOrDefault(t => t.TeamId == gm.PlayerTeamId);
+            if (mine == null || mine.RosterStats == null || mine.RosterStats.Count == 0) return;
+            if (mine.GamesPlayed == 0) return;
+
+            var card = B.Card(scroll, $"SUMMER LEAGUE REVIEW — {mine.Wins}-{mine.Losses}", _teamColor);
+            card.gameObject.AddComponent<LayoutElement>().preferredHeight =
+                70 + mine.RosterStats.Count * 40;
+            var rt = CardBody(card);
+
+            foreach (var line in mine.RosterStats.OrderByDescending(r => r.PointsPerGame))
+            {
+                string marker = line.ExceededExpectations ? " \u2b50" : line.Disappointed ? " \u26a0" : "";
+                var head = B.Text(rt, $"SLH_{line.PlayerId}",
+                    $"{line.PlayerName}{marker}  \u00b7  {line.PointsPerGame:F1} pts, {line.ReboundsPerGame:F1} reb, {line.AssistsPerGame:F1} ast",
+                    12, FontStyle.Bold, UITheme.TextPrimary);
+                head.gameObject.AddComponent<LayoutElement>().preferredHeight = 18;
+                if (!string.IsNullOrEmpty(line.ScoutingNotes))
+                {
+                    var note = B.Text(rt, $"SLN_{line.PlayerId}", line.ScoutingNotes,
+                        11, FontStyle.Italic, UITheme.TextSecondary);
+                    note.gameObject.AddComponent<LayoutElement>().preferredHeight = 18;
+                }
+            }
         }
 
         private void BuildInSeasonMarket(RectTransform scroll, GameManager gm, FreeAgentManager fam)

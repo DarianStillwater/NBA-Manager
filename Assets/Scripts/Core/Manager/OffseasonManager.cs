@@ -877,12 +877,24 @@ namespace NBAHeadCoach.Core.Manager
             {
                 var sl = gm.SummerLeagueManager;
                 if (sl == null) return;
-                sl.StartSummerLeague(_calendarYear);
+                sl.PlayerSource = id => gm.PlayerDatabase?.GetPlayer(id);
+                sl.StartSummerLeague(_calendarYear, gm.AllTeams);
                 var summary = sl.SkipSummerLeague();
                 if (summary != null)
+                {
+                    var mine = sl.GetStandings().FirstOrDefault(t => t.TeamId == gm.PlayerTeamId);
+                    var star = mine?.RosterStats?.OrderByDescending(r => r.PointsPerGame).FirstOrDefault();
+                    string body = mine == null
+                        ? "Rookies and young players got their reps in Las Vegas."
+                        : $"Your squad went {mine.Wins}-{mine.Losses}." +
+                          (star != null
+                              ? $" {star.PlayerName} led the way at {star.PointsPerGame:F1} a game."
+                              : "") +
+                          " Full breakdown at the Front Office desk.";
                     InboxService.Instance?.Publish(InboxMessageType.League, "League Office",
-                        "Summer League wraps up",
-                        "Rookies and young players got their reps in Las Vegas.");
+                        "Summer League wraps up", body,
+                        deepLinkPanelId: "FrontOffice");
+                }
             }
             catch (Exception ex)
             {
