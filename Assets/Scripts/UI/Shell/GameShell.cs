@@ -243,7 +243,7 @@ namespace NBAHeadCoach.UI.Shell
             azr.anchorMin = Vector2.zero; azr.anchorMax = new Vector2(1, 0);
             azr.pivot = new Vector2(0.5f, 0); azr.sizeDelta = new Vector2(0, actionsHeight);
             var avlg = actionZone.AddComponent<VerticalLayoutGroup>();
-            avlg.childControlWidth = true; avlg.childControlHeight = false;
+            avlg.childControlWidth = true; avlg.childControlHeight = true;
             avlg.childForceExpandWidth = true; avlg.childForceExpandHeight = false;
             avlg.padding = new RectOffset(0, 0, 0, 4); avlg.spacing = 1;
 
