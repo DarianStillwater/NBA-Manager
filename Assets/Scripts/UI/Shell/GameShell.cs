@@ -270,8 +270,10 @@ namespace NBAHeadCoach.UI.Shell
                 if (!Core.Data.RolePermissions.IsPanelHidden(nav[2])) visibleCount++;
 
             // Fit the list to the zone: shrink rows when there are many panels.
-            float zoneHeight = ((RectTransform)transform).rect.height
-                - UITheme.FMHeaderHeight - UITheme.FMAccentLineHeight - actionsHeight - 8;
+            float bodyHeight = parent.rect.height > 1f
+                ? parent.rect.height
+                : Screen.height - UITheme.FMHeaderHeight - UITheme.FMAccentLineHeight;
+            float zoneHeight = bodyHeight - actionsHeight - 8;
             float navHeight = Mathf.Clamp(
                 zoneHeight > 0 ? zoneHeight / Mathf.Max(1, visibleCount) - 1 : UITheme.FMNavItemHeight,
                 28f, UITheme.FMNavItemHeight);
