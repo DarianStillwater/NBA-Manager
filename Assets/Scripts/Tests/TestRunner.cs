@@ -57,6 +57,7 @@ namespace NBAHeadCoach.Tests
             RunTest<CoachBehaviorTest>("Coach Behavior & Ejection");
             RunTest<PossessionBridgeTest>("Possession Bridge & FULL default");
             RunTest<ExitSimRestTest>("Exit / Sim Rest");
+            RunTest<HighlightSelectionTest>("Highlight Selection");
             RunTest<ChoreographyTest>("Possession Choreography");
             RunTest<RegistryOrderTest>("System Registry Order");
             RunTest<GameCompletionParityTest>("Game Completion Parity");

@@ -526,6 +526,14 @@ namespace NBAHeadCoach.Core
             if (evt.Type == EventType.Block || evt.Type == EventType.Steal)
                 return true;
 
+            // Fast-break buckets are highlights (any finish, not just a break dunk)
+            if (evt.IsFastBreak && evt.PointsScored > 0)
+                return true;
+
+            // Buzzer-beaters: a made shot as the clock expires
+            if (evt.PointsScored > 0 && evt.GameClock <= 1.0f)
+                return true;
+
             // And-ones are highlights
             if (evt.IsAndOne)
                 return true;
