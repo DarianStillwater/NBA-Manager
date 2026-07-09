@@ -745,6 +745,62 @@ namespace NBAHeadCoach.Core.Manager
         /// everyone else once free agency opens July 6. Tries Bird rights, then cap
         /// space, then a minimum deal.
         /// </summary>
+        /// <summary>
+        /// Sign an own free agent at NEGOTIATED terms (from a ContractNegotiationManager
+        /// session the agent accepted) — same cap plumbing as the one-shot path, but
+        /// the agreed salary and years are honored instead of the market lookup.
+        /// </summary>
+        public bool FinalizeNegotiatedSigning(GameManager gm, string playerId, int years,
+            long annualSalary, out string failReason)
+        {
+            failReason = "";
+            var fam = gm?.FreeAgents;
+            var player = gm?.PlayerDatabase?.GetPlayer(playerId);
+            var team = gm?.GetPlayerTeam();
+            if (fam == null || player == null || team == null) { failReason = "Unavailable."; return false; }
+
+            var fa = fam.GetFreeAgents().FirstOrDefault(f => f.PlayerId == playerId);
+            if (fa == null) { failReason = "No longer a free agent."; return false; }
+            if (team.RosterPlayerIds.Count >= 15) { failReason = "Roster is full (15)."; return false; }
+
+            years = Mathf.Clamp(years, 1, 5);
+            annualSalary = Math.Max(1_200_000L, annualSalary);
+            bool ownFreeAgent = fa.PreviousTeamId == team.TeamId;
+
+            var methods = ownFreeAgent
+                ? new[] { SigningMethod.BirdRights, SigningMethod.CapSpace, SigningMethod.MinimumSalary }
+                : new[] { SigningMethod.CapSpace, SigningMethod.MinimumSalary };
+
+            foreach (var method in methods)
+            {
+                var offer = new SigningOffer
+                {
+                    AnnualSalary = method == SigningMethod.MinimumSalary ? 1_200_000L : annualSalary,
+                    Years = years,
+                    Method = method,
+                    PlayerYearsExperience = player.YearsPro
+                };
+
+                var check = fam.CanSign(team.TeamId, playerId, offer);
+                if (!check.IsValid) { failReason = check.Reason; continue; }
+
+                if (fam.ExecuteSigning(team.TeamId, playerId, offer))
+                {
+                    if (!team.RosterPlayerIds.Contains(playerId))
+                        team.RosterPlayerIds.Add(playerId);
+
+                    InboxService.Instance?.Publish(InboxMessageType.League, "League Office",
+                        $"{player.FullName} re-signs with {team.Name}",
+                        $"Agreed at the table: {years} years, ${offer.AnnualSalary * years / 1_000_000f:0.0}M total.",
+                        highPriority: true);
+                    return true;
+                }
+            }
+
+            if (string.IsNullOrEmpty(failReason)) failReason = "Signing failed validation.";
+            return false;
+        }
+
         public bool SignFreeAgentToPlayerTeam(GameManager gm, string playerId, int years, out string failReason)
         {
             failReason = "";

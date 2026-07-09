@@ -10,7 +10,7 @@ namespace NBAHeadCoach.Core.Manager
     /// Manages player agents and contract negotiations.
     /// Uses real NBA agent names and personalities.
     /// </summary>
-    public class AgentManager
+    public class AgentManager : ISaveSection
     {
         private List<Agent> _agents = new List<Agent>();
         private Dictionary<string, string> _playerAgents = new Dictionary<string, string>(); // playerId -> agentId
@@ -407,6 +407,43 @@ namespace NBAHeadCoach.Core.Manager
         {
             return _activeNegotiations.TryGetValue(negotiationId, out var n) ? n : null;
         }
+
+        // ==================== PERSISTENCE ====================
+
+        public string SystemId => "Agents";
+
+        public void WriteSave(Data.SaveData data)
+        {
+            if (data == null) return;
+            var dto = new AgentAssignmentsSaveData();
+            foreach (var kv in _playerAgents)
+                dto.Assignments.Add(new AgentAssignmentRecord { PlayerId = kv.Key, AgentId = kv.Value });
+            data.AgentAssignments = dto;
+        }
+
+        public void ReadSave(Data.SaveData data, in SaveReadContext ctx)
+        {
+            var dto = data?.AgentAssignments;
+            if (dto?.Assignments == null) return;
+            _playerAgents.Clear();
+            foreach (var rec in dto.Assignments)
+                if (!string.IsNullOrEmpty(rec.PlayerId) && !string.IsNullOrEmpty(rec.AgentId))
+                    _playerAgents[rec.PlayerId] = rec.AgentId;
+        }
+    }
+
+    /// <summary>JsonUtility-safe player-to-agent assignment table.</summary>
+    [Serializable]
+    public class AgentAssignmentsSaveData
+    {
+        public List<AgentAssignmentRecord> Assignments = new List<AgentAssignmentRecord>();
+    }
+
+    [Serializable]
+    public class AgentAssignmentRecord
+    {
+        public string PlayerId;
+        public string AgentId;
     }
 
     // ==================== DATA CLASSES ====================

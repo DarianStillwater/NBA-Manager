@@ -414,6 +414,8 @@ namespace NBAHeadCoach.Core
             Systems.Register(new Manager.AIGMSystem());
             Systems.Register(_summerLeagueManager);
             Systems.Register(_trainingCampManager);
+            Systems.Register(_agentManager);
+            Systems.Register(_contractNegotiationManager);
 
             Systems.Register(_jobMarketManager);      // also ISaveSection (openings/applications)
             Systems.Register(_mentorshipManager);

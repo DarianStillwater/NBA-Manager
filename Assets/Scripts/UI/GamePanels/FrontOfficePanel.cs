@@ -7,6 +7,7 @@ using NBAHeadCoach.Core;
 using NBAHeadCoach.Core.Data;
 using NBAHeadCoach.Core.Manager;
 using NBAHeadCoach.UI.Shell;
+using ContractOffer = NBAHeadCoach.Core.Manager.ContractOffer;
 using B = NBAHeadCoach.UI.Shell.UIBuilder;
 
 namespace NBAHeadCoach.UI.GamePanels
@@ -28,6 +29,16 @@ namespace NBAHeadCoach.UI.GamePanels
         private readonly HashSet<string> _getIds = new HashSet<string>();
         private string _activeNegotiationId;
         private string _status;
+
+        // Contract-negotiation state (re-signing own free agents)
+        private string _contractTalkId;
+        private string _contractTalkPlayerId;
+        private int _offerYears = 2;
+        private long _offerSalary = 10_000_000L;
+        private bool _offerPlayerOption;
+        private bool _offerNoTrade;
+        private bool _offerKicker;
+        private string _contractTalkMsg;
 
         public void SetDeepLinkPayload(string payload)
         {
@@ -68,6 +79,7 @@ namespace NBAHeadCoach.UI.GamePanels
             var scroll = B.FixedArea(bodyGo.GetComponent<RectTransform>());
 
             BuildGMDeskCard(scroll);
+            if (_tab == "FREE AGENCY") BuildContractTalksCard(scroll, GameManager.Instance);
             if (_tab == "FREE AGENCY") BuildTrainingCampCard(scroll, GameManager.Instance);
             if (_tab == "FREE AGENCY") BuildSummerLeagueReview(scroll, GameManager.Instance);
             if (_tab == "DRAFT") BuildDraft(scroll);
@@ -386,8 +398,9 @@ namespace NBAHeadCoach.UI.GamePanels
                 if (canSign)
                 {
                     string pid = fa.PlayerId;
+                    bool ownFa = fa.PreviousTeamId == _team.TeamId;
                     bool viaGM = !NBAHeadCoach.Core.Data.RolePermissions.CanMakeRosterMoves;
-                    string label = viaGM ? "ASK GM" : (fa.PreviousTeamId == _team.TeamId ? "RE-SIGN" : "SIGN");
+                    string label = viaGM ? "ASK GM" : (ownFa ? "NEGOTIATE" : "SIGN");
                     RowButton(row, "Sign", label, UITheme.Success, () =>
                     {
                         Action doSign = () =>
@@ -396,12 +409,187 @@ namespace NBAHeadCoach.UI.GamePanels
                             if (!ok) Debug.LogWarning($"[FrontOffice] Signing failed: {why}");
                         };
                         if (viaGM)
+                        {
                             AskGM(NBAHeadCoach.Core.Data.RosterRequest.CreateSigningRequest(
                                 pid, player.FullName, "I want this player in camp."), doSign);
+                        }
+                        else if (ownFa)
+                        {
+                            OpenContractTalks(GameManager.Instance, off, player);
+                            Refresh();
+                        }
                         else { doSign(); Refresh(); }
                     });
                 }
             }
+        }
+
+        // ==================== CONTRACT TALKS (RE-SIGNING) ====================
+
+        private void OpenContractTalks(GameManager gm, OffseasonManager off, Player player)
+        {
+            var neg = gm.ContractNegotiationManager;
+            if (neg == null) return;
+
+            long market = off.EstimateMarketSalary(player);
+            bool star = player.OverallRating >= 82;
+            bool vet = player.YearsPro >= 8;
+            var session = neg.StartNegotiation(player.PlayerId, player.FullName, _team.TeamId,
+                market, PlayerPriorities.Generate(vet, star, player.YearsPro <= 3));
+
+            _contractTalkId = session.NegotiationId;
+            _contractTalkPlayerId = player.PlayerId;
+            _offerYears = 2;
+            _offerSalary = market;
+            _offerPlayerOption = false;
+            _offerNoTrade = false;
+            _offerKicker = false;
+            _contractTalkMsg = gm.ContractNegotiationManager
+                .GetSalaryIntel(player.PlayerId, _team.TeamId, market);
+        }
+
+        private void BuildContractTalksCard(RectTransform scroll, GameManager gm)
+        {
+            if (string.IsNullOrEmpty(_contractTalkId)) return;
+            var neg = gm.ContractNegotiationManager;
+            var session = neg?.GetNegotiation(_contractTalkId);
+            if (session == null) { _contractTalkId = null; return; }
+
+            var agent = gm.AgentManager?.GetAgentForPlayer(session.PlayerId);
+            var card = B.Card(scroll, $"CONTRACT TALKS — {session.PlayerName}", UITheme.AccentPrimary);
+            card.gameObject.AddComponent<LayoutElement>().preferredHeight = 210;
+            var rt = CardBody(card);
+
+            var head = B.Text(rt, "Agent",
+                $"Across the table: {agent?.Name ?? "the agent"}   ·   Round {session.CurrentRound + 1} of at most {session.MaxRoundsBeforeWalkaway}",
+                11, FontStyle.Italic, UITheme.TextSecondary);
+            head.gameObject.AddComponent<LayoutElement>().preferredHeight = 18;
+
+            if (!string.IsNullOrEmpty(_contractTalkMsg))
+            {
+                var msg = B.Text(rt, "Msg", _contractTalkMsg, 11, FontStyle.Normal, UITheme.TextPrimary);
+                msg.gameObject.AddComponent<LayoutElement>().preferredHeight = 34;
+            }
+            if (session.CurrentAgentCounter != null)
+            {
+                var c = session.CurrentAgentCounter;
+                var ct = B.Text(rt, "Counter",
+                    $"Their counter: {c.Years} yrs at ${c.AnnualSalary / 1_000_000f:F1}M per",
+                    11, FontStyle.Bold, UITheme.Warning);
+                ct.gameObject.AddComponent<LayoutElement>().preferredHeight = 18;
+            }
+
+            // Terms row: years / salary steppers + option toggles
+            var terms = B.Child(rt, "Terms");
+            terms.AddComponent<LayoutElement>().preferredHeight = 26;
+            var th = terms.AddComponent<HorizontalLayoutGroup>();
+            th.childControlWidth = true; th.childControlHeight = true;
+            th.childForceExpandWidth = false; th.spacing = 6;
+            var trt = terms.GetComponent<RectTransform>();
+
+            SmallBtn(trt, "-", 22, () => { _offerYears = Mathf.Max(1, _offerYears - 1); Refresh(); });
+            Label(trt, $"{_offerYears} yrs", 46);
+            SmallBtn(trt, "+", 22, () => { _offerYears = Mathf.Min(5, _offerYears + 1); Refresh(); });
+            SmallBtn(trt, "-", 22, () => { _offerSalary = Math.Max(1_200_000L, _offerSalary - 500_000L); Refresh(); });
+            Label(trt, $"${_offerSalary / 1_000_000f:F1}M/yr", 76);
+            SmallBtn(trt, "+", 22, () => { _offerSalary += 500_000L; Refresh(); });
+            SmallBtn(trt, _offerPlayerOption ? "PO ✓" : "PO", 44,
+                () => { _offerPlayerOption = !_offerPlayerOption; Refresh(); });
+            SmallBtn(trt, _offerNoTrade ? "NTC ✓" : "NTC", 48,
+                () => { _offerNoTrade = !_offerNoTrade; Refresh(); });
+            SmallBtn(trt, _offerKicker ? "KICKER ✓" : "KICKER", 66,
+                () => { _offerKicker = !_offerKicker; Refresh(); });
+
+            // Actions
+            var actions = B.Child(rt, "Actions");
+            actions.AddComponent<LayoutElement>().preferredHeight = 28;
+            var ah = actions.AddComponent<HorizontalLayoutGroup>();
+            ah.childControlWidth = true; ah.childControlHeight = true;
+            ah.childForceExpandWidth = false; ah.spacing = 8;
+            var art = actions.GetComponent<RectTransform>();
+
+            RowButton(art.gameObject, "Submit", "SUBMIT OFFER", UITheme.Success,
+                () => SubmitContractOffer(gm), width: 130);
+            RowButton(art.gameObject, "Walk", "WALK AWAY", UITheme.Warning, () =>
+            {
+                gm.ContractNegotiationManager?.AbandonNegotiation(_contractTalkId);
+                _contractTalkId = null;
+                _status = "You walked away from the table.";
+                Refresh();
+            }, width: 110);
+        }
+
+        private void SubmitContractOffer(GameManager gm)
+        {
+            var neg = gm.ContractNegotiationManager;
+            var session = neg?.GetNegotiation(_contractTalkId);
+            if (session == null) { _contractTalkId = null; Refresh(); return; }
+
+            var offer = new ContractOffer
+            {
+                OfferId = Guid.NewGuid().ToString(),
+                OfferingTeamId = _team.TeamId,
+                PlayerId = session.PlayerId,
+                Years = _offerYears,
+                AnnualSalary = _offerSalary,
+                TotalValue = _offerYears * _offerSalary,
+                HasPlayerOption = _offerPlayerOption,
+                PlayerOptionYear = _offerPlayerOption ? _offerYears : 0,
+                HasNoTradeClause = _offerNoTrade,
+                HasTradeKicker = _offerKicker,
+                TradeKickerPercent = _offerKicker ? 15f : 0f,
+                IncentiveDescriptions = new System.Collections.Generic.List<string>(),
+                OfferDate = DateTime.Now,
+                ExpirationDate = DateTime.Now.AddDays(7)
+            };
+
+            var response = neg.SubmitOffer(_contractTalkId, offer);
+            _contractTalkMsg = response?.Message ?? "";
+
+            switch (response?.ResultingStatus)
+            {
+                case NegotiationStatus.Accepted:
+                    bool ok = gm.Offseason.FinalizeNegotiatedSigning(gm, session.PlayerId,
+                        _offerYears, _offerSalary, out string why);
+                    _status = ok
+                        ? $"{session.PlayerName} agreed: {_offerYears} yrs, ${_offerSalary * _offerYears / 1_000_000f:F1}M total."
+                        : $"Terms agreed but the signing failed: {why}";
+                    _contractTalkId = null;
+                    break;
+
+                case NegotiationStatus.CounterOfferReceived:
+                    var counter = neg.GetNegotiation(_contractTalkId)?.CurrentAgentCounter;
+                    if (counter != null)
+                    {
+                        _offerYears = Mathf.Clamp(counter.Years, 1, 5);
+                        _offerSalary = counter.AnnualSalary;
+                    }
+                    break;
+
+                case NegotiationStatus.Rejected:
+                case NegotiationStatus.WalkedAway:
+                    _status = $"Talks with {session.PlayerName} are over: {response.Message}";
+                    _contractTalkId = null;
+                    break;
+            }
+            Refresh();
+        }
+
+        private void SmallBtn(RectTransform parent, string label, float width, Action onClick)
+        {
+            var go = B.Child(parent, $"Btn_{label}");
+            go.AddComponent<LayoutElement>().preferredWidth = width;
+            go.AddComponent<Image>().color = UITheme.DarkenColor(UITheme.AccentSecondary, 0.55f);
+            go.AddComponent<Button>().onClick.AddListener(() => onClick?.Invoke());
+            var t = B.Text(go.GetComponent<RectTransform>(), "T", label, 11, FontStyle.Bold, Color.white);
+            B.Stretch(t.gameObject); t.alignment = TextAnchor.MiddleCenter;
+        }
+
+        private void Label(RectTransform parent, string text, float width)
+        {
+            var t = B.Text(parent, $"L_{text}", text, 12, FontStyle.Bold, UITheme.TextPrimary);
+            t.gameObject.AddComponent<LayoutElement>().preferredWidth = width;
+            t.alignment = TextAnchor.MiddleCenter;
         }
 
         // ==================== TRADES ====================

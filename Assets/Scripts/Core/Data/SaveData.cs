@@ -110,6 +110,8 @@ namespace NBAHeadCoach.Core.Data
         public NBAHeadCoach.Core.Manager.AllStarSaveData AllStarData;
         public NBAHeadCoach.Core.Manager.SummerLeagueSaveData SummerLeagueData;
         public NBAHeadCoach.Core.Manager.TrainingCampSectionData TrainingCampData;
+        public NBAHeadCoach.Core.Manager.AgentAssignmentsSaveData AgentAssignments;
+        public NBAHeadCoach.Core.Manager.NegotiationsSaveData NegotiationsData;
 
         /// <summary>
         /// Create a display-friendly summary of the save
