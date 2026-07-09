@@ -27,6 +27,11 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
         public int TagIndex;         // offensive player the helper rotates to (-1 = none)
         public bool IsZone;          // hold a zone spot (shifted toward the ball) instead of man-tracking
         public CourtPosition ZoneSpot;
+
+        // Execution quality, decided once from the player's attributes:
+        public float ReactDelay;         // seconds; negative = anticipates the pass in flight, positive = reacts late
+        public float SpeedMult;          // 0.85–1.15 from Speed/Acceleration (capped for the per-tick movement bound)
+        public float CloseoutTightness;  // 0.6–1.0; low = stops short / fly-by closeouts
     }
 
     /// <summary>Pure defensive assignment planner. No side effects, no UnityEngine, no per-tick RNG.</summary>
@@ -41,6 +46,7 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
             var d = new DefenderAssignment[5];
             for (int i = 0; i < 5; i++)
             {
+                var p = s?.Defense != null && i < s.Defense.Length ? s.Defense[i] : null;
                 d[i] = new DefenderAssignment
                 {
                     ManIndex = i,
@@ -48,7 +54,10 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
                     SagDepth = SagForRole(i, plan, rng),
                     Nav = ScreenNavigation.FightOver,
                     IsHelper = false,
-                    TagIndex = -1
+                    TagIndex = -1,
+                    ReactDelay = ReactDelayFor(p, rng),
+                    SpeedMult = SpeedMultFor(p),
+                    CloseoutTightness = TightnessFor(p)
                 };
             }
 
@@ -147,6 +156,35 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
                 d[i].ZoneSpot = Spot(fromRim, lateral);
             }
         }
+
+        // ── Execution quality from attributes (all decided ONCE at build) ──
+
+        /// <summary>High defensive IQ anticipates the pass in flight (negative delay);
+        /// low IQ tracks a stale picture of the ball and reacts after the catch.</summary>
+        private static float ReactDelayFor(Player p, System.Random rng)
+        {
+            float iq = p != null ? p.DefensiveIQ : 60f;
+            float u = Clamp01((iq - 40f) / 50f);                 // 40 → 0, 90 → 1
+            float delay = 0.55f - u * 0.70f;                     // 40 IQ → +0.55s, 90 IQ → −0.15s
+            delay += (float)(rng.NextDouble() * 0.10 - 0.05);    // once-rolled ±0.05s
+            return delay;
+        }
+
+        private static float SpeedMultFor(Player p)
+        {
+            float sp = p != null ? (p.Speed + p.Acceleration) * 0.5f : 60f;
+            float mult = 0.85f + Clamp01((sp - 40f) / 50f) * 0.30f;
+            return mult > 1.15f ? 1.15f : mult;                  // keeps ≤8ft/tick with sprint speed
+        }
+
+        private static float TightnessFor(Player p)
+        {
+            float cc = p?.Tendencies != null ? p.Tendencies.CloseoutControl : 50f;
+            float dp = p != null ? p.Defense_Perimeter : 60f;
+            return 0.6f + Clamp01(((cc + dp) * 0.5f - 30f) / 50f) * 0.4f;
+        }
+
+        private static float Clamp01(float v) => v < 0f ? 0f : (v > 1f ? 1f : v);
 
         private static float SagForRole(int i, ActionPlan plan, System.Random rng)
         {

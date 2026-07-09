@@ -1300,10 +1300,36 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
                 }
                 else if (_defPlan[i].IsZone)
                 {
-                    // Zone: hold the formation anchor, shading toward the ball —
-                    // never chasing a man across the floor.
-                    var ballPos = new CourtPosition(ball.X, ball.Y);
-                    target = Blend(_defPlan[i].ZoneSpot, ballPos, 0.30f);
+                    // Organic zone: each defender plays a ROLE for wherever the ball
+                    // is — the area owner closes out, neighbors pinch, weak side
+                    // sinks, 1-3-1 traps corners. High-IQ defenders rotate while the
+                    // pass is still in the air; low-IQ defenders track a stale ball.
+                    var a = _defPlan[i];
+                    CourtPosition effBall;
+                    var seg = BallSegmentAt(t);
+                    if (seg is PassSegment ps && t >= ps.T0 + a.ReactDelay)
+                    {
+                        effBall = ps.Destination;            // jump the rotation to the catch point
+                    }
+                    else
+                    {
+                        var lagged = SampleBall(Math.Max(0f, t - Math.Max(0f, a.ReactDelay)));
+                        effBall = new CourtPosition(lagged.X, lagged.Y);
+                    }
+
+                    var (zoneTarget, role) = ZoneBehavior.ComputeTarget(
+                        DefensiveScheme, _defPlan, i, effBall, _rimX);
+
+                    // Sloppy closeouts stop short of the ball; disciplined ones arrive.
+                    if (role == ZoneRole.BallArea)
+                        zoneTarget = zoneTarget.MoveTowards(a.ZoneSpot, (1f - a.CloseoutTightness) * 3f);
+
+                    target = zoneTarget;
+                    speed = DefenseSpeed * a.SpeedMult;
+                    // Long rotations (skip passes, corner traps) are dead sprints.
+                    if ((role == ZoneRole.BallArea || role == ZoneRole.Trap) &&
+                        _defPos[i].DistanceTo(target) > 8f)
+                        speed = DefenseSprint * a.SpeedMult;
                 }
                 else
                 {
@@ -1507,6 +1533,8 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
             public PassSegment(float t0, float t1, CourtPosition from, CourtPosition to,
                 PassStyle style = PassStyle.Chest)
             { T0 = t0; T1 = t1; _from = from; _to = to; _style = style; }
+            /// <summary>Where this pass lands — lets smart zone defenders rotate while it's in the air.</summary>
+            public CourtPosition Destination => _to;
             public override BallState Sample(float t) => BallFlight.SamplePass(_from, _to, U(t), _style);
         }
 
