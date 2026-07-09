@@ -149,9 +149,10 @@ namespace NBAHeadCoach.UI.Components
             return new Vector2(-w * 0.31f, y);
         }
 
-        private void CreateBenchDot(string playerId, Team team, bool isHome, Vector2 pos)
+        private AnimatedPlayerDot CreateBenchDot(string playerId, Team team, bool isHome, Vector2 pos)
         {
-            if (string.IsNullOrEmpty(playerId) || _benchDots.ContainsKey(playerId)) return;
+            if (string.IsNullOrEmpty(playerId) || _benchDots.ContainsKey(playerId))
+                return string.IsNullOrEmpty(playerId) ? null : _benchDots.GetValueOrDefault(playerId);
 
             var player = GameManager.Instance?.PlayerDatabase?.GetPlayer(playerId);
             int jersey = int.TryParse(player?.JerseyNumber, out var jn) ? jn : -1;
@@ -172,12 +173,101 @@ namespace NBAHeadCoach.UI.Components
             outline.effectDistance = new Vector2(1f, -1f);
 
             _benchDots[playerId] = dot;
+            return dot;
+        }
+
+        /// <summary>Animate a substitution as a swap of seats: the incoming reserve walks from his
+        /// bench spot onto the floor (taking the outgoing player's position), while the outgoing
+        /// player walks off to the seat the reserve just vacated. Bench layout stays stable because
+        /// the two simply trade places. Falls back to an instant swap if either dot is missing.</summary>
+        public void AnimateSubstitution(string outId, string inId, bool isHome)
+        {
+            if (string.IsNullOrEmpty(outId) || string.IsNullOrEmpty(inId)) return;
+
+            var bench = isHome ? _homeBench : _awayBench;
+            int benchIdx = bench.IndexOf(inId);
+
+            // Both dots must be where we expect (incoming on bench, outgoing on court).
+            if (benchIdx < 0 || !_benchDots.TryGetValue(inId, out var inBenchDot) || inBenchDot == null ||
+                !_playerDots.TryGetValue(outId, out var outCourtDot) || outCourtDot == null)
+            {
+                // Structures out of sync (e.g. missing DB entry) — hard swap to stay consistent.
+                var team = isHome ? _homeTeam : _awayTeam;
+                var newHome = new List<string>(_homeLineup);
+                var newAway = new List<string>(_awayLineup);
+                var target = isHome ? newHome : newAway;
+                int li = target.IndexOf(outId);
+                if (li >= 0) target[li] = inId;
+                UpdateLineup(newHome, newAway);
+                return;
+            }
+
+            Vector2 benchSeat = inBenchDot.RectTransform.anchoredPosition;   // the vacated seat
+            Vector2 courtSpot = outCourtDot.RectTransform.anchoredPosition;  // the spot being taken
+            var team2 = isHome ? _homeTeam : _awayTeam;
+
+            // Incoming: destroy the small bench dot, spawn a full-size on-court dot at the bench,
+            // then walk it to the court spot (AnimatedPlayerDot lerps toward its target on its own).
+            RemoveBenchDot(inId);
+            bench[benchIdx] = outId;
+            var inCourtDot = CreateDot(inId, team2, isHome);
+            if (inCourtDot != null)
+            {
+                inCourtDot.SetPositionImmediate(benchSeat);
+                inCourtDot.SetTargetPosition(courtSpot);
+            }
+            _homeLineup = isHome ? ReplaceId(_homeLineup, outId, inId) : _homeLineup;
+            _awayLineup = !isHome ? ReplaceId(_awayLineup, outId, inId) : _awayLineup;
+
+            // Outgoing: destroy the on-court dot, spawn a small bench dot at the court spot,
+            // then walk it to the vacated seat.
+            RemoveDot(outId);
+            var outBenchDot = CreateBenchDot(outId, team2, isHome, courtSpot);
+            _benchDots[outId] = outBenchDot;
+            if (outBenchDot != null) outBenchDot.SetTargetPosition(benchSeat);
+        }
+
+        private static List<string> ReplaceId(List<string> src, string oldId, string newId)
+        {
+            var copy = new List<string>(src);
+            int i = copy.IndexOf(oldId);
+            if (i >= 0) copy[i] = newId;
+            return copy;
+        }
+
+        private void RemoveBenchDot(string playerId)
+        {
+            if (_benchDots.TryGetValue(playerId, out var dot))
+            {
+                if (dot != null) Destroy(dot.gameObject);
+                _benchDots.Remove(playerId);
+            }
+        }
+
+        /// <summary>Snap all in-flight substitution walks to their targets. Called at the start of a
+        /// possession so a walk never fights the timeline's SetPositionImmediate.</summary>
+        public void FinalizeSubstitutionWalks()
+        {
+            foreach (var kvp in _playerDots)
+                if (kvp.Value != null) kvp.Value.SnapToTarget();
+            foreach (var kvp in _benchDots)
+                if (kvp.Value != null) kvp.Value.SnapToTarget();
         }
 
         // Test/inspection accessors
         public int BenchCount(bool isHome) => (isHome ? _homeBench : _awayBench).Count;
         public bool IsOnBench(string playerId) => _benchDots.ContainsKey(playerId);
+        public bool IsOnCourt(string playerId) => _playerDots.ContainsKey(playerId);
         public bool HasCoach(bool isHome) => (isHome ? _homeCoach : _awayCoach) != null;
+
+        public bool TryGetActorPosition(string playerId, out Vector2 pos)
+        {
+            if (_playerDots.TryGetValue(playerId, out var d) && d != null)
+            { pos = d.RectTransform.anchoredPosition; return true; }
+            if (_benchDots.TryGetValue(playerId, out var b) && b != null)
+            { pos = b.RectTransform.anchoredPosition; return true; }
+            pos = Vector2.zero; return false;
+        }
 
         #endregion
 
@@ -202,6 +292,10 @@ namespace NBAHeadCoach.UI.Components
         /// <summary>Cache a possession's timeline and reset the playback cursor.</summary>
         public void BeginPossession(PossessionPlaybackPacket packet)
         {
+            // A live possession is about to drive positions via SetPositionImmediate — make sure any
+            // in-flight substitution walk has resolved so the two don't fight.
+            FinalizeSubstitutionWalks();
+
             _timeline = packet?.Timeline;
             _cursor = 0;
 
@@ -338,9 +432,10 @@ namespace NBAHeadCoach.UI.Components
 
         #region Internals
 
-        private void CreateDot(string playerId, Team team, bool isHome)
+        private AnimatedPlayerDot CreateDot(string playerId, Team team, bool isHome)
         {
-            if (string.IsNullOrEmpty(playerId) || _playerDots.ContainsKey(playerId)) return;
+            if (string.IsNullOrEmpty(playerId) || _playerDots.ContainsKey(playerId))
+                return string.IsNullOrEmpty(playerId) ? null : _playerDots.GetValueOrDefault(playerId);
 
             var player = GameManager.Instance?.PlayerDatabase?.GetPlayer(playerId);
             int jersey = int.TryParse(player?.JerseyNumber, out var jn) ? jn : -1;
@@ -356,6 +451,7 @@ namespace NBAHeadCoach.UI.Components
             outline.effectDistance = new Vector2(1.5f, -1.5f);
 
             _playerDots[playerId] = dot;
+            return dot;
         }
 
         private void RemoveDot(string playerId)

@@ -571,9 +571,12 @@ namespace NBAHeadCoach.UI.Match
 
         private void OnLineupChanged(string teamId, string outId, string inId)
         {
-            // Swap court dots for both manual subs and foul-out auto-subs.
+            // Swap court dots for both manual subs and foul-out auto-subs. The player walks
+            // off to the bench and the reserve walks on (see MatchCourtView.AnimateSubstitution);
+            // subs fire at dead balls, so this never fights a live possession.
             if (_courtView == null || _simController == null) return;
-            _courtView.UpdateLineup(_simController.CurrentHomeLineup, _simController.CurrentAwayLineup);
+            bool isHome = _homeTeam != null && teamId == _homeTeam.TeamId;
+            _courtView.AnimateSubstitution(outId, inId, isHome);
             _courtView.RefreshPlayerStats(_simController.LiveBoxScore);
         }
 

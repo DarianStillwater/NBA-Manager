@@ -157,6 +157,14 @@ namespace NBAHeadCoach.UI.Components
             _rectTransform.anchoredPosition = position;
         }
 
+        /// <summary>Jump immediately to the current target, ending any in-progress walk. Used to
+        /// finalize a substitution walk before the possession timeline takes over positioning.</summary>
+        public void SnapToTarget()
+        {
+            _currentPosition = _targetPosition;
+            if (_rectTransform != null) _rectTransform.anchoredPosition = _targetPosition;
+        }
+
         /// <summary>
         /// Set whether this player has the ball (shows highlight ring).
         /// </summary>
