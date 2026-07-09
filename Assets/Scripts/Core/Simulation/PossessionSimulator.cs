@@ -100,6 +100,9 @@ namespace NBAHeadCoach.Core.Simulation
             _offenseTeamId = offenseTeamId;
             _defenseTeamId = defenseTeamId;
 
+            // Scheme familiarity clocks (no RNG consumed)
+            UpdateFamiliarity();
+
             // Create game context for foul/FT calculations
             _gameContext = new GameContext
             {
@@ -1286,9 +1289,97 @@ namespace NBAHeadCoach.Core.Simulation
             return Mathf.Clamp(prob * mod, 0.02f, 0.95f);
         }
 
-        /// <summary>Extra lapse risk right after a scheme change (fleshed out with the
-        /// familiarity window; neutral by default).</summary>
-        private float DefensiveFamiliarityMult() => 1f;
+        // ── Scheme familiarity: a mid-game scheme change takes a few possessions
+        // to settle in. Tracked per team per game (keyed by team id; neutral when
+        // no id is supplied, e.g. bare test harnesses). Reset via ResetGameState().
+        private class FamiliarityState
+        {
+            public bool Seen;
+            public DefensiveSchemeType LastScheme;
+            public bool OffSeen;
+            public int LastOffSignature;
+            public int SinceSchemeChange = 999;
+            public int SinceSystemChange = 999;
+        }
+        private readonly Dictionary<string, FamiliarityState> _familiarity =
+            new Dictionary<string, FamiliarityState>();
+        private float _currentDefFamiliarityMult = 1f;
+        private float _currentOffFamiliarityMult = 1f;
+
+        private const int FAMILIARITY_WINDOW = 6;
+
+        /// <summary>Clear per-game familiarity tracking. Call at every game start.</summary>
+        public void ResetGameState()
+        {
+            _familiarity.Clear();
+            _currentDefFamiliarityMult = 1f;
+            _currentOffFamiliarityMult = 1f;
+        }
+
+        private FamiliarityState Fam(string teamId)
+        {
+            if (!_familiarity.TryGetValue(teamId, out var s))
+            {
+                s = new FamiliarityState();
+                _familiarity[teamId] = s;
+            }
+            return s;
+        }
+
+        /// <summary>The offense's "system signature" — a change means new looks to learn.</summary>
+        private static int OffensiveSignature(TeamStrategy s)
+        {
+            int sys = (int)(s?.OffensiveSystem?.PrimarySystem ?? 0);
+            int three = (s?.ThreePointFrequency ?? 40) / 10;
+            int rim = (s?.RimAttackFrequency ?? 40) / 10;
+            return sys * 10000 + three * 100 + rim;
+        }
+
+        /// <summary>1 + up to ~80% extra mistake risk right after a change, decaying
+        /// over the window — faster for smart lineups, slower for low-IQ ones.</summary>
+        private static float FamiliarityMult(int sincePossessions, Player[] lineup)
+        {
+            if (sincePossessions >= FAMILIARITY_WINDOW) return 1f;
+            float avgIQ = 0f; int n = 0;
+            if (lineup != null)
+                foreach (var p in lineup)
+                    if (p != null) { avgIQ += p.BasketballIQ; n++; }
+            avgIQ = n > 0 ? avgIQ / n : 70f;
+            float iqScale = 70f / Mathf.Clamp(avgIQ, 40f, 100f);
+            float decay = 1f - (float)sincePossessions / FAMILIARITY_WINDOW;
+            return 1f + 0.8f * decay * iqScale;
+        }
+
+        /// <summary>Advance the familiarity clocks for this possession's two teams.</summary>
+        private void UpdateFamiliarity()
+        {
+            _currentDefFamiliarityMult = 1f;
+            _currentOffFamiliarityMult = 1f;
+
+            if (!string.IsNullOrEmpty(_defenseTeamId))
+            {
+                var scheme = _defenseStrategy?.DefensiveSystem?.PrimaryScheme
+                             ?? DefensiveSchemeType.ManToManStandard;
+                var s = Fam(_defenseTeamId);
+                if (!s.Seen) { s.Seen = true; s.LastScheme = scheme; }
+                else if (scheme != s.LastScheme) { s.LastScheme = scheme; s.SinceSchemeChange = 0; }
+                else if (s.SinceSchemeChange < 999) s.SinceSchemeChange++;
+                _currentDefFamiliarityMult = FamiliarityMult(s.SinceSchemeChange, _defensePlayers);
+            }
+
+            if (!string.IsNullOrEmpty(_offenseTeamId))
+            {
+                int sig = OffensiveSignature(_offenseStrategy);
+                var s = Fam(_offenseTeamId);
+                if (!s.OffSeen) { s.OffSeen = true; s.LastOffSignature = sig; }
+                else if (sig != s.LastOffSignature) { s.LastOffSignature = sig; s.SinceSystemChange = 0; }
+                else if (s.SinceSystemChange < 999) s.SinceSystemChange++;
+                _currentOffFamiliarityMult = FamiliarityMult(s.SinceSystemChange, _offensePlayers);
+            }
+        }
+
+        /// <summary>Extra lapse risk right after a mid-game defensive scheme change.</summary>
+        private float DefensiveFamiliarityMult() => _currentDefFamiliarityMult;
 
         /// <summary>
         /// A lapse loosens the shooter's look — added feet on the SAME distance that

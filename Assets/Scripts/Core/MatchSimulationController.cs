@@ -301,6 +301,7 @@ namespace NBAHeadCoach.Core
             // choreographed spatial timelines for the court view
             _possessionSimulator = new PossessionSimulator(null, _foulSystem);
             _possessionSimulator.SpatialDetail = Simulation.Choreography.SpatialDetailLevel.Full;
+            _possessionSimulator.ResetGameState();
 
             // Reset state
             _currentQuarter = 1;

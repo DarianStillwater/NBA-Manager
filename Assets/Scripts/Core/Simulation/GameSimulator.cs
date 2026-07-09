@@ -90,8 +90,9 @@ namespace NBAHeadCoach.Core.Simulation
             _boxScore = new BoxScore(homeTeam.TeamId, awayTeam.TeamId);
             _gameTracker.Clear();
 
-            // Reset foul system for new game
+            // Reset foul system + scheme-familiarity tracking for new game
             _foulSystem.ResetGame();
+            _possessionSimulator.ResetGameState();
 
             // Initialize player stats
             InitializePlayerStats(homeTeam);
