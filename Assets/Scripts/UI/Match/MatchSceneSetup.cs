@@ -338,6 +338,7 @@ namespace NBAHeadCoach.UI.Match
             MkCtrlBtn(parent, "SUBS", 60, ShowSubstitutionOverlay);
             MkCtrlBtn(parent, "STRATEGY", 80, ShowStrategyOverlay);
             MkCtrlBtn(parent, "BOX SCORE", 88, ShowBoxScoreOverlay);
+            MkCtrlBtn(parent, "SIM REST", 80, ShowExitConfirmOverlay);
             _speedLabel = MkText(CreateRT(parent, "SpLbl"), "2x", 11, FontStyle.Normal, UITheme.TextSecondary, TextAnchor.MiddleCenter);
             _speedLabel.gameObject.AddComponent<LayoutElement>().preferredWidth = 40;
         }
@@ -679,6 +680,32 @@ namespace NBAHeadCoach.UI.Match
             var ct = MkText(closeGo, "CLOSE", 10, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
 
             return panel;
+        }
+
+        private void ShowExitConfirmOverlay()
+        {
+            var panel = CreateOverlay("EXIT MATCH");
+
+            var msg = CreateRT(panel, "Msg");
+            msg.gameObject.AddComponent<LayoutElement>().preferredHeight = 70;
+            msg.gameObject.AddComponent<Image>().color = Color.clear;
+            MkText(msg,
+                "Stop watching and simulate the rest of this game?\nThe current score, stats, and fouls carry over.",
+                13, FontStyle.Normal, Color.white, TextAnchor.MiddleCenter);
+
+            var row = CreateRT(panel, "Row");
+            row.gameObject.AddComponent<LayoutElement>().preferredHeight = 46;
+            row.gameObject.AddComponent<Image>().color = Color.clear;
+            var hlg = row.gameObject.AddComponent<HorizontalLayoutGroup>();
+            hlg.spacing = 12; hlg.childControlWidth = true; hlg.childControlHeight = true;
+            hlg.childForceExpandWidth = true; hlg.childForceExpandHeight = true;
+
+            MkCtrlBtn(row, "SIM TO END", 160, () =>
+            {
+                if (_coachingOverlay != null) { Destroy(_coachingOverlay); _coachingOverlay = null; }
+                _simController?.FinishRemainingHeadless();
+            });
+            MkCtrlBtn(row, "KEEP WATCHING", 160, DismissOverlay);
         }
 
         private void ShowSubstitutionOverlay()

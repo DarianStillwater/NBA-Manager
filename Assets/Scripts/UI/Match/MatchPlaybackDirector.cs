@@ -68,6 +68,13 @@ namespace NBAHeadCoach.UI.Match
 
         private void HandlePossessionReady(PossessionPlaybackPacket packet)
         {
+            // Finishing headless: release the possession instantly, no animation or bridge.
+            if (_sim != null && _sim.IsFinishing)
+            {
+                _sim.CompletePresentation();
+                return;
+            }
+
             if (_active != null) StopCoroutine(_active);
             _possessionPending = true;
 

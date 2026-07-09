@@ -136,6 +136,24 @@ namespace NBAHeadCoach.Core
         public SimulationSpeed CurrentSpeed => _currentSpeed;
         public bool IsRunning => _isRunning;
         public bool IsPaused => _isPaused;
+
+        /// <summary>True once the user has chosen to bail out and sim the rest: the loop races to the
+        /// final buzzer at Instant with no animation, no prompts, and no auto-pauses. Live state
+        /// (score/box/fouls/energy/clock) is preserved because it's the same possession loop.</summary>
+        public bool IsFinishing { get; private set; }
+
+        /// <summary>Exit interactive coaching and finish the game headlessly from the current state.
+        /// The possession loop is already running (started at match init); this just races it to the
+        /// buzzer at Instant with no prompts/pauses/animation. Unpauses in case a coaching overlay
+        /// had it paused when the user chose to bail.</summary>
+        public void FinishRemainingHeadless()
+        {
+            if (_isComplete) return;
+            IsFinishing = true;
+            _currentSpeed = SimulationSpeed.Instant;
+            _isPaused = false;
+            OnSimulationResumed?.Invoke();
+        }
         public bool IsComplete => _isComplete;
         public int CurrentQuarter => _currentQuarter;
         public float GameClock => _gameClock;
@@ -657,8 +675,8 @@ namespace NBAHeadCoach.Core
             // Detect dead ball situations
             _isDeadBall = IsDeadBall(result);
 
-            // Check for AI timeout before possession changes
-            if (_isDeadBall)
+            // Check for AI timeout before possession changes (skipped while finishing headless)
+            if (_isDeadBall && !IsFinishing)
             {
                 yield return CheckAITimeout(_homeHasPossession);
             }
@@ -671,15 +689,15 @@ namespace NBAHeadCoach.Core
             }
             OnPossessionChange?.Invoke(_homeHasPossession);
 
-            // Check auto-pause conditions
-            if (ShouldAutoPause(result))
+            // Check auto-pause conditions (never while finishing headless)
+            if (!IsFinishing && ShouldAutoPause(result))
             {
                 PauseSimulation();
                 yield return null;
             }
 
             // Offer substitution opportunity at dead balls for player team
-            if (_isDeadBall && !_autoCoachEnabled)
+            if (_isDeadBall && !_autoCoachEnabled && !IsFinishing)
             {
                 var playerLineup = _playerIsHome ? _homeLineup : _awayLineup;
                 var fatigueCount = playerLineup.Count(id => GetPlayerEnergy(id) < _autoSubFatigueThreshold);
