@@ -770,20 +770,86 @@ namespace NBAHeadCoach.UI.Match
 
             var strat = _playerTeam.Strategy;
 
-            // Offense
+            // Two-column body so every sim-read control fits without scrolling.
+            var body = CreateRT(panel, "Cols");
+            body.gameObject.AddComponent<LayoutElement>().flexibleHeight = 1;
+            var cols = body.gameObject.AddComponent<HorizontalLayoutGroup>();
+            cols.childControlWidth = true; cols.childControlHeight = true;
+            cols.childForceExpandWidth = true; cols.childForceExpandHeight = true;
+            cols.spacing = 12;
+
+            RectTransform Column(string name)
+            {
+                var col = CreateRT(body, name);
+                col.gameObject.AddComponent<Image>().color = Color.clear;
+                var v = col.gameObject.AddComponent<VerticalLayoutGroup>();
+                v.childControlWidth = true; v.childControlHeight = true;
+                v.childForceExpandWidth = true; v.childForceExpandHeight = false;
+                v.spacing = 3;
+                return col;
+            }
+            var offCol = Column("Offense");
+            var defCol = Column("Defense");
+
+            void Section(RectTransform col, string title)
+            {
+                var hdr = CreateRT(col, "Sec_" + title);
+                hdr.gameObject.AddComponent<LayoutElement>().preferredHeight = 20;
+                hdr.gameObject.AddComponent<Image>().color = Color.clear;
+                MkText(hdr, title, 11, FontStyle.Bold, UITheme.AccentPrimary, TextAnchor.MiddleLeft);
+            }
+
+            void PresetRow(RectTransform col, string label, Core.Data.StrategyPresets.Preset[] set)
+            {
+                int cur = Core.Data.StrategyPresets.CurrentIndex(set, strat);
+                MkOverlayCycle(col, label, set.Select(p => p.Label).ToArray(), cur,
+                    v => set[v].Apply(strat));
+            }
+
+            // ── OFFENSE (all read live by the possession sim) ──
+            Section(offCol, "OFFENSE");
             string[] offNames = Enum.GetNames(typeof(OffensiveSystemType));
             int offIdx = (int)(strat.OffensiveSystem?.PrimarySystem ?? OffensiveSystemType.MotionOffense);
-            MkOverlayCycle(panel, "Offense", offNames, offIdx, v => { if (strat.OffensiveSystem != null) strat.OffensiveSystem.PrimarySystem = (OffensiveSystemType)v; });
+            MkOverlayCycle(offCol, "System", offNames, offIdx, v => { if (strat.OffensiveSystem != null) strat.OffensiveSystem.PrimarySystem = (OffensiveSystemType)v; });
 
-            // Defense
+            PresetRow(offCol, "Shot Mix", Core.Data.StrategyPresets.ShotMix);
+            PresetRow(offCol, "Post Ups", Core.Data.StrategyPresets.PostUps);
+            PresetRow(offCol, "Ball Movement", Core.Data.StrategyPresets.BallMovement);
+            PresetRow(offCol, "Crash Glass", Core.Data.StrategyPresets.CrashGlass);
+
+            string[] transNames = Enum.GetNames(typeof(TransitionPreference));
+            MkOverlayCycle(offCol, "Transition", transNames, (int)strat.TransitionOffense,
+                v => strat.TransitionOffense = (TransitionPreference)v);
+
+            string[] paceNames = Enum.GetNames(typeof(PacePreference));
+            MkOverlayCycle(offCol, "Pace", paceNames, (int)strat.PacePreference,
+                v => strat.ApplyPacePreference((PacePreference)v));
+
+            // ── DEFENSE ──
+            Section(defCol, "DEFENSE");
             string[] defNames = Enum.GetNames(typeof(DefensiveSchemeType));
             int defIdx = (int)(strat.DefensiveSystem?.PrimaryScheme ?? DefensiveSchemeType.ManToManStandard);
-            MkOverlayCycle(panel, "Defense", defNames, defIdx, v => { if (strat.DefensiveSystem != null) strat.DefensiveSystem.PrimaryScheme = (DefensiveSchemeType)v; });
+            MkOverlayCycle(defCol, "Scheme", defNames, defIdx, v => { if (strat.DefensiveSystem != null) strat.DefensiveSystem.PrimaryScheme = (DefensiveSchemeType)v; });
 
-            // Pace
-            string[] paceNames = Enum.GetNames(typeof(PacePreference));
-            int paceIdx = (int)strat.PacePreference;
-            MkOverlayCycle(panel, "Pace", paceNames, paceIdx, v => strat.ApplyPacePreference((PacePreference)v));
+            PresetRow(defCol, "Zone Mix", Core.Data.StrategyPresets.ZoneMix);
+            PresetRow(defCol, "Pressure", Core.Data.StrategyPresets.Pressure);
+            PresetRow(defCol, "Gambling", Core.Data.StrategyPresets.Gambling);
+            PresetRow(defCol, "Contesting", Core.Data.StrategyPresets.Contesting);
+
+            var dsys = strat.DefensiveSystem;
+            if (dsys != null)
+            {
+                MkOverlayCycle(defCol, "Help", Enum.GetNames(typeof(HelpDefenseLevel)),
+                    (int)dsys.HelpDefense, v => dsys.HelpDefense = (HelpDefenseLevel)v);
+                MkOverlayCycle(defCol, "Switching", Enum.GetNames(typeof(SwitchingLevel)),
+                    (int)dsys.SwitchingLevel, v => dsys.SwitchingLevel = (SwitchingLevel)v);
+                MkOverlayCycle(defCol, "PnR Coverage", Enum.GetNames(typeof(PnRCoverage)),
+                    (int)dsys.PickAndRollCoverage, v => dsys.PickAndRollCoverage = (PnRCoverage)v);
+                MkOverlayCycle(defCol, "Closeouts", Enum.GetNames(typeof(CloseoutStyle)),
+                    (int)dsys.CloseoutStyle, v => dsys.CloseoutStyle = (CloseoutStyle)v);
+                MkOverlayCycle(defCol, "Intensity", Enum.GetNames(typeof(DefensiveIntensity)),
+                    (int)dsys.DefensiveIntensity, v => dsys.DefensiveIntensity = (DefensiveIntensity)v);
+            }
 
             // Timeout coaching window: subs live one tap away without closing the stoppage.
             var subsRow = CreateRT(panel, "SubsShortcut");
