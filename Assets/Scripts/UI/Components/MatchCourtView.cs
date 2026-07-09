@@ -254,8 +254,38 @@ namespace NBAHeadCoach.UI.Components
                 if (kvp.Value != null) kvp.Value.SnapToTarget();
         }
 
+        // ── Coach behaviour relays (driven by the playback director / scene events) ──
+
+        /// <summary>Make a coach jump on an exciting play (fast break, dunk).</summary>
+        public void SetCoachExcited(bool isHome)
+        {
+            var coach = isHome ? _homeCoach : _awayCoach;
+            coach?.SetState(CoachView.CoachState.Excited);
+        }
+
+        /// <summary>Move a coach into (or out of) the timeout huddle at bench center.</summary>
+        public void SetCoachHuddle(bool isHome, bool huddling)
+        {
+            var coach = isHome ? _homeCoach : _awayCoach;
+            coach?.SetState(huddling ? CoachView.CoachState.Huddle : CoachView.CoachState.Idle);
+        }
+
+        /// <summary>Eject a coach: he fades out and removes himself. The reference is dropped
+        /// immediately so he can never return this game.</summary>
+        public void EjectCoach(bool isHome)
+        {
+            var coach = isHome ? _homeCoach : _awayCoach;
+            coach?.Eject();
+            if (isHome) _homeCoach = null; else _awayCoach = null;
+        }
+
         // Test/inspection accessors
         public int BenchCount(bool isHome) => (isHome ? _homeBench : _awayBench).Count;
+        public CoachView.CoachState? GetCoachState(bool isHome)
+        {
+            var coach = isHome ? _homeCoach : _awayCoach;
+            return coach != null ? coach.State : (CoachView.CoachState?)null;
+        }
         public bool IsOnBench(string playerId) => _benchDots.ContainsKey(playerId);
         public bool IsOnCourt(string playerId) => _playerDots.ContainsKey(playerId);
         public bool HasCoach(bool isHome) => (isHome ? _homeCoach : _awayCoach) != null;

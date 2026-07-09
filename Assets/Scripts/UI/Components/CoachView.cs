@@ -18,8 +18,19 @@ namespace NBAHeadCoach.UI.Components
         private RectTransform _rect;
         private Image _body;
         private Text _label;
+        private CanvasGroup _cg;
         private bool _isHome;
         private Color _teamColor;
+
+        private Vector2 _basePos;       // his spot on the sideline
+        private float _huddleX;         // bench center — where the team gathers on a timeout
+        private float _clock;           // local animation clock (accumulated deltaTime)
+        private float _excitedTimer;    // counts down while jumping after a big play
+
+        private const float PaceAmplitude = 10f;   // sideline pacing sweep (px)
+        private const float PaceSpeed = 0.7f;
+        private const float HopAmplitude = 12f;     // vertical jump on exciting plays (px)
+        private const float ExcitedDuration = 1.4f;
 
         public bool IsHome => _isHome;
         public CoachState State { get; private set; } = CoachState.Idle;
@@ -62,13 +73,57 @@ namespace NBAHeadCoach.UI.Components
             text.text = string.IsNullOrEmpty(label) ? "HC" : label;
             text.raycastTarget = false;
 
+            var cg = go.AddComponent<CanvasGroup>();
+            cg.alpha = 1f;
+
             var coach = go.AddComponent<CoachView>();
             coach._rect = rect;
             coach._body = body;
             coach._label = text;
+            coach._cg = cg;
             coach._isHome = isHome;
             coach._teamColor = teamColor;
+            coach._basePos = anchoredPos;
+            coach._huddleX = 0f;   // bench center
             return coach;
+        }
+
+        private void Update()
+        {
+            _clock += Time.deltaTime;
+            Vector2 pos = _basePos;
+
+            switch (State)
+            {
+                case CoachState.Idle:
+                    // Pace back and forth along the sideline.
+                    pos.x = _basePos.x + Mathf.Sin(_clock * PaceSpeed * Mathf.PI * 2f) * PaceAmplitude;
+                    break;
+
+                case CoachState.Excited:
+                    // Jump up and down; auto-return to pacing when the moment passes.
+                    _excitedTimer -= Time.deltaTime;
+                    pos.y = _basePos.y + Mathf.Abs(Mathf.Sin(_clock * 12f)) * HopAmplitude * (_isHome ? -1f : 1f) * -1f;
+                    if (_excitedTimer <= 0f) State = CoachState.Idle;
+                    break;
+
+                case CoachState.Huddle:
+                    // Slide toward bench center and hold while the team gathers.
+                    pos.x = Mathf.Lerp(_rect.anchoredPosition.x, _huddleX, 6f * Time.deltaTime);
+                    break;
+
+                case CoachState.Ejected:
+                    // Fade out, then remove the icon entirely (like a fouled-out player leaving).
+                    if (_cg != null)
+                    {
+                        _cg.alpha = Mathf.MoveTowards(_cg.alpha, 0f, 3f * Time.deltaTime);
+                        if (_cg.alpha <= 0.01f) { Destroy(gameObject); return; }
+                    }
+                    else { Destroy(gameObject); return; }
+                    return;   // don't reposition while fading
+            }
+
+            if (_rect != null) _rect.anchoredPosition = pos;
         }
 
         public Vector2 AnchoredPosition => _rect != null ? _rect.anchoredPosition : Vector2.zero;
@@ -78,12 +133,15 @@ namespace NBAHeadCoach.UI.Components
             if (_rect != null) _rect.anchoredPosition = pos;
         }
 
-        /// <summary>Change the behaviour state. Ejected is terminal — the icon is expected to be
-        /// removed by the owner (mirrors a fouled-out player leaving the floor).</summary>
+        /// <summary>Change the behaviour state. Ejected is terminal — once set the icon fades and
+        /// removes itself and no later state takes effect (mirrors a fouled-out player leaving).</summary>
         public void SetState(CoachState state)
         {
             if (State == CoachState.Ejected) return;   // stays gone
+            if (state == CoachState.Excited) _excitedTimer = ExcitedDuration;
             State = state;
         }
+
+        public void Eject() => SetState(CoachState.Ejected);
     }
 }

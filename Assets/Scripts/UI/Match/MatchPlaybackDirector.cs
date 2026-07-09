@@ -71,6 +71,10 @@ namespace NBAHeadCoach.UI.Match
             if (_active != null) StopCoroutine(_active);
             _possessionPending = true;
 
+            // Coach reacts to the excitement: a fast-break bucket gets the scoring team's coach up.
+            if (packet.WasFastBreak && packet.AnyScore && _court != null)
+                _court.SetCoachExcited(packet.OffenseIsHome);
+
             bool play = PlaybackDecider.ShouldPlay(packet, Mode, _sim.CurrentSpeed);
             _active = StartCoroutine(play ? PlayPossession(packet) : SkipPossession(packet));
         }

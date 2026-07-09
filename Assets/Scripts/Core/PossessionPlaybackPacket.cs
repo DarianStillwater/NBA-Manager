@@ -28,6 +28,7 @@ namespace NBAHeadCoach.Core
         public bool AnyHighlight;            // any PBP entry flagged IsHighlight
         public bool AnyScore;                // any points scored (FG or FT)
         public bool AnyDefensiveHighlight;   // block or steal
+        public bool WasFastBreak;            // possession finished on the break (coach reaction cue)
 
         /// <summary>Extra presentation time appended past the live timeline (free throws etc.).</summary>
         public float TailSeconds;

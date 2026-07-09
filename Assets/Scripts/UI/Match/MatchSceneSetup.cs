@@ -448,6 +448,8 @@ namespace NBAHeadCoach.UI.Match
             _simController.OnGameComplete += OnGameComplete;
             _simController.OnLineupChanged += OnLineupChanged;
             _simController.OnTimeout += OnTimeoutCalled;
+            _simController.OnCoachEjected += OnCoachEjected;
+            _simController.OnSimulationResumed += OnSimulationResumed;
         }
 
         private void OnFastForwardChanged(bool on)
@@ -563,10 +565,38 @@ namespace NBAHeadCoach.UI.Match
 
         private void OnTimeoutCalled(string teamId, Core.Gameplay.TimeoutReason reason)
         {
+            // The calling team's coach gathers his players at the bench for the huddle.
+            if (_courtView != null && _homeTeam != null)
+                _courtView.SetCoachHuddle(teamId == _homeTeam.TeamId, huddling: true);
+
             // Your timeout = a coaching window: the sim is paused, so open the
             // strategy overlay (with its SUBSTITUTIONS shortcut) automatically.
             if (_playerTeam != null && teamId == _playerTeam.TeamId)
                 ShowStrategyOverlay();
+        }
+
+        private void OnSimulationResumed()
+        {
+            // Break the huddle when play resumes — coaches return to pacing the sideline.
+            if (_courtView == null) return;
+            _courtView.SetCoachHuddle(true, huddling: false);
+            _courtView.SetCoachHuddle(false, huddling: false);
+        }
+
+        private void OnCoachEjected(string teamId)
+        {
+            if (_courtView == null || _homeTeam == null) return;
+            bool isHome = teamId == _homeTeam.TeamId;
+            _courtView.EjectCoach(isHome);
+
+            // Tell the story on the play-by-play ticker (no numbers — a name-level beat).
+            string teamName = isHome ? _homeTeam?.Name : _awayTeam?.Name;
+            OnPlayByPlay(new PlayByPlayEntry
+            {
+                Type = PlayByPlayType.Substitution,
+                IsHighlight = true,
+                Description = $"The {teamName} head coach has been EJECTED after a second technical!"
+            });
         }
 
         private void OnLineupChanged(string teamId, string outId, string inId)

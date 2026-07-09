@@ -93,6 +93,9 @@ namespace NBAHeadCoach.Core
         private List<string> _awayLineup = new List<string>();
         private Dictionary<string, float> _playerMinutes = new Dictionary<string, float>();
         private Dictionary<string, int> _playerFouls = new Dictionary<string, int>();
+        private readonly CoachEjectionTracker _coachEjection = new CoachEjectionTracker();
+        // Dedicated RNG for the rare coach-technical roll so it never perturbs sim outcomes.
+        private System.Random _ejectionRng = new System.Random(20260709);
 
         // Full per-player box score, updated live as possessions resolve (shared applier
         // with the headless GameSimulator, so both paths count stats identically).
@@ -182,6 +185,9 @@ namespace NBAHeadCoach.Core
 
         /// <summary>Fires after any lineup change (manual sub or foul-out auto-sub): teamId, outgoing id, incoming id.</summary>
         public event Action<string, string, string> OnLineupChanged;
+
+        /// <summary>Fires when a head coach is ejected (two technicals). Arg = the coach's team id.</summary>
+        public event Action<string> OnCoachEjected;
 
         /// <summary>Fired when simulation pauses</summary>
         public event Action OnSimulationPaused;
@@ -326,6 +332,7 @@ namespace NBAHeadCoach.Core
             _playByPlay.Clear();
             _playerMinutes.Clear();
             _playerFouls.Clear();
+            _coachEjection.Reset();
 
             // Set starting lineups (de-duped defensively — a duplicated id would sim short-handed)
             _homeLineup = homeTeam.StartingLineupIds?.Distinct().ToList() ?? new List<string>();
@@ -638,6 +645,7 @@ namespace NBAHeadCoach.Core
                 packet.AnyScore = packet.Events.Any(e => (e.Entry != null && e.Entry.Points > 0) || e.ShotPoints > 0);
                 packet.AnyDefensiveHighlight = result.Events.Any(e =>
                     e.Type == EventType.Block || e.Type == EventType.Steal);
+                packet.WasFastBreak = result.WasFastBreak;
 
                 _presentationDone = false;
                 OnPossessionReady?.Invoke(packet);
@@ -1112,6 +1120,8 @@ namespace NBAHeadCoach.Core
                             OnPlayerFoulOut?.Invoke(evt.DefenderPlayerId);
                             HandleFoulOut(evt.DefenderPlayerId);
                         }
+
+                        MaybeArgueCall(evt.DefenderPlayerId);
                     }
                 }
             }
@@ -1548,6 +1558,37 @@ namespace NBAHeadCoach.Core
 
             var opposingCoach = calledByPlayerTeam ? _aiCoach : _playerCoach;
             opposingCoach?.OnOpponentTimeout();
+        }
+
+        private string TeamIdOf(string playerId)
+        {
+            if (_homeTeam?.RosterPlayerIds != null && _homeTeam.RosterPlayerIds.Contains(playerId)) return _homeTeam.TeamId;
+            if (_awayTeam?.RosterPlayerIds != null && _awayTeam.RosterPlayerIds.Contains(playerId)) return _awayTeam.TeamId;
+            return null;
+        }
+
+        /// <summary>A trailing, frustrated coach occasionally barks at the officials on a foul call and
+        /// picks up a technical; two technicals eject him. Rare, and only when behind. Uses a
+        /// dedicated RNG so it can never shift the possession-outcome stream.</summary>
+        private void MaybeArgueCall(string fouler)
+        {
+            string teamId = TeamIdOf(fouler);
+            if (string.IsNullOrEmpty(teamId) || _coachEjection.IsEjected(teamId)) return;
+
+            bool isHome = teamId == _homeTeam?.TeamId;
+            int deficit = (isHome ? _awayScore : _homeScore) - (isHome ? _homeScore : _awayScore);
+            double rate = deficit >= 12 ? 0.02 : deficit >= 6 ? 0.008 : 0.0;
+            if (rate <= 0.0) return;
+            if (_ejectionRng.NextDouble() < rate) RegisterCoachTechnical(teamId);
+        }
+
+        /// <summary>Charge a coaching technical (also callable from the UI). Fires OnCoachEjected on
+        /// the second technical.</summary>
+        public void RegisterCoachTechnical(string teamId)
+        {
+            if (string.IsNullOrEmpty(teamId)) return;
+            if (_coachEjection.RegisterTechnical(teamId))
+                OnCoachEjected?.Invoke(teamId);
         }
 
         /// <summary>In-place slot replacement (preserves PG..C ordering) + change notification.</summary>
