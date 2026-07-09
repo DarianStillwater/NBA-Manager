@@ -446,6 +446,7 @@ namespace NBAHeadCoach.UI.Match
             _simController.OnPlayByPlay += OnPlayByPlay;
             _simController.OnPossessionChange += OnPossessionChange;
             _simController.OnGameComplete += OnGameComplete;
+            _simController.OnLineupChanged += OnLineupChanged;
         }
 
         private void OnFastForwardChanged(bool on)
@@ -559,6 +560,14 @@ namespace NBAHeadCoach.UI.Match
             _courtView?.RefreshPlayerStats(_simController?.LiveBoxScore);
         }
 
+        private void OnLineupChanged(string teamId, string outId, string inId)
+        {
+            // Swap court dots for both manual subs and foul-out auto-subs.
+            if (_courtView == null || _simController == null) return;
+            _courtView.UpdateLineup(_simController.CurrentHomeLineup, _simController.CurrentAwayLineup);
+            _courtView.RefreshPlayerStats(_simController.LiveBoxScore);
+        }
+
         private void OnGameComplete(BoxScore boxScore)
         {
             bool playerWon = (_playerIsHome && boxScore.HomeScore > boxScore.AwayScore) ||
@@ -642,12 +651,16 @@ namespace NBAHeadCoach.UI.Match
             lblOn.gameObject.AddComponent<Image>().color = Color.clear;
             MkText(lblOn, "ON COURT", 10, FontStyle.Bold, UITheme.AccentPrimary, TextAnchor.MiddleLeft);
 
-            var currentIds = _playerTeam.StartingLineupIds;
+            // The sim's live lineup is the single source of truth — StartingLineupIds
+            // goes stale after any sub or foul-out and must never drive this menu.
+            var currentIds = _simController != null
+                ? _simController.GetLineup(_playerTeam.TeamId).ToList()
+                : (_playerTeam.StartingLineupIds?.ToList() ?? new List<string>());
             string[] posLabels = { "PG", "SG", "SF", "PF", "C" };
             string selectedOut = null;
             var onCourtBgs = new List<Image>();
 
-            for (int i = 0; i < 5 && i < currentIds.Length; i++)
+            for (int i = 0; i < 5 && i < currentIds.Count; i++)
             {
                 int posIdx = i;
                 string pid = currentIds[i];
@@ -680,7 +693,9 @@ namespace NBAHeadCoach.UI.Match
             lblBench.gameObject.AddComponent<Image>().color = Color.clear;
             MkText(lblBench, "BENCH — tap player above, then bench player to swap", 9, FontStyle.Normal, UITheme.TextSecondary, TextAnchor.MiddleLeft);
 
-            var benchIds = _playerTeam.RosterPlayerIds?.Where(id => !currentIds.Contains(id)).ToList() ?? new List<string>();
+            var benchIds = _playerTeam.RosterPlayerIds?
+                .Where(id => !currentIds.Contains(id) && !(_simController?.HasFouledOut(id) ?? false))
+                .ToList() ?? new List<string>();
             foreach (var bid in benchIds)
             {
                 var bp = db.GetPlayer(bid);
@@ -801,6 +816,7 @@ namespace NBAHeadCoach.UI.Match
                 _simController.OnPlayByPlay -= OnPlayByPlay;
                 _simController.OnPossessionChange -= OnPossessionChange;
                 _simController.OnGameComplete -= OnGameComplete;
+                _simController.OnLineupChanged -= OnLineupChanged;
             }
             if (_director != null)
             {

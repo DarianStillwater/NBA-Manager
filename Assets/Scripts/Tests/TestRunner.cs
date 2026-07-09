@@ -82,6 +82,7 @@ namespace NBAHeadCoach.Tests
             RunTest<SummerLeagueTest>("Summer League");
             RunTest<TrainingCampTest>("Training Camp");
             RunTest<NegotiationFlowTest>("Negotiation Flow");
+            RunTest<InMatchSubstitutionTest>("In-Match Substitutions");
 
             // Summary
             Debug.Log("\n" + new string('=', 70));

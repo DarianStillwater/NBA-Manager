@@ -116,6 +116,16 @@ namespace NBAHeadCoach.Core
         public List<string> CurrentHomeLineup => new List<string>(_homeLineup);
         public List<string> CurrentAwayLineup => new List<string>(_awayLineup);
 
+        public bool HasFouledOut(string playerId) => _playerFouls.GetValueOrDefault(playerId, 0) >= 6;
+
+        /// <summary>Live on-court five for a team — the single source of truth for sub UIs.</summary>
+        public IReadOnlyList<string> GetLineup(string teamId)
+        {
+            if (_homeTeam != null && _homeTeam.TeamId == teamId) return _homeLineup;
+            if (_awayTeam != null && _awayTeam.TeamId == teamId) return _awayLineup;
+            return new List<string>();
+        }
+
         #endregion
 
         #region Properties
@@ -169,6 +179,9 @@ namespace NBAHeadCoach.Core
 
         /// <summary>Fired when user input is required (substitution, etc.)</summary>
         public event Action<CoachingDecisionRequired> OnCoachingDecisionRequired;
+
+        /// <summary>Fires after any lineup change (manual sub or foul-out auto-sub): teamId, outgoing id, incoming id.</summary>
+        public event Action<string, string, string> OnLineupChanged;
 
         /// <summary>Fired when simulation pauses</summary>
         public event Action OnSimulationPaused;
@@ -313,9 +326,9 @@ namespace NBAHeadCoach.Core
             _playerMinutes.Clear();
             _playerFouls.Clear();
 
-            // Set starting lineups
-            _homeLineup = homeTeam.StartingLineupIds?.ToList() ?? new List<string>();
-            _awayLineup = awayTeam.StartingLineupIds?.ToList() ?? new List<string>();
+            // Set starting lineups (de-duped defensively — a duplicated id would sim short-handed)
+            _homeLineup = homeTeam.StartingLineupIds?.Distinct().ToList() ?? new List<string>();
+            _awayLineup = awayTeam.StartingLineupIds?.Distinct().ToList() ?? new List<string>();
 
             // Initialize player tracking + the live box score (HomeTeam/AwayTeam set so the
             // game-end result carries real team references, not nulls).
@@ -408,14 +421,33 @@ namespace NBAHeadCoach.Core
         {
             var lineup = _playerIsHome ? _homeLineup : _awayLineup;
 
+            if (string.IsNullOrEmpty(playerOut) || string.IsNullOrEmpty(playerIn))
+            {
+                Debug.LogWarning("[MatchSimController] Substitution rejected: missing player id");
+                return false;
+            }
             if (!lineup.Contains(playerOut))
             {
                 Debug.LogWarning($"[MatchSimController] {playerOut} not in lineup");
                 return false;
             }
+            if (lineup.Contains(playerIn))
+            {
+                Debug.LogWarning($"[MatchSimController] {playerIn} is already on the court");
+                return false;
+            }
+            if (_playerTeam == null || !_playerTeam.RosterPlayerIds.Contains(playerIn))
+            {
+                Debug.LogWarning($"[MatchSimController] {playerIn} is not on the roster");
+                return false;
+            }
+            if (_playerFouls.GetValueOrDefault(playerIn, 0) >= 6)
+            {
+                Debug.LogWarning($"[MatchSimController] {playerIn} has fouled out");
+                return false;
+            }
 
-            lineup.Remove(playerOut);
-            lineup.Add(playerIn);
+            ReplaceInLineup(lineup, _playerTeam.TeamId, playerOut, playerIn);
 
             AddPlayByPlayEntry(new PlayByPlayEntry
             {
@@ -1426,8 +1458,7 @@ namespace NBAHeadCoach.Core
 
             if (bench != null)
             {
-                lineup.Remove(playerId);
-                lineup.Add(bench);
+                ReplaceInLineup(lineup, team.TeamId, playerId, bench);
 
                 AddPlayByPlayEntry(new PlayByPlayEntry
                 {
@@ -1482,6 +1513,15 @@ namespace NBAHeadCoach.Core
             }
 
             return false;
+        }
+
+        /// <summary>In-place slot replacement (preserves PG..C ordering) + change notification.</summary>
+        private void ReplaceInLineup(List<string> lineup, string teamId, string playerOut, string playerIn)
+        {
+            int idx = lineup.IndexOf(playerOut);
+            if (idx < 0) return;
+            lineup[idx] = playerIn;
+            OnLineupChanged?.Invoke(teamId, playerOut, playerIn);
         }
 
         private Player[] GetPlayersFromLineup(List<string> lineup)
