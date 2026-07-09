@@ -84,6 +84,7 @@ namespace NBAHeadCoach.Tests
             RunTest<NegotiationFlowTest>("Negotiation Flow");
             RunTest<InMatchSubstitutionTest>("In-Match Substitutions");
             RunTest<PaceMappingTest>("Pace Mapping");
+            RunTest<DefensiveSchemeEffectsTest>("Defensive Scheme Effects");
 
             // Summary
             Debug.Log("\n" + new string('=', 70));

@@ -290,9 +290,9 @@ namespace NBAHeadCoach.Core.Simulation
 
                     float foulChance = _foulSystem.CalculateFoulProbability(defender, shooter, shotType,
                         _gameContext, _defenseStrategy?.DefensiveSystem);
-                    // Zone defenses commit fewer fouls (no man to chase)
-                    float zoneFrac = (_defenseStrategy?.DefensiveSystem?.ZoneUsage ?? 0) / 100f;
-                    if (zoneFrac > 0f) foulChance *= 1f - 0.15f * zoneFrac;
+                    // Scheme foul discipline: zones foul less (no man to chase),
+                    // aggressive man and trapping schemes reach more.
+                    foulChance *= DefensiveSchemeProfile.Effective(_defenseStrategy?.DefensiveSystem).FoulMod;
                     bool defenderFouls = _random.NextDouble() < foulChance;
 
                     if (defenderFouls)
@@ -341,7 +341,7 @@ namespace NBAHeadCoach.Core.Simulation
                             orebChance += (_offenseStrategy.SendersOnOffensiveGlass - 2) * 0.01f;
                             if (_offenseStrategy.TransitionDefense == TransitionDefensePreference.SprintBack)
                                 orebChance -= 0.03f;
-                            orebChance += (_defenseStrategy?.DefensiveSystem?.ZoneUsage ?? 0) / 100f * 0.04f;
+                            orebChance += DefensiveSchemeProfile.Effective(_defenseStrategy?.DefensiveSystem).OrebConcededBonus;
                             if (_isFastBreak) orebChance -= 0.05f; // nobody trails the break
                             orebChance = Mathf.Clamp(orebChance, 0.10f, 0.40f);
 
@@ -669,6 +669,9 @@ namespace NBAHeadCoach.Core.Simulation
                 if (dSys.PrimaryScheme == DefensiveSchemeType.FullCourtPress ||
                     dSys.PrimaryScheme == DefensiveSchemeType.HalfCourtTrap)
                     turnoverChance += 0.015f;
+
+                // Scheme character: 1-3-1 traps force mistakes, sagging man doesn't
+                turnoverChance *= DefensiveSchemeProfile.Effective(dSys).TurnoverForcedMod;
             }
 
             // Reckless pushes get loose with the ball
@@ -1080,7 +1083,7 @@ namespace NBAHeadCoach.Core.Simulation
                 isFastBreak: _isFastBreak, secondsRemaining: possessionClock, isHomeTeam: _isOffenseHome);
 
             // Defensive scheme shapes the look by zone (neutral at scheme defaults)
-            shotProb = ApplyDefenseSchemeModifiers(shotProb, shotZone);
+            shotProb = ApplyDefenseSchemeModifiers(shotProb, shotZone, shooterIndex);
 
             // Ball-movement teams find the open man: small bonus on assisted looks
             var osys = _offenseStrategy.OffensiveSystem;
@@ -1195,7 +1198,7 @@ namespace NBAHeadCoach.Core.Simulation
         /// action. Every term is neutral at the scheme defaults (ZoneUsage 0,
         /// TeamHelp, Contesting 70, Contest closeouts, Gambling 30, SwitchSome).
         /// </summary>
-        private float ApplyDefenseSchemeModifiers(float prob, CourtZone zone)
+        private float ApplyDefenseSchemeModifiers(float prob, CourtZone zone, int shooterIndex = -1)
         {
             var d = _defenseStrategy?.DefensiveSystem;
             if (d == null) return prob;
@@ -1203,10 +1206,18 @@ namespace NBAHeadCoach.Core.Simulation
             bool interior = zone == CourtZone.RestrictedArea || zone == CourtZone.Paint;
             float mod = 1f;
 
-            // Zone: walls off the interior, concedes perimeter looks
-            float zoneFrac = d.ZoneUsage / 100f;
-            if (zoneFrac > 0f)
-                mod *= interior ? 1f - 0.06f * zoneFrac : 1f + 0.05f * zoneFrac;
+            // Per-scheme profile: each zone/man/junk scheme shapes looks by court
+            // zone (2-3 walls the rim, 3-2 runs shooters off the line, box-and-one
+            // targets the star). Man + ZoneUsage blends toward the secondary scheme.
+            var profile = DefensiveSchemeProfile.Effective(d);
+            mod *= profile.ShotModFor(zone);
+            if (shooterIndex >= 0 &&
+                (profile.StarSuppressionMod != 1f || profile.OthersBoostMod != 1f))
+            {
+                mod *= shooterIndex == StarIndex(_offensePlayers)
+                    ? profile.StarSuppressionMod
+                    : profile.OthersBoostMod;
+            }
 
             // Help philosophy: bodies in the paint vs staying home on shooters
             switch (d.HelpDefense)
@@ -1251,6 +1262,21 @@ namespace NBAHeadCoach.Core.Simulation
             }
 
             return Mathf.Clamp(prob * mod, 0.02f, 0.95f);
+        }
+
+        /// <summary>Index of the best player on the floor — the one a box-and-one keys on.</summary>
+        private static int StarIndex(Player[] players)
+        {
+            int star = -1, best = int.MinValue;
+            for (int i = 0; i < players.Length; i++)
+            {
+                if (players[i] != null && players[i].OverallRating > best)
+                {
+                    best = players[i].OverallRating;
+                    star = i;
+                }
+            }
+            return star;
         }
 
         /// <summary>
@@ -1362,7 +1388,7 @@ namespace NBAHeadCoach.Core.Simulation
                 isFastBreak: _isFastBreak, secondsRemaining: possessionClock, isHomeTeam: _isOffenseHome);
 
             // Defensive scheme shapes the look by zone (neutral at scheme defaults)
-            shotProb = ApplyDefenseSchemeModifiers(shotProb, zone);
+            shotProb = ApplyDefenseSchemeModifiers(shotProb, zone, shooterIndex);
 
             // Fouled shooters get a slightly lower percentage (disrupted)
             shotProb *= 0.85f;
