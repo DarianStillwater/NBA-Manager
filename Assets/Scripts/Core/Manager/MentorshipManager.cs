@@ -10,26 +10,21 @@ namespace NBAHeadCoach.Core.Manager
     /// Manages the mentorship system including assignments, organic formations,
     /// session processing, and development bonuses.
     /// </summary>
-    public class MentorshipManager : MonoBehaviour
+    public class MentorshipManager : IDailyTickable
     {
+        public string SystemId => "Mentorship";
+        public int TickOrder => Manager.TickOrder.Mentorship;
+
+        /// <summary>Weekly system: sessions run on Mondays only.</summary>
+        public void DailyTick(in DailyTickContext ctx)
+        {
+            if (ctx.Date.DayOfWeek == DayOfWeek.Monday)
+                ProcessWeeklyUpdate();
+        }
+
         // ==================== SINGLETON ====================
         private static MentorshipManager _instance;
-        public static MentorshipManager Instance
-        {
-            get
-            {
-                if (_instance == null)
-                {
-                    _instance = FindFirstObjectByType<MentorshipManager>();
-                    if (_instance == null)
-                    {
-                        var go = new GameObject("MentorshipManager");
-                        _instance = go.AddComponent<MentorshipManager>();
-                    }
-                }
-                return _instance;
-            }
-        }
+        public static MentorshipManager Instance => _instance;
 
         // ==================== STATE ====================
 
@@ -670,17 +665,9 @@ namespace NBAHeadCoach.Core.Manager
 
         // ==================== LIFECYCLE ====================
 
-        private void Awake()
+        public MentorshipManager()
         {
-            if (_instance == null)
-            {
-                _instance = this;
-                DontDestroyOnLoad(gameObject);
-            }
-            else if (_instance != this)
-            {
-                Destroy(gameObject);
-            }
+            _instance = this;
         }
 
         /// <summary>

@@ -10,7 +10,7 @@ namespace NBAHeadCoach.Core.Manager
     /// Manages dynamic revenue generation based on team performance,
     /// market size, attendance, and other factors.
     /// </summary>
-    public class RevenueManager : MonoBehaviour
+    public class RevenueManager
     {
         public static RevenueManager Instance { get; private set; }
 
@@ -56,23 +56,11 @@ namespace NBAHeadCoach.Core.Manager
 
         #region Unity Lifecycle
 
-        private void Awake()
+        public RevenueManager()
         {
-            if (Instance == null)
-            {
-                Instance = this;
-                DontDestroyOnLoad(gameObject);
-            }
-            else
-            {
-                Destroy(gameObject);
-            }
+            Instance = this;
         }
 
-        private void Start()
-        {
-            GameManager.Instance?.RegisterRevenueManager(this);
-        }
 
         #endregion
 

@@ -46,37 +46,76 @@ namespace NBAHeadCoach.Core.Simulation
             _foulSystem = new FoulSystem();
             _freeThrowHandler = new FreeThrowHandler();
             _possessionSimulator = new PossessionSimulator(seed, _foulSystem);
+            // Headless full-game sims need no spatial choreography (league auto-sim runs 15 games/day)
+            _possessionSimulator.SpatialDetail = Choreography.SpatialDetailLevel.None;
             _gameTracker = new SpatialTracker();
         }
 
         /// <summary>
         /// Simulates a complete game between two teams.
         /// </summary>
-        public GameResult SimulateGame(Team homeTeam, Team awayTeam)
+        /// <summary>
+        /// Simulate an exhibition (All-Star game, summer league, camp scrimmage):
+        /// the full live sim with a box score, but nothing leaks into the season —
+        /// no energy drain on the real players, no DNP-rest (playoff availability
+        /// rules), and the caller must NOT route the result through the
+        /// GameCompletionPipeline.
+        /// </summary>
+        public GameResult SimulateExhibition(Team homeTeam, Team awayTeam)
+        {
+            // Snapshot energy so the exhibition costs the real season nothing
+            var energySnapshot = new Dictionary<string, float>();
+            foreach (var pid in homeTeam.RosterPlayerIds.Concat(awayTeam.RosterPlayerIds))
+            {
+                if (string.IsNullOrEmpty(pid)) continue;
+                var p = _playerDatabase.GetPlayer(pid);
+                if (p != null && !energySnapshot.ContainsKey(pid)) energySnapshot[pid] = p.Energy;
+            }
+
+            var result = SimulateGame(homeTeam, awayTeam, isPlayoff: true);
+
+            foreach (var kv in energySnapshot)
+            {
+                var p = _playerDatabase.GetPlayer(kv.Key);
+                if (p != null) p.Energy = kv.Value;
+            }
+
+            return result;
+        }
+
+        public GameResult SimulateGame(Team homeTeam, Team awayTeam, bool isPlayoff = false)
         {
             _homeTeam = homeTeam;
             _awayTeam = awayTeam;
             _boxScore = new BoxScore(homeTeam.TeamId, awayTeam.TeamId);
             _gameTracker.Clear();
 
-            // Reset foul system for new game
+            // Reset foul system + scheme-familiarity tracking for new game
             _foulSystem.ResetGame();
+            _possessionSimulator.ResetGameState();
 
             // Initialize player stats
             InitializePlayerStats(homeTeam);
             InitializePlayerStats(awayTeam);
 
-            // Initialize on-court lineups (starters) — fill nulls from roster
-            SetupLineup(_homeOnCourt, homeTeam);
-            SetupLineup(_awayOnCourt, awayTeam);
-
-            // Reset all player energy to 100
+            // Energy carries over between games — players tip off with whatever the
+            // season (rest days, back-to-backs) left them. Guard only against raw
+            // never-initialized Players from tools/tests.
             foreach (var pid in homeTeam.RosterPlayerIds.Concat(awayTeam.RosterPlayerIds))
             {
                 if (string.IsNullOrEmpty(pid)) continue;
                 var p = _playerDatabase.GetPlayer(pid);
-                if (p != null) p.Energy = 100f;
+                if (p != null && p.Energy <= 0f) p.Energy = 100f;
             }
+
+            // Game-day availability: injuries always sit; gassed players get a
+            // rest night in the regular season (never in the playoffs).
+            BuildAvailability(homeTeam, _homeUnavailable, isPlayoff);
+            BuildAvailability(awayTeam, _awayUnavailable, isPlayoff);
+
+            // Initialize on-court lineups (starters) — fill nulls from roster
+            SetupLineup(_homeOnCourt, homeTeam);
+            SetupLineup(_awayOnCourt, awayTeam);
 
             // Simulate 4 regular quarters
             int quartersPlayed = 0;
@@ -110,7 +149,8 @@ namespace NBAHeadCoach.Core.Simulation
 
         /// <summary>
         /// Creates GameLog entries for all players and adds them to their career stats.
-        /// Call this after SimulateGame to record the game in player histories.
+        /// Delegating wrapper over GameStatRecorder (the shared implementation all sim
+        /// paths use) — kept for existing call sites and tests.
         /// </summary>
         public void RecordGameToPlayerStats(
             GameResult result,
@@ -119,117 +159,8 @@ namespace NBAHeadCoach.Core.Simulation
             bool isPlayoff = false,
             int playoffRound = 0)
         {
-            // Process home team players
-            RecordTeamGameLogs(
-                result.BoxScore.HomeTeamId,
-                result.BoxScore.AwayTeamId,
-                result,
-                gameId,
-                gameDate,
-                isHome: true,
-                isPlayoff,
-                playoffRound
-            );
-
-            // Process away team players
-            RecordTeamGameLogs(
-                result.BoxScore.AwayTeamId,
-                result.BoxScore.HomeTeamId,
-                result,
-                gameId,
-                gameDate,
-                isHome: false,
-                isPlayoff,
-                playoffRound
-            );
-        }
-
-        private void RecordTeamGameLogs(
-            string teamId,
-            string opponentTeamId,
-            GameResult result,
-            string gameId,
-            DateTime gameDate,
-            bool isHome,
-            bool isPlayoff,
-            int playoffRound)
-        {
-            int teamScore = isHome ? result.HomeScore : result.AwayScore;
-            int opponentScore = isHome ? result.AwayScore : result.HomeScore;
-            bool wasOvertime = result.WentToOvertime;
-            int overtimePeriods = result.Quarters - 4;
-
-            // Get the player stats list for this team
-            var playerStatsList = isHome
-                ? result.BoxScore.HomePlayerStats
-                : result.BoxScore.AwayPlayerStats;
-
-            // Also check the dictionary for any players not in the lists
-            var allPlayerIds = new HashSet<string>();
-            foreach (var ps in playerStatsList)
-            {
-                allPlayerIds.Add(ps.PlayerId);
-            }
-            foreach (var kvp in result.BoxScore.PlayerStats)
-            {
-                allPlayerIds.Add(kvp.Key);
-            }
-
-            // Get active lineup for this team to determine starters
-            var team = isHome ? _homeTeam : _awayTeam;
-            var starterIds = team?.StartingLineupIds ?? Array.Empty<string>();
-
-            foreach (var playerId in allPlayerIds)
-            {
-                var player = _playerDatabase?.GetPlayer(playerId);
-                if (player == null || player.TeamId != teamId) continue;
-
-                var stats = result.BoxScore.PlayerStats.TryGetValue(playerId, out var ps)
-                    ? ps
-                    : playerStatsList.FirstOrDefault(p => p.PlayerId == playerId);
-
-                if (stats == null) continue;
-
-                // Skip players who didn't play (0 minutes)
-                if (stats.Minutes <= 0) continue;
-
-                bool started = starterIds.Contains(playerId);
-
-                var gameLog = GameLog.Create(
-                    gameId: gameId,
-                    date: gameDate,
-                    opponentTeamId: opponentTeamId,
-                    isHome: isHome,
-                    isPlayoff: isPlayoff,
-                    playoffRound: playoffRound,
-                    minutes: stats.Minutes,
-                    started: started,
-                    points: stats.Points,
-                    fgm: stats.FieldGoalsMade,
-                    fga: stats.FieldGoalAttempts,
-                    threePm: stats.ThreePointMade,
-                    threePa: stats.ThreePointAttempts,
-                    ftm: stats.FreeThrowsMade,
-                    fta: stats.FreeThrowAttempts,
-                    orb: stats.OffensiveRebounds,
-                    drb: stats.DefensiveRebounds,
-                    assists: stats.Assists,
-                    steals: stats.Steals,
-                    blocks: stats.Blocks,
-                    turnovers: stats.Turnovers,
-                    fouls: stats.PersonalFouls,
-                    plusMinus: stats.PlusMinus,
-                    teamScore: teamScore,
-                    opponentScore: opponentScore,
-                    wasOvertime: wasOvertime,
-                    overtimePeriods: overtimePeriods > 0 ? overtimePeriods : 0
-                );
-
-                // Add to player's current season stats (auto-create if missing)
-                if (player.CurrentSeasonStats == null)
-                    player.StartNewSeason(System.DateTime.Now.Year, player.TeamId);
-                player.CurrentSeasonStats?.AddGameFromLog(gameLog);
-            }
+            GameStatRecorder.Record(result, gameId, gameDate, _playerDatabase,
+                _homeTeam, _awayTeam, isPlayoff, playoffRound);
         }
 
         /// <summary>
@@ -239,7 +170,7 @@ namespace NBAHeadCoach.Core.Simulation
         {
             _gameClock = quarterLengthSeconds;
             _homeHasPossession = _currentQuarter % 2 == 1; // Home starts Q1/Q3, Away starts Q2/Q4
-            PossessionOutcome? previousOutcome = null;
+            bool liveBallStart = false; // quarters open with a dead-ball inbound
 
             // Reset team fouls at the start of each quarter
             _foulSystem.ResetQuarterFouls();
@@ -249,8 +180,11 @@ namespace NBAHeadCoach.Core.Simulation
                 // Get active players
                 var offensePlayers = GetActivePlayers(_homeHasPossession ? _homeTeam : _awayTeam);
                 var defensePlayers = GetActivePlayers(_homeHasPossession ? _awayTeam : _homeTeam);
+                // One strategy object per team is the authority for BOTH ends
+                // (Team.Strategy alias) — the defending team's DefensiveSystem lives
+                // on it. Matches the interactive path; DefensiveStrategy is legacy.
                 var offenseStrategy = _homeHasPossession ? _homeTeam.OffensiveStrategy : _awayTeam.OffensiveStrategy;
-                var defenseStrategy = _homeHasPossession ? _awayTeam.DefensiveStrategy : _homeTeam.DefensiveStrategy;
+                var defenseStrategy = _homeHasPossession ? _awayTeam.OffensiveStrategy : _homeTeam.OffensiveStrategy;
 
                 // Determine team IDs for this possession
                 string offenseTeamId = _homeHasPossession ? _homeTeam.TeamId : _awayTeam.TeamId;
@@ -259,7 +193,7 @@ namespace NBAHeadCoach.Core.Simulation
                     ? _boxScore.HomeScore - _boxScore.AwayScore
                     : _boxScore.AwayScore - _boxScore.HomeScore;
 
-                // Simulate possession (pass previous outcome for transition logic)
+                // Simulate possession
                 var result = _possessionSimulator.SimulatePossession(
                     offensePlayers,
                     defensePlayers,
@@ -270,7 +204,8 @@ namespace NBAHeadCoach.Core.Simulation
                     _homeHasPossession,
                     offenseTeamId,
                     defenseTeamId,
-                    scoreDifferential
+                    scoreDifferential,
+                    liveBallStart
                 );
 
                 // Record stats
@@ -279,10 +214,13 @@ namespace NBAHeadCoach.Core.Simulation
                 // Process any free throws from foul events
                 ProcessFreeThrows(result, _homeHasPossession);
 
-                // Add spatial states to game tracker
-                foreach (var state in result.SpatialStates)
+                // Add spatial states to game tracker (empty at SpatialDetail.None)
+                if (result.SpatialStates != null)
                 {
-                    _gameTracker.RecordState(state);
+                    foreach (var state in result.SpatialStates)
+                    {
+                        _gameTracker.RecordState(state);
+                    }
                 }
 
                 // Update game clock
@@ -295,8 +233,12 @@ namespace NBAHeadCoach.Core.Simulation
                     _homeHasPossession = !_homeHasPossession;
                 }
 
-                // Track outcome for transition logic
-                previousOutcome = result.Outcome;
+                // Transition logic: the NEXT possession starts live off a defensive
+                // board or a steal — that's when fast breaks happen
+                liveBallStart = result.Outcome == PossessionOutcome.Miss ||
+                                result.Outcome == PossessionOutcome.Block ||
+                                (result.Outcome == PossessionOutcome.Turnover &&
+                                 result.Events.Any(e => e.Type == EventType.Steal));
 
                 // Energy drain for active players
                 DrainEnergy(offensePlayers, result.Duration * 0.35f);
@@ -344,19 +286,77 @@ namespace NBAHeadCoach.Core.Simulation
             return false;
         }
 
+        // ==================== GAME-DAY AVAILABILITY ====================
+
+        private const float REST_ENERGY_HARD = 35f;   // this gassed, anyone sits
+        private const float REST_ENERGY_SOFT = 50f;   // cautious coaches rest below this
+        private const int MIN_AVAILABLE = 8;
+
+        private readonly HashSet<string> _homeUnavailable = new HashSet<string>();
+        private readonly HashSet<string> _awayUnavailable = new HashSet<string>();
+
+        private HashSet<string> UnavailableFor(Team team) =>
+            team.TeamId == _homeTeam.TeamId ? _homeUnavailable : _awayUnavailable;
+
+        /// <summary>
+        /// Who dresses tonight. Injured players never play; exhausted players get
+        /// a DNP-rest in the regular season (coaches with a high load-management
+        /// tendency rest merely-tired players too). Never below 8 available —
+        /// rested players get un-rested freshest-first; injuries stay out.
+        /// </summary>
+        private void BuildAvailability(Team team, HashSet<string> unavailable, bool isPlayoff)
+        {
+            unavailable.Clear();
+            var rosterIds = team.RosterPlayerIds?.Where(id => !string.IsNullOrEmpty(id)).ToList()
+                            ?? new List<string>();
+
+            int loadTendency = team.CoachPersonality?.LoadManagementTendency ?? 40;
+
+            foreach (var id in rosterIds)
+            {
+                var p = _playerDatabase.GetPlayer(id);
+                if (p == null) continue;
+
+                if (p.IsInjured) { unavailable.Add(id); continue; }
+                if (isPlayoff) continue; // nobody rests in the playoffs
+
+                if (p.Energy < REST_ENERGY_HARD) unavailable.Add(id);
+                else if (p.Energy < REST_ENERGY_SOFT && loadTendency >= 60) unavailable.Add(id);
+            }
+
+            int available = rosterIds.Count(id => !unavailable.Contains(id));
+            if (available >= MIN_AVAILABLE) return;
+
+            var unrest = rosterIds
+                .Where(id => unavailable.Contains(id))
+                .Select(id => _playerDatabase.GetPlayer(id))
+                .Where(p => p != null && !p.IsInjured)
+                .OrderByDescending(p => p.Energy)
+                .ToList();
+
+            foreach (var p in unrest)
+            {
+                if (available >= MIN_AVAILABLE) break;
+                unavailable.Remove(p.PlayerId);
+                available++;
+            }
+        }
+
         /// <summary>
         /// Sets up the 5-player on-court lineup, falling back to roster if StartingLineupIds has nulls.
         /// </summary>
         private void SetupLineup(string[] onCourt, Team team)
         {
+            var unavailable = UnavailableFor(team);
             var starters = team.StartingLineupIds;
-            var rosterIds = team.RosterPlayerIds?.Where(id => !string.IsNullOrEmpty(id)).ToList()
+            var rosterIds = team.RosterPlayerIds?.Where(id => !string.IsNullOrEmpty(id) && !unavailable.Contains(id)).ToList()
                             ?? new List<string>();
             var used = new HashSet<string>();
 
             for (int i = 0; i < 5; i++)
             {
-                if (starters != null && i < starters.Length && !string.IsNullOrEmpty(starters[i]))
+                if (starters != null && i < starters.Length && !string.IsNullOrEmpty(starters[i]) &&
+                    !unavailable.Contains(starters[i]) && !used.Contains(starters[i]))
                 {
                     onCourt[i] = starters[i];
                     used.Add(starters[i]);
@@ -391,10 +391,12 @@ namespace NBAHeadCoach.Core.Simulation
                 }
                 else
                 {
-                    // Fallback: grab any roster player not already on court
+                    // Fallback: grab any available roster player not already on court
+                    var unavailable = UnavailableFor(team);
                     foreach (var p in team.Roster)
                     {
-                        if (p != null && !string.IsNullOrEmpty(p.PlayerId) && !usedIds.Contains(p.PlayerId))
+                        if (p != null && !string.IsNullOrEmpty(p.PlayerId) &&
+                            !usedIds.Contains(p.PlayerId) && !unavailable.Contains(p.PlayerId))
                         {
                             players[i] = p;
                             onCourt[i] = p.PlayerId;
@@ -424,9 +426,10 @@ namespace NBAHeadCoach.Core.Simulation
                 string bestSub = null;
                 int bestFouls = 6;
 
+                var unavailable = UnavailableFor(team);
                 foreach (var pid in team.RosterPlayerIds)
                 {
-                    if (onCourtSet.Contains(pid)) continue;
+                    if (onCourtSet.Contains(pid) || unavailable.Contains(pid)) continue;
                     var stats = _boxScore.PlayerStats.ContainsKey(pid) ? _boxScore.PlayerStats[pid] : null;
                     int fouls = stats?.PersonalFouls ?? 0;
                     if (fouls < bestFouls) // only sub in someone who hasn't also fouled out
@@ -463,11 +466,15 @@ namespace NBAHeadCoach.Core.Simulation
                 string bestSub = null;
                 float bestEnergy = 0f;
 
+                var unavailable = UnavailableFor(team);
                 foreach (var pid in team.RosterPlayerIds)
                 {
-                    if (onCourtSet.Contains(pid)) continue;
+                    if (onCourtSet.Contains(pid) || unavailable.Contains(pid)) continue;
                     var bench = _playerDatabase.GetPlayer(pid);
                     if (bench == null) continue;
+                    // Never rotate a fouled-out player back onto the court
+                    if (_boxScore.PlayerStats.ContainsKey(pid) &&
+                        _boxScore.PlayerStats[pid].PersonalFouls >= 6) continue;
                     if (bench.Energy > bestEnergy)
                     {
                         bestEnergy = bench.Energy;
@@ -514,40 +521,13 @@ namespace NBAHeadCoach.Core.Simulation
         }
 
         /// <summary>
-        /// Processes a possession result to update box score.
+        /// Processes a possession result to update box score. Per-player stat application
+        /// lives in BoxScoreEventApplier (shared with the interactive match controller).
         /// </summary>
         private void ProcessPossessionResult(PossessionResult result, bool isHomePossession)
         {
-            string offenseTeamId = isHomePossession ? _homeTeam.TeamId : _awayTeam.TeamId;
             string defenseTeamId = isHomePossession ? _awayTeam.TeamId : _homeTeam.TeamId;
-
-            foreach (var evt in result.Events)
-            {
-                switch (evt.Type)
-                {
-                    case EventType.Shot:
-                        ProcessShot(evt, offenseTeamId, isHomePossession);
-                        break;
-                    case EventType.Steal:
-                        ProcessSteal(evt);
-                        break;
-                    case EventType.Block:
-                        ProcessBlock(evt);
-                        break;
-                    case EventType.Rebound:
-                        ProcessRebound(evt, offenseTeamId);
-                        break;
-                    case EventType.Pass when evt.Outcome == EventOutcome.Success:
-                        // Potential assist - tracked when shot made
-                        break;
-                    case EventType.Turnover:
-                        ProcessTurnover(evt);
-                        break;
-                    case EventType.Foul:
-                        ProcessFoul(evt, defenseTeamId);
-                        break;
-                }
-            }
+            BoxScoreEventApplier.Apply(_boxScore, result, isHomePossession, defenseTeamId, _currentQuarter);
 
             // Add points to team score
             if (result.PointsScored > 0)
@@ -556,77 +536,7 @@ namespace NBAHeadCoach.Core.Simulation
                     _boxScore.HomeScore += result.PointsScored;
                 else
                     _boxScore.AwayScore += result.PointsScored;
-
-                // Find the assist (pass before made shot)
-                var shotEvent = result.Events.LastOrDefault(e => e.Type == EventType.Shot);
-                if (shotEvent != null)
-                {
-                    var passEvent = result.Events.LastOrDefault(e => 
-                        e.Type == EventType.Pass && 
-                        e.TargetPlayerId == shotEvent.ActorPlayerId &&
-                        e.Outcome == EventOutcome.Success);
-                    
-                    if (passEvent != null)
-                    {
-                        _boxScore.AddAssist(passEvent.ActorPlayerId);
-                    }
-                }
             }
-        }
-
-        private void ProcessShot(PossessionEvent evt, string teamId, bool isHomePossession)
-        {
-            var zone = evt.ActorPosition.GetZone(isHomePossession);
-            bool isThree = zone == CourtZone.ThreePoint;
-            bool made = evt.Outcome == EventOutcome.Success;
-
-            _boxScore.AddShotAttempt(evt.ActorPlayerId, isThree);
-            if (made)
-            {
-                _boxScore.AddShotMade(evt.ActorPlayerId, isThree, evt.PointsScored);
-            }
-        }
-
-        private void ProcessSteal(PossessionEvent evt)
-        {
-            _boxScore.AddSteal(evt.ActorPlayerId);
-            if (evt.TargetPlayerId != null)
-            {
-                _boxScore.AddTurnover(evt.TargetPlayerId);
-            }
-        }
-
-        private void ProcessBlock(PossessionEvent evt)
-        {
-            _boxScore.AddBlock(evt.DefenderPlayerId);
-        }
-
-        private void ProcessRebound(PossessionEvent evt, string teamId)
-        {
-            _boxScore.AddRebound(evt.ActorPlayerId, isOffensive: evt.IsOffensiveRebound);
-        }
-
-        private void ProcessTurnover(PossessionEvent evt)
-        {
-            _boxScore.AddTurnover(evt.ActorPlayerId);
-        }
-
-        /// <summary>
-        /// Process foul events and update box score.
-        /// </summary>
-        private void ProcessFoul(PossessionEvent evt, string defenseTeamId)
-        {
-            if (evt.FoulDetail == null) return;
-
-            // Record personal foul in box score
-            if (evt.DefenderPlayerId != null &&
-                evt.FoulDetail.FoulType != FoulType.Technical)
-            {
-                _boxScore.AddFoul(evt.DefenderPlayerId);
-            }
-
-            // Track team fouls in box score
-            _boxScore.AddTeamFoul(defenseTeamId, _currentQuarter);
         }
 
         /// <summary>

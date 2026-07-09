@@ -39,6 +39,10 @@ namespace NBAHeadCoach.Core.Simulation
         public bool IsOffensiveRebound;
         public string Description;
 
+        // Decided turnover kind (populated when Type == Turnover, non-violation) —
+        // drives the choreographed visual AND the ticker wording so they always agree.
+        public TurnoverKind? Turnover;
+
         // Foul details (populated when Type == Foul)
         public FoulEventDetail FoulDetail;
 
@@ -109,7 +113,9 @@ namespace NBAHeadCoach.Core.Simulation
                 _ => "shoots"
             };
 
-            var zone = ActorPosition.GetZone(true);
+            // Shot positions always live in the shooter's attacking half — the sign of X
+            // identifies the basket (a hardcoded `true` typed every away shot "from three").
+            var zone = ActorPosition.GetZone(ActorPosition.X >= 0f);
             string zoneDesc = zone switch
             {
                 CourtZone.RestrictedArea => "at the rim",
@@ -213,6 +219,17 @@ namespace NBAHeadCoach.Core.Simulation
         Success,
         Fail,
         Pending  // For multi-step events
+    }
+
+    /// <summary>How a (non-violation) turnover happened — decided by the sim, enacted
+    /// verbatim by the choreographer and described verbatim by the ticker/narration.</summary>
+    public enum TurnoverKind
+    {
+        BadPass,
+        LostHandle,
+        OffensiveFoul,
+        Traveled,
+        OutOfBounds
     }
 
     public enum ShotType

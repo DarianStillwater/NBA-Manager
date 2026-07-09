@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using NBAHeadCoach.Core.Data;
 
-namespace NBAHeadCoach.Core.Manager
+namespace NBAHeadCoach.Core.Data
 {
     /// <summary>
     /// Status of a staff negotiation.

@@ -43,14 +43,24 @@ namespace NBAHeadCoach.Tests
             };
             for (int i = 0; i < 5; i++) away.StartingLineupIds[i] = lalRoster[i].PlayerId;
 
+            // Pin the global RNG too (FoulSystem draws from it) — otherwise rotations
+            // vary run to run and a starter subbed out late can recover to exactly 100
+            // on the bench, flaking the fatigue assertion below.
+            UnityEngine.Random.InitState(42);
             var sim = new GameSimulator(playerDb, seed: 42);
             var result = sim.SimulateGame(home, away);
             var box = result.BoxScore;
 
-            // Check starters have < 100 energy (fatigue occurred)
-            var starter = playerDb.GetPlayer(home.StartingLineupIds[0]);
-            if (starter != null)
-                AssertLessThan(starter.Energy, 100f, $"Starter {starter.LastName} energy < 100 after game");
+            // Check fatigue occurred: bench recovery (0.8/s of game time) refills anyone
+            // who sits the final stretch, so no SPECIFIC player is guaranteed drained —
+            // but the players on court at the buzzer are mid-stint, so several
+            // participants must end below full.
+            int drainedParticipants = playerDb.GetAllPlayers()
+                .Count(p => box.PlayerStats.ContainsKey(p.PlayerId)
+                            && box.PlayerStats[p.PlayerId].Minutes > 0
+                            && p.Energy < 95f);
+            AssertGreaterThan(drainedParticipants, 2,
+                $"3+ participants end drained below 95 energy ({drainedParticipants})");
 
             // Bench players got minutes
             int benchWithMinutes = 0;

@@ -61,6 +61,10 @@ namespace NBAHeadCoach.Core.Data
             get
             {
                 DateTime referenceDate = GameManager.Instance?.CurrentDate ?? DateTime.Now;
+                // A not-yet-started game clock (year 1) would compute age 0 for
+                // everyone — all age-dependent logic (development phases, retirement)
+                // would silently misfire. Fall back to the wall clock.
+                if (referenceDate.Year <= 1) referenceDate = DateTime.Now;
                 int age = referenceDate.Year - BirthDate.Year;
                 // Adjust if birthday hasn't occurred yet this year
                 if (BirthDate.Date > referenceDate.AddYears(-age))
@@ -568,7 +572,9 @@ namespace NBAHeadCoach.Core.Data
         {
             float energyMod = Mathf.Lerp(0.7f, 1.0f, Energy / 100f);
             float moraleMod = Mathf.Lerp(0.9f, 1.1f, Morale / 100f);
-            float formMod = Mathf.Lerp(0.85f, 1.15f, Form / 100f);
+            // Form is a real hot/cold streak (FormTracker) — keep its sim effect
+            // small and capped: ±5% at the extremes.
+            float formMod = Mathf.Lerp(0.95f, 1.05f, Form / 100f);
             return energyMod * moraleMod * formMod;
         }
 
@@ -619,12 +625,23 @@ namespace NBAHeadCoach.Core.Data
         }
 
         /// <summary>
-        /// Get total minutes played in the last N days.
+        /// Get total minutes played in the last N days, relative to the game clock.
         /// </summary>
         public int GetMinutesInLastDays(int days)
         {
+            var reference = GameManager.Instance?.CurrentDate ?? DateTime.Now;
+            if (reference.Year <= 1) reference = DateTime.Now; // clock not started yet
+            return GetMinutesInLastDays(days, reference);
+        }
+
+        /// <summary>
+        /// Get total minutes played in the last N days relative to an explicit date
+        /// (sim pipelines pass the game date rather than trusting the global clock).
+        /// </summary>
+        public int GetMinutesInLastDays(int days, DateTime asOf)
+        {
             if (RecentMinutes == null) return 0;
-            var cutoff = GameManager.Instance?.CurrentDate.AddDays(-days) ?? DateTime.Now.AddDays(-days);
+            var cutoff = asOf.Year <= 1 ? DateTime.MinValue : asOf.AddDays(-days);
             return RecentMinutes
                 .Where(r => r.Date >= cutoff)
                 .Sum(r => r.Minutes);

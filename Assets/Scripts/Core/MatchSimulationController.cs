@@ -66,6 +66,7 @@ namespace NBAHeadCoach.Core
 
         // Dead ball state
         private bool _isDeadBall = false;
+        private bool _liveBallForNext = false; // next possession starts off a live board/steal
         private int _homeUnansweredPoints = 0;
         private int _awayUnansweredPoints = 0;
         private bool _lastPossessionScored = false;
@@ -92,6 +93,41 @@ namespace NBAHeadCoach.Core
         private List<string> _awayLineup = new List<string>();
         private Dictionary<string, float> _playerMinutes = new Dictionary<string, float>();
         private Dictionary<string, int> _playerFouls = new Dictionary<string, int>();
+        private readonly CoachEjectionTracker _coachEjection = new CoachEjectionTracker();
+        // Dedicated RNG for the rare coach-technical roll so it never perturbs sim outcomes.
+        private System.Random _ejectionRng = new System.Random(20260709);
+
+        // Full per-player box score, updated live as possessions resolve (shared applier
+        // with the headless GameSimulator, so both paths count stats identically).
+        private BoxScore _liveBox;
+
+        /// <summary>Live box score for in-game UI (overlay, tooltips). Stats lead the
+        /// on-screen presentation by at most one possession. Scores synced on read.</summary>
+        public BoxScore LiveBoxScore
+        {
+            get
+            {
+                if (_liveBox != null)
+                {
+                    _liveBox.HomeScore = _homeScore;
+                    _liveBox.AwayScore = _awayScore;
+                }
+                return _liveBox;
+            }
+        }
+
+        public List<string> CurrentHomeLineup => new List<string>(_homeLineup);
+        public List<string> CurrentAwayLineup => new List<string>(_awayLineup);
+
+        public bool HasFouledOut(string playerId) => _playerFouls.GetValueOrDefault(playerId, 0) >= 6;
+
+        /// <summary>Live on-court five for a team — the single source of truth for sub UIs.</summary>
+        public IReadOnlyList<string> GetLineup(string teamId)
+        {
+            if (_homeTeam != null && _homeTeam.TeamId == teamId) return _homeLineup;
+            if (_awayTeam != null && _awayTeam.TeamId == teamId) return _awayLineup;
+            return new List<string>();
+        }
 
         #endregion
 
@@ -100,6 +136,24 @@ namespace NBAHeadCoach.Core
         public SimulationSpeed CurrentSpeed => _currentSpeed;
         public bool IsRunning => _isRunning;
         public bool IsPaused => _isPaused;
+
+        /// <summary>True once the user has chosen to bail out and sim the rest: the loop races to the
+        /// final buzzer at Instant with no animation, no prompts, and no auto-pauses. Live state
+        /// (score/box/fouls/energy/clock) is preserved because it's the same possession loop.</summary>
+        public bool IsFinishing { get; private set; }
+
+        /// <summary>Exit interactive coaching and finish the game headlessly from the current state.
+        /// The possession loop is already running (started at match init); this just races it to the
+        /// buzzer at Instant with no prompts/pauses/animation. Unpauses in case a coaching overlay
+        /// had it paused when the user chose to bail.</summary>
+        public void FinishRemainingHeadless()
+        {
+            if (_isComplete) return;
+            IsFinishing = true;
+            _currentSpeed = SimulationSpeed.Instant;
+            _isPaused = false;
+            OnSimulationResumed?.Invoke();
+        }
         public bool IsComplete => _isComplete;
         public int CurrentQuarter => _currentQuarter;
         public float GameClock => _gameClock;
@@ -147,6 +201,12 @@ namespace NBAHeadCoach.Core
         /// <summary>Fired when user input is required (substitution, etc.)</summary>
         public event Action<CoachingDecisionRequired> OnCoachingDecisionRequired;
 
+        /// <summary>Fires after any lineup change (manual sub or foul-out auto-sub): teamId, outgoing id, incoming id.</summary>
+        public event Action<string, string, string> OnLineupChanged;
+
+        /// <summary>Fires when a head coach is ejected (two technicals). Arg = the coach's team id.</summary>
+        public event Action<string> OnCoachEjected;
+
         /// <summary>Fired when simulation pauses</summary>
         public event Action OnSimulationPaused;
 
@@ -164,6 +224,51 @@ namespace NBAHeadCoach.Core
 
         /// <summary>Fired when a shot is attempted (for court shot markers)</summary>
         public event Action<ShotMarkerData> OnShotAttempt;
+
+        /// <summary>
+        /// Fired with a complete possession packaged for presentation (FM-style playback).
+        /// When subscribed, per-possession presentation events (PBP, scoreboard, shots,
+        /// spatial states) are captured into the packet instead of firing live, and the
+        /// sim loop blocks until <see cref="CompletePresentation"/> is called.
+        /// With no subscriber, behavior is exactly the legacy live-event flow.
+        /// </summary>
+        public event Action<PossessionPlaybackPacket> OnPossessionReady;
+
+        #endregion
+
+        #region Presentation Capture (FM-style playback handshake)
+
+        private PossessionPlaybackPacket _captureSink;       // non-null while capturing a possession
+        private float _captureCurrentOffset;                  // playback offset for events being emitted
+        private bool _presentationDone;
+
+        /// <summary>Called by the playback director when it has finished presenting a possession.</summary>
+        public void CompletePresentation() => _presentationDone = true;
+
+        private bool HasPresentationConsumer => OnPossessionReady != null;
+
+        private void BeginCapture(PossessionResult result, bool offenseIsHome)
+        {
+            _captureSink = new PossessionPlaybackPacket
+            {
+                Timeline = result.SpatialStates ?? new List<SpatialState>(),
+                StartGameClock = result.StartGameClock,
+                EndGameClock = result.EndGameClock,
+                PresentationSeconds = result.PresentationSeconds,
+                LiveSeconds = result.LiveSeconds,
+                Quarter = result.Quarter,
+                OffenseIsHome = offenseIsHome
+            };
+            _captureCurrentOffset = 0f;
+        }
+
+        private void CaptureOffsetForEvent(float eventGameClock)
+        {
+            if (_captureSink == null) return;
+            float offset = _captureSink.StartGameClock - eventGameClock;
+            float max = _captureSink.DurationGameSeconds;
+            _captureCurrentOffset = Mathf.Clamp(offset, 0f, max);
+        }
 
         #endregion
 
@@ -204,17 +309,23 @@ namespace NBAHeadCoach.Core
             _playerIsHome = playerTeam.TeamId == homeTeam.TeamId;
             _playerCoach = playerCoach;
 
-            // Create AI coach for opponent
+            // Create AI coach for opponent — with a real playbook and default
+            // player instructions, same as the player's coach
+            var aiTeam = _playerIsHome ? awayTeam : homeTeam;
             _aiCoach = new GameCoach(
-                _playerIsHome ? awayTeam.Strategy : homeTeam.Strategy,
-                null, null);
+                aiTeam.Strategy,
+                PlayBook.CreateDefault(aiTeam.TeamId),
+                TeamGameInstructions.CreateDefault(aiTeam.TeamId, aiTeam.Roster ?? new List<Player>()));
 
             // Initialize rules systems
             _foulSystem = new FoulSystem();
             _timeoutIntelligence = new TimeoutIntelligence();
 
-            // Initialize simulator with foul system
+            // Initialize simulator with foul system; interactive matches get full
+            // choreographed spatial timelines for the court view
             _possessionSimulator = new PossessionSimulator(null, _foulSystem);
+            _possessionSimulator.SpatialDetail = Simulation.Choreography.SpatialDetailLevel.Full;
+            _possessionSimulator.ResetGameState();
 
             // Reset state
             _currentQuarter = 1;
@@ -227,6 +338,7 @@ namespace NBAHeadCoach.Core
             _isPaused = false;
             _isRunning = false;
             _isDeadBall = false;
+            _liveBallForNext = false;
             _homeUnansweredPoints = 0;
             _awayUnansweredPoints = 0;
             _lastPossessionScored = false;
@@ -238,16 +350,24 @@ namespace NBAHeadCoach.Core
             _playByPlay.Clear();
             _playerMinutes.Clear();
             _playerFouls.Clear();
+            _coachEjection.Reset();
 
-            // Set starting lineups
-            _homeLineup = homeTeam.StartingLineupIds?.ToList() ?? new List<string>();
-            _awayLineup = awayTeam.StartingLineupIds?.ToList() ?? new List<string>();
+            // Set starting lineups (de-duped defensively — a duplicated id would sim short-handed)
+            _homeLineup = homeTeam.StartingLineupIds?.Distinct().ToList() ?? new List<string>();
+            _awayLineup = awayTeam.StartingLineupIds?.Distinct().ToList() ?? new List<string>();
 
-            // Initialize player tracking
+            // Initialize player tracking + the live box score (HomeTeam/AwayTeam set so the
+            // game-end result carries real team references, not nulls).
+            _liveBox = new BoxScore(homeTeam.TeamId, awayTeam.TeamId)
+            {
+                HomeTeam = homeTeam,
+                AwayTeam = awayTeam
+            };
             foreach (var playerId in homeTeam.RosterPlayerIds.Concat(awayTeam.RosterPlayerIds))
             {
                 _playerMinutes[playerId] = 0f;
                 _playerFouls[playerId] = 0;
+                _liveBox.InitializePlayer(playerId);
             }
 
             // Initialize analytics systems with player lookup functions
@@ -327,14 +447,33 @@ namespace NBAHeadCoach.Core
         {
             var lineup = _playerIsHome ? _homeLineup : _awayLineup;
 
+            if (string.IsNullOrEmpty(playerOut) || string.IsNullOrEmpty(playerIn))
+            {
+                Debug.LogWarning("[MatchSimController] Substitution rejected: missing player id");
+                return false;
+            }
             if (!lineup.Contains(playerOut))
             {
                 Debug.LogWarning($"[MatchSimController] {playerOut} not in lineup");
                 return false;
             }
+            if (lineup.Contains(playerIn))
+            {
+                Debug.LogWarning($"[MatchSimController] {playerIn} is already on the court");
+                return false;
+            }
+            if (_playerTeam == null || !_playerTeam.RosterPlayerIds.Contains(playerIn))
+            {
+                Debug.LogWarning($"[MatchSimController] {playerIn} is not on the roster");
+                return false;
+            }
+            if (_playerFouls.GetValueOrDefault(playerIn, 0) >= 6)
+            {
+                Debug.LogWarning($"[MatchSimController] {playerIn} has fouled out");
+                return false;
+            }
 
-            lineup.Remove(playerOut);
-            lineup.Add(playerIn);
+            ReplaceInLineup(lineup, _playerTeam.TeamId, playerOut, playerIn);
 
             AddPlayByPlayEntry(new PlayByPlayEntry
             {
@@ -358,6 +497,7 @@ namespace NBAHeadCoach.Core
             if (result.Success)
             {
                 _isPaused = true;
+                ApplyTimeoutEffects(calledByPlayerTeam: true);
                 OnTimeout?.Invoke(_playerTeam.TeamId, TimeoutReason.Coach);
 
                 AddPlayByPlayEntry(new PlayByPlayEntry
@@ -401,8 +541,9 @@ namespace NBAHeadCoach.Core
                     yield return HandleQuarterEnd();
                 }
 
-                // Wait based on speed — always yield at least once per possession to prevent freezing
-                float delay = GetDelayForSpeed();
+                // Wait based on speed — always yield at least once per possession to prevent freezing.
+                // In packet mode the playback director owns all pacing, so no extra delay here.
+                float delay = HasPresentationConsumer ? 0f : GetDelayForSpeed();
                 if (delay > 0)
                 {
                     yield return new WaitForSeconds(delay);
@@ -443,6 +584,11 @@ namespace NBAHeadCoach.Core
                 ? _homeScore - _awayScore
                 : _awayScore - _homeScore;
 
+            // A coach's play call (set play or quick action) forces the next
+            // possession's action family — consumed once
+            var offenseCoach = _homeHasPossession == _playerIsHome ? _playerCoach : _aiCoach;
+            var calledAction = offenseCoach?.ConsumePendingActionCall();
+
             // Simulate with team IDs for foul tracking
             var result = _possessionSimulator.SimulatePossession(
                 offensePlayers,
@@ -454,8 +600,25 @@ namespace NBAHeadCoach.Core
                 _homeHasPossession,
                 offenseTeam.TeamId,
                 defenseTeam.TeamId,
-                scoreDifferential
+                scoreDifferential,
+                _liveBallForNext,
+                calledAction
             );
+
+            // Transition logic: the next possession starts live off a defensive
+            // board or a steal (same rule as the headless sim)
+            _liveBallForNext = result.Outcome == PossessionOutcome.Miss ||
+                               result.Outcome == PossessionOutcome.Block ||
+                               (result.Outcome == PossessionOutcome.Turnover &&
+                                result.Events.Any(e => e.Type == EventType.Steal));
+
+            // In packet mode, presentation side-effects are captured instead of fired live
+            if (HasPresentationConsumer)
+                BeginCapture(result, _homeHasPossession);
+
+            // Snapshot scores for per-possession +/- (applied after FT processing)
+            int preHomeScore = _homeScore;
+            int preAwayScore = _awayScore;
 
             // Process result
             ProcessPossessionResult(result, _homeHasPossession);
@@ -467,19 +630,53 @@ namespace NBAHeadCoach.Core
             _gameClock = result.EndGameClock;
             _shotClock = 24f;
 
-            // Track minutes
+            // Track minutes + live box score minutes/plus-minus
             float minutesElapsed = result.Duration / 60f;
+            int deltaHome = _homeScore - preHomeScore;
+            int deltaAway = _awayScore - preAwayScore;
             foreach (var playerId in offenseLineup.Concat(defenseLineup))
             {
                 if (_playerMinutes.ContainsKey(playerId))
                     _playerMinutes[playerId] += minutesElapsed;
+
+                if (_liveBox != null && _liveBox.PlayerStats.TryGetValue(playerId, out var line))
+                {
+                    line.SecondsPlayed += result.Duration;
+                    bool onHome = _homeLineup.Contains(playerId);
+                    line.PlusMinus += onHome ? deltaHome - deltaAway : deltaAway - deltaHome;
+                }
+            }
+
+            // Hand the captured possession to the playback director and wait until
+            // it has been presented (played or skipped). Sim state is already final.
+            if (_captureSink != null)
+            {
+                var packet = _captureSink;
+                _captureSink = null;
+
+                // Narration beats and re-timed events interleave out of append order; the
+                // director's forward-only cursor needs ascending offsets. OrderBy is stable,
+                // so same-offset entries keep their append order (entry → scoreboard → marker).
+                packet.Events = packet.Events.OrderBy(e => e.Offset).ToList();
+
+                packet.AnyHighlight = packet.Events.Any(e => e.Entry != null && e.Entry.IsHighlight);
+                packet.AnyScore = packet.Events.Any(e => (e.Entry != null && e.Entry.Points > 0) || e.ShotPoints > 0);
+                packet.AnyDefensiveHighlight = result.Events.Any(e =>
+                    e.Type == EventType.Block || e.Type == EventType.Steal);
+                packet.WasFastBreak = result.WasFastBreak;
+
+                _presentationDone = false;
+                OnPossessionReady?.Invoke(packet);
+
+                // If the subscriber vanished or completed synchronously, don't deadlock
+                yield return new WaitUntil(() => _presentationDone || OnPossessionReady == null);
             }
 
             // Detect dead ball situations
             _isDeadBall = IsDeadBall(result);
 
-            // Check for AI timeout before possession changes
-            if (_isDeadBall)
+            // Check for AI timeout before possession changes (skipped while finishing headless)
+            if (_isDeadBall && !IsFinishing)
             {
                 yield return CheckAITimeout(_homeHasPossession);
             }
@@ -492,15 +689,15 @@ namespace NBAHeadCoach.Core
             }
             OnPossessionChange?.Invoke(_homeHasPossession);
 
-            // Check auto-pause conditions
-            if (ShouldAutoPause(result))
+            // Check auto-pause conditions (never while finishing headless)
+            if (!IsFinishing && ShouldAutoPause(result))
             {
                 PauseSimulation();
                 yield return null;
             }
 
             // Offer substitution opportunity at dead balls for player team
-            if (_isDeadBall && !_autoCoachEnabled)
+            if (_isDeadBall && !_autoCoachEnabled && !IsFinishing)
             {
                 var playerLineup = _playerIsHome ? _homeLineup : _awayLineup;
                 var fatigueCount = playerLineup.Count(id => GetPlayerEnergy(id) < _autoSubFatigueThreshold);
@@ -636,11 +833,7 @@ namespace NBAHeadCoach.Core
 
                 OnTimeout?.Invoke(aiTeam.TeamId, (TimeoutReason)(int)decision.Reason);
 
-                // Reset unanswered points after timeout
-                if (checkHome)
-                    _awayUnansweredPoints = 0;
-                else
-                    _homeUnansweredPoints = 0;
+                ApplyTimeoutEffects(calledByPlayerTeam: false);
 
                 // Brief pause to show timeout
                 yield return new WaitForSeconds(0.5f);
@@ -666,6 +859,7 @@ namespace NBAHeadCoach.Core
         /// </summary>
         private IEnumerator ProcessFreeThrowsFromResult(PossessionResult result, bool offenseIsHome)
         {
+            int ftSequence = 0;
             foreach (var evt in result.Events)
             {
                 if (evt.Type == EventType.Foul && evt.FoulDetail != null &&
@@ -675,23 +869,65 @@ namespace NBAHeadCoach.Core
                     var shooter = GetPlayer(evt.ActorPlayerId);
                     if (shooter == null) continue;
 
-                    // Calculate FT results using the handler
-                    var ftHandler = _possessionSimulator.FreeThrowHandler;
-                    var ftContext = new GameContext
+                    // Use the simulator's pre-computed FT result when present so the
+                    // displayed score always matches the simulated possession (and the
+                    // choreographed FT visuals). Re-roll only as a legacy fallback.
+                    var ftResult = evt.FreeThrowResult;
+                    if (ftResult == null)
                     {
-                        Quarter = _currentQuarter,
-                        GameClock = _gameClock,
-                        ScoreDifferential = offenseIsHome
-                            ? _homeScore - _awayScore
-                            : _awayScore - _homeScore,
-                        IsClutchTime = IsClutchTime,
-                        TimeoutJustCalled = false
-                    };
+                        var ftHandler = _possessionSimulator.FreeThrowHandler;
+                        var ftContext = new GameContext
+                        {
+                            Quarter = _currentQuarter,
+                            GameClock = _gameClock,
+                            ScoreDifferential = offenseIsHome
+                                ? _homeScore - _awayScore
+                                : _awayScore - _homeScore,
+                            IsClutchTime = IsClutchTime,
+                            TimeoutJustCalled = false
+                        };
 
-                    var ftResult = ftHandler.CalculateFreeThrows(
-                        shooter,
-                        evt.FoulDetail.FreeThrowsAwarded,
-                        ftContext);
+                        ftResult = ftHandler.CalculateFreeThrows(
+                            shooter,
+                            evt.FoulDetail.FreeThrowsAwarded,
+                            ftContext);
+                    }
+
+                    // In packet mode, free throws present in the tail past the live timeline.
+                    // When the choreographer produced FT beats, anchor the summary entry to the
+                    // LAST attempt's actual visual moment instead of the synthetic 1.5s spacing.
+                    if (_captureSink != null)
+                    {
+                        ftSequence++;
+                        float? lastFtBeat = null;
+                        if (result.NarrationBeats != null)
+                        {
+                            for (int i = result.NarrationBeats.Count - 1; i >= 0; i--)
+                            {
+                                if (result.NarrationBeats[i].Kind ==
+                                    Simulation.Choreography.NarrationBeatKind.FreeThrowAttempt)
+                                {
+                                    lastFtBeat = result.NarrationBeats[i].T;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (lastFtBeat.HasValue)
+                        {
+                            _captureCurrentOffset = lastFtBeat.Value + 0.2f;
+                            _captureSink.TailSeconds = Mathf.Max(_captureSink.TailSeconds,
+                                lastFtBeat.Value - _captureSink.DurationGameSeconds + 1f);
+                        }
+                        else
+                        {
+                            _captureCurrentOffset = _captureSink.DurationGameSeconds + ftSequence * 1.5f;
+                            _captureSink.TailSeconds = ftSequence * 1.5f + 0.5f;
+                        }
+                    }
+
+                    // Live box score: free-throw stats (FG points already applied via events)
+                    _liveBox?.AddFreeThrows(shooter.PlayerId, ftResult.Made, ftResult.Attempts);
 
                     // Update score
                     if (ftResult.Made > 0)
@@ -731,10 +967,13 @@ namespace NBAHeadCoach.Core
 
                     FireScoreboardUpdate();
 
-                    // Brief delay for free throw display
-                    float delay = GetDelayForSpeed() * 0.5f;
-                    if (delay > 0)
-                        yield return new WaitForSeconds(delay);
+                    // Brief delay for free throw display (director paces this in packet mode)
+                    if (_captureSink == null)
+                    {
+                        float delay = GetDelayForSpeed() * 0.5f;
+                        if (delay > 0)
+                            yield return new WaitForSeconds(delay);
+                    }
                 }
             }
         }
@@ -752,8 +991,9 @@ namespace NBAHeadCoach.Core
             var offenseLineup = offenseIsHome ? _homeLineup : _awayLineup;
             var defenseLineup = offenseIsHome ? _awayLineup : _homeLineup;
 
-            // Fire spatial state events for court visualization
-            if (result.SpatialStates != null)
+            // Fire spatial state events for court visualization.
+            // In packet mode the timeline travels inside the packet instead.
+            if (result.SpatialStates != null && _captureSink == null)
             {
                 foreach (var state in result.SpatialStates)
                 {
@@ -798,9 +1038,32 @@ namespace NBAHeadCoach.Core
                 }
             }
 
+            // Live box score: per-player stats via the same applier as the headless sim
+            if (_liveBox != null)
+            {
+                string defTeamId = offenseIsHome ? _awayTeam.TeamId : _homeTeam.TeamId;
+                BoxScoreEventApplier.Apply(_liveBox, result, offenseIsHome, defTeamId, _currentQuarter);
+            }
+
+            // Radio narration for the court bar, timed to the choreographed beats
+            EmitNarrationEvents(result, offenseIsHome);
+
             foreach (var evt in result.Events)
             {
                 _allEvents.Add(evt);
+
+                // Free throws are scored + narrated exclusively by ProcessFreeThrowsFromResult.
+                // Counting them here as well double-counted FT points and duplicated FT play-by-play.
+                if (evt.Type == EventType.FreeThrow)
+                    continue;
+
+                // Anchor captured presentation events to this event's true on-screen moment
+                // (choreographed beat time when available; possession-boundary clock otherwise).
+                float? beatT = BeatTimeFor(evt, result.NarrationBeats);
+                if (beatT.HasValue && _captureSink != null)
+                    _captureCurrentOffset = beatT.Value;
+                else
+                    CaptureOffsetForEvent(evt.GameClock);
 
                 // Generate play-by-play
                 var entry = CreatePlayByPlayEntry(evt, offenseIsHome);
@@ -844,9 +1107,23 @@ namespace NBAHeadCoach.Core
                         evt.PointsScored,
                         _gameClock,
                         _currentQuarter,
-                        ConvertToShotType(evt.ShotType)
+                        ConvertToShotType(evt.ShotType, evt.ActorPosition, offenseIsHome)
                     );
-                    OnShotAttempt?.Invoke(shotMarker);
+
+                    if (_captureSink != null)
+                    {
+                        _captureSink.Events.Add(new TimedPlaybackEvent
+                        {
+                            Offset = _captureCurrentOffset,
+                            ShotMarker = shotMarker,
+                            ShotMade = evt.Outcome == EventOutcome.Success,
+                            ShotPoints = evt.PointsScored
+                        });
+                    }
+                    else
+                    {
+                        OnShotAttempt?.Invoke(shotMarker);
+                    }
                 }
 
                 // Track fouls
@@ -861,6 +1138,8 @@ namespace NBAHeadCoach.Core
                             OnPlayerFoulOut?.Invoke(evt.DefenderPlayerId);
                             HandleFoulOut(evt.DefenderPlayerId);
                         }
+
+                        MaybeArgueCall(evt.DefenderPlayerId);
                     }
                 }
             }
@@ -920,7 +1199,204 @@ namespace NBAHeadCoach.Core
 
         private Player GetPlayer(string playerId)
         {
-            return GameManager.Instance?.PlayerDatabase?.GetPlayer(playerId);
+            var p = GameManager.Instance?.PlayerDatabase?.GetPlayer(playerId);
+            if (p != null) return p;
+            // Fall back to the match teams' cached rosters (headless/test contexts
+            // where no GameManager exists).
+            p = _homeTeam?.Roster?.FirstOrDefault(x => x != null && x.PlayerId == playerId);
+            return p ?? _awayTeam?.Roster?.FirstOrDefault(x => x != null && x.PlayerId == playerId);
+        }
+
+        // ── Radio narration (court bar) ─────────────────────────────
+
+        /// <summary>Action-beat priority for the per-possession line budget (lower = kept first).</summary>
+        private static int NarrationPriority(Simulation.Choreography.NarrationBeatKind kind)
+        {
+            switch (kind)
+            {
+                // Execution lapses are the coaching story of the possession —
+                // narrate them ahead of generic action beats.
+                case Simulation.Choreography.NarrationBeatKind.LateCloseout:
+                case Simulation.Choreography.NarrationBeatKind.BlownRotation:
+                case Simulation.Choreography.NarrationBeatKind.MissedHelp:
+                case Simulation.Choreography.NarrationBeatKind.HeroBall:
+                    return 0;
+                case Simulation.Choreography.NarrationBeatKind.Drive:
+                case Simulation.Choreography.NarrationBeatKind.Curl:
+                case Simulation.Choreography.NarrationBeatKind.BackdoorCut:
+                case Simulation.Choreography.NarrationBeatKind.Handoff:
+                    return 1;
+                case Simulation.Choreography.NarrationBeatKind.ScreenSet:
+                case Simulation.Choreography.NarrationBeatKind.Roll:
+                case Simulation.Choreography.NarrationBeatKind.PostMove:
+                case Simulation.Choreography.NarrationBeatKind.PostFeed:
+                case Simulation.Choreography.NarrationBeatKind.KickOut:
+                case Simulation.Choreography.NarrationBeatKind.AssistPass:
+                    return 2;
+                case Simulation.Choreography.NarrationBeatKind.BringUp:
+                    return 3;
+                default:
+                    return 4;   // SwingPass / IsoJab
+            }
+        }
+
+        private static bool IsResultBeat(Simulation.Choreography.NarrationBeatKind kind)
+        {
+            switch (kind)
+            {
+                case Simulation.Choreography.NarrationBeatKind.ShotWindup:
+                case Simulation.Choreography.NarrationBeatKind.RimResult:
+                case Simulation.Choreography.NarrationBeatKind.ReboundScramble:
+                case Simulation.Choreography.NarrationBeatKind.StealJump:
+                case Simulation.Choreography.NarrationBeatKind.OobTurnover:
+                case Simulation.Choreography.NarrationBeatKind.LooseBallTurnover:
+                case Simulation.Choreography.NarrationBeatKind.Violation:
+                case Simulation.Choreography.NarrationBeatKind.FreeThrowSetup:
+                case Simulation.Choreography.NarrationBeatKind.FreeThrowAttempt:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        /// <summary>
+        /// Convert the choreographer's narration beats into timed radio-call lines for the court
+        /// bar. Result-class beats always narrate; action beats are budgeted (≤4 by priority) so
+        /// a possession reads as ~4-7 calls. Never touches the play-by-play ticker.
+        /// </summary>
+        private void EmitNarrationEvents(PossessionResult result, bool offenseIsHome)
+        {
+            if (_captureSink == null || result.NarrationBeats == null) return;
+
+            var offLineup = offenseIsHome ? _homeLineup : _awayLineup;
+            var defLineup = offenseIsHome ? _awayLineup : _homeLineup;
+
+            var ctx = new PlayByPlayContext
+            {
+                HomeTeam = _homeTeam,
+                AwayTeam = _awayTeam,
+                OffenseTeam = offenseIsHome ? _homeTeam : _awayTeam,
+                HomeScore = _homeScore,
+                AwayScore = _awayScore,
+                Quarter = _currentQuarter,
+                GameClock = _gameClock,
+                HomeOnOffense = offenseIsHome
+            };
+
+            // Budget the action beats; keep every result-class beat.
+            var actionBeats = result.NarrationBeats.Where(b => !IsResultBeat(b.Kind))
+                .OrderBy(b => NarrationPriority(b.Kind)).ThenBy(b => b.T)
+                .Take(4).ToList();
+            var chosen = result.NarrationBeats.Where(b => IsResultBeat(b.Kind))
+                .Concat(actionBeats).OrderBy(b => b.T).ToList();
+
+            var shotEvt = result.Events.FirstOrDefault(e => e.Type == EventType.Shot);
+            bool wasBlocked = result.Events.Any(e => e.Type == EventType.Block);
+
+            foreach (var beat in chosen)
+            {
+                Player actor = ResolveBeatPlayer(beat.ActorIndex, beat.ActorIsDefense, offLineup, defLineup);
+                Player target = beat.Kind == Simulation.Choreography.NarrationBeatKind.FreeThrowSetup
+                    ? null   // TargetIndex carries the attempt count, not a player
+                    : ResolveBeatPlayer(beat.TargetIndex, false, offLineup, defLineup);
+
+                var line = RadioNarrator.Narrate(beat, ctx, actor, target);
+                if (line == null || string.IsNullOrEmpty(line.Text)) continue;
+
+                ApplyNarrationSpecials(beat, line, result, ctx, shotEvt, wasBlocked);
+
+                _captureSink.Events.Add(new TimedPlaybackEvent { Offset = beat.T, Narration = line });
+            }
+        }
+
+        private Player ResolveBeatPlayer(int lineupIndex, bool isDefense, List<string> off, List<string> def)
+        {
+            if (lineupIndex < 0) return null;
+            var lineup = isDefense ? def : off;
+            if (lineup == null || lineupIndex >= lineup.Count) return null;
+            return GetPlayer(lineup[lineupIndex]);
+        }
+
+        /// <summary>Big-moment banners: breakaway slams, rejections, buzzer beaters, daggers, and-ones.</summary>
+        private void ApplyNarrationSpecials(Simulation.Choreography.NarrationBeat beat, NarrationLine line,
+            PossessionResult result, PlayByPlayContext ctx, PossessionEvent shotEvt, bool wasBlocked)
+        {
+            if (beat.Kind != Simulation.Choreography.NarrationBeatKind.RimResult) return;
+
+            // Blocked shots: the rim-result call becomes the rejection.
+            if (wasBlocked)
+            {
+                line.Text = ctx.IsClutchTime ? "SWATTED AWAY! Huge stop!" : "Rejected at the rim!";
+                if (ctx.IsClutchTime || (shotEvt?.ContestLevel ?? 0f) > 0.8f)
+                {
+                    line.Style = NarrationStyle.Special;
+                    line.Badge = "REJECTED!";
+                }
+                else line.Style = NarrationStyle.Excited;
+                return;
+            }
+
+            if (!beat.Made) return;
+
+            int pts = beat.PointsScored > 0 ? beat.PointsScored : (beat.IsThree ? 3 : 2);
+            int homeAfter = ctx.HomeScore + (ctx.HomeOnOffense ? pts : 0);
+            int awayAfter = ctx.AwayScore + (ctx.HomeOnOffense ? 0 : pts);
+            int offenseMargin = ctx.HomeOnOffense ? homeAfter - awayAfter : awayAfter - homeAfter;
+
+            if (beat.ShotType == Simulation.ShotType.Dunk && (shotEvt?.IsFastBreak ?? false))
+            {
+                line.Style = NarrationStyle.Special; line.Badge = "SLAM!";
+            }
+            else if (result.EndGameClock <= 0.1f && _gameClock <= 24f)
+            {
+                line.Style = NarrationStyle.Special; line.Badge = "BUZZER BEATER!";
+            }
+            else if (beat.IsThree && ctx.IsClutchTime && offenseMargin >= 6)
+            {
+                line.Style = NarrationStyle.Special; line.Badge = "DAGGER!";
+            }
+            else if (shotEvt?.IsAndOne ?? false)
+            {
+                line.Style = NarrationStyle.Special; line.Badge = "AND ONE!";
+            }
+        }
+
+        /// <summary>The true on-screen moment for a decided event, from the choreographed beats.</summary>
+        private static float? BeatTimeFor(PossessionEvent evt,
+            List<Simulation.Choreography.NarrationBeat> beats)
+        {
+            if (beats == null) return null;
+
+            Simulation.Choreography.NarrationBeatKind kind;
+            switch (evt.Type)
+            {
+                case EventType.Shot:
+                case EventType.Block:
+                    kind = Simulation.Choreography.NarrationBeatKind.RimResult; break;
+                case EventType.Rebound:
+                    kind = Simulation.Choreography.NarrationBeatKind.ReboundScramble; break;
+                case EventType.Steal:
+                    kind = Simulation.Choreography.NarrationBeatKind.StealJump; break;
+                case EventType.Turnover:
+                {
+                    return FindBeat(beats, Simulation.Choreography.NarrationBeatKind.OobTurnover)
+                        ?? FindBeat(beats, Simulation.Choreography.NarrationBeatKind.LooseBallTurnover)
+                        ?? FindBeat(beats, Simulation.Choreography.NarrationBeatKind.Violation);
+                }
+                case EventType.Foul:
+                    kind = Simulation.Choreography.NarrationBeatKind.ShotWindup; break;
+                default:
+                    return null;
+            }
+            return FindBeat(beats, kind);
+        }
+
+        private static float? FindBeat(List<Simulation.Choreography.NarrationBeat> beats,
+            Simulation.Choreography.NarrationBeatKind kind)
+        {
+            for (int i = 0; i < beats.Count; i++)
+                if (beats[i].Kind == kind) return beats[i].T;
+            return null;
         }
 
         private PlayByPlayType GetPlayByPlayType(PossessionEvent evt)
@@ -963,6 +1439,7 @@ namespace NBAHeadCoach.Core
             _currentQuarter++;
             _gameClock = _currentQuarter <= 4 ? 720f : 300f;
             _homeHasPossession = _currentQuarter % 2 == 1; // Alternate
+            _liveBallForNext = false; // quarters open with a dead-ball inbound
 
             // Reset team fouls for new quarter
             _foulSystem.ResetQuarterFouls();
@@ -1019,8 +1496,7 @@ namespace NBAHeadCoach.Core
 
             if (bench != null)
             {
-                lineup.Remove(playerId);
-                lineup.Add(bench);
+                ReplaceInLineup(lineup, team.TeamId, playerId, bench);
 
                 AddPlayByPlayEntry(new PlayByPlayEntry
                 {
@@ -1077,6 +1553,71 @@ namespace NBAHeadCoach.Core
             return false;
         }
 
+        /// <summary>
+        /// What a timeout is actually FOR: everyone catches their breath (on-court
+        /// players recover more than the bench), runs are broken for both sides,
+        /// and the team that got timed-out against loses its momentum head of steam.
+        /// </summary>
+        internal void ApplyTimeoutEffects(bool calledByPlayerTeam)
+        {
+            if (_homeTeam != null && _awayTeam != null)
+            {
+                foreach (var id in _homeTeam.RosterPlayerIds.Concat(_awayTeam.RosterPlayerIds))
+                {
+                    var p = GetPlayer(id);
+                    if (p == null) continue;
+                    bool onCourt = _homeLineup.Contains(id) || _awayLineup.Contains(id);
+                    p.Energy = Mathf.Min(100f, p.Energy + (onCourt ? 6f : 3f));
+                }
+            }
+
+            _homeUnansweredPoints = 0;
+            _awayUnansweredPoints = 0;
+
+            var opposingCoach = calledByPlayerTeam ? _aiCoach : _playerCoach;
+            opposingCoach?.OnOpponentTimeout();
+        }
+
+        private string TeamIdOf(string playerId)
+        {
+            if (_homeTeam?.RosterPlayerIds != null && _homeTeam.RosterPlayerIds.Contains(playerId)) return _homeTeam.TeamId;
+            if (_awayTeam?.RosterPlayerIds != null && _awayTeam.RosterPlayerIds.Contains(playerId)) return _awayTeam.TeamId;
+            return null;
+        }
+
+        /// <summary>A trailing, frustrated coach occasionally barks at the officials on a foul call and
+        /// picks up a technical; two technicals eject him. Rare, and only when behind. Uses a
+        /// dedicated RNG so it can never shift the possession-outcome stream.</summary>
+        private void MaybeArgueCall(string fouler)
+        {
+            string teamId = TeamIdOf(fouler);
+            if (string.IsNullOrEmpty(teamId) || _coachEjection.IsEjected(teamId)) return;
+
+            bool isHome = teamId == _homeTeam?.TeamId;
+            int deficit = (isHome ? _awayScore : _homeScore) - (isHome ? _homeScore : _awayScore);
+            double rate = deficit >= 12 ? 0.02 : deficit >= 6 ? 0.008 : 0.0;
+            if (rate <= 0.0) return;
+            if (_ejectionRng.NextDouble() < rate) RegisterCoachTechnical(teamId);
+        }
+
+        /// <summary>Charge a coaching technical (also callable from the UI). Fires OnCoachEjected on
+        /// the second technical.</summary>
+        public void RegisterCoachTechnical(string teamId)
+        {
+            if (string.IsNullOrEmpty(teamId)) return;
+            if (_coachEjection.RegisterTechnical(teamId))
+                OnCoachEjected?.Invoke(teamId);
+        }
+
+        /// <summary>In-place slot replacement (preserves PG..C ordering) + change notification.</summary>
+        private void ReplaceInLineup(List<string> lineup, string teamId, string playerOut, string playerIn)
+        {
+            int idx = lineup.IndexOf(playerOut);
+            if (idx < 0) return;
+            lineup[idx] = playerIn;
+            OnLineupChanged?.Invoke(teamId, playerOut, playerIn);
+        }
+
         private Player[] GetPlayersFromLineup(List<string> lineup)
         {
             var players = new Player[5];
@@ -1103,30 +1644,29 @@ namespace NBAHeadCoach.Core
             return $"{mins}:{secs:D2}";
         }
 
-        private ShotType ConvertToShotType(Simulation.ShotType? simShotType)
+        private ShotType ConvertToShotType(Simulation.ShotType? simShotType, CourtPosition shotPos, bool offenseIsHome)
         {
             if (simShotType == null) return Data.ShotType.Jumper;
 
+            // ThreePointer is a DISTANCE class, not a shot style — use THE scoring
+            // definition so three-point FX fire exactly when the scoreboard adds 3.
+            bool isThree = shotPos.IsThreePointShot(offenseIsHome) ||
+                           simShotType == Simulation.ShotType.Heave;
+
             return simShotType.Value switch
             {
-                Simulation.ShotType.Layup => Data.ShotType.Layup,
                 Simulation.ShotType.Dunk => Data.ShotType.Dunk,
+                Simulation.ShotType.Layup => Data.ShotType.Layup,
                 Simulation.ShotType.Floater => Data.ShotType.Layup,
                 Simulation.ShotType.Hookshot => Data.ShotType.Layup,
-                Simulation.ShotType.Jumper => Data.ShotType.Jumper,
-                Simulation.ShotType.StepBack => Data.ShotType.Jumper,
-                Simulation.ShotType.Fadeaway => Data.ShotType.Jumper,
-                Simulation.ShotType.CatchAndShoot => Data.ShotType.ThreePointer,
-                Simulation.ShotType.PullUp => Data.ShotType.Jumper,
-                Simulation.ShotType.Heave => Data.ShotType.ThreePointer,
                 Simulation.ShotType.TipIn => Data.ShotType.Layup,
-                _ => Data.ShotType.Jumper
+                _ => isThree ? Data.ShotType.ThreePointer : Data.ShotType.Jumper
             };
         }
 
         private void FireScoreboardUpdate()
         {
-            OnScoreboardUpdate?.Invoke(new ScoreboardUpdate
+            var update = new ScoreboardUpdate
             {
                 HomeScore = _homeScore,
                 AwayScore = _awayScore,
@@ -1134,35 +1674,47 @@ namespace NBAHeadCoach.Core
                 Clock = _gameClock,
                 ShotClock = _shotClock,
                 HomeHasPossession = _homeHasPossession
-            });
+            };
+
+            if (_captureSink != null)
+            {
+                _captureSink.Events.Add(new TimedPlaybackEvent
+                {
+                    Offset = _captureCurrentOffset,
+                    Scoreboard = update
+                });
+                return;
+            }
+
+            OnScoreboardUpdate?.Invoke(update);
         }
 
         private void AddPlayByPlayEntry(PlayByPlayEntry entry)
         {
             _playByPlay.Add(entry);
+
+            if (_captureSink != null)
+            {
+                _captureSink.Events.Add(new TimedPlaybackEvent
+                {
+                    Offset = _captureCurrentOffset,
+                    Entry = entry
+                });
+                return;
+            }
+
             OnPlayByPlay?.Invoke(entry);
         }
 
         private BoxScore CreateBoxScore()
         {
-            var boxScore = new BoxScore(_homeTeam.TeamId, _awayTeam.TeamId)
+            // The live box has been accumulating real per-player stats all game —
+            // interactive matches now record a full box score (season stats, POTG).
+            return LiveBoxScore ?? new BoxScore(_homeTeam.TeamId, _awayTeam.TeamId)
             {
                 HomeScore = _homeScore,
                 AwayScore = _awayScore
             };
-
-            // Add player stats from events
-            foreach (var playerId in _playerMinutes.Keys)
-            {
-                boxScore.PlayerStats[playerId] = new PlayerGameStats
-                {
-                    PlayerId = playerId,
-                    SecondsPlayed = _playerMinutes[playerId] * 60f,
-                    PersonalFouls = _playerFouls.GetValueOrDefault(playerId, 0)
-                };
-            }
-
-            return boxScore;
         }
 
         #endregion

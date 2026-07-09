@@ -53,6 +53,13 @@ namespace NBAHeadCoach.Core.Data
         }
 
         /// <summary>
+        /// THE one is-a-three definition — identical to the scoring rule. Every consumer
+        /// (points, FX, markers, narration, action selection) must use this, never a raw
+        /// distance threshold, so text/visuals/score can never disagree.
+        /// </summary>
+        public bool IsThreePointShot(bool attacksRight) => GetZone(attacksRight) == CourtZone.ThreePoint;
+
+        /// <summary>
         /// Gets the side of the court (Left, Center, Right).
         /// </summary>
         public CourtSide GetSide()

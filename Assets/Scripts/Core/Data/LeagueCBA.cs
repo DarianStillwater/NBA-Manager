@@ -239,8 +239,8 @@ namespace NBAHeadCoach.Core.Data
 
         // ==================== TRADE DEADLINE & RESTRICTIONS ====================
         
-        /// <summary>Trade deadline (2nd Thursday of February, simplified to Feb 8)</summary>
-        public static DateTime GetTradeDeadline(int year) => new DateTime(year, 2, 8);
+        /// <summary>Trade deadline (simplified to Feb 6 — must match SeasonController/SeasonCalendar)</summary>
+        public static DateTime GetTradeDeadline(int year) => new DateTime(year, 2, 6);
         
         public static bool IsPastTradeDeadline(DateTime currentDate)
         {

@@ -24,7 +24,7 @@ namespace NBAHeadCoach.UI.GamePanels
             var titleLE = title.gameObject.AddComponent<LayoutElement>(); titleLE.preferredHeight = 24; titleLE.flexibleHeight = 0;
 
             var row1 = CreateRow(cr, "Row1", 140); BuildNextGameCard(row1, team, teamColor); BuildSeasonOverviewCard(row1, team, teamColor);
-            var row2 = CreateRow(cr, "Row2", 140); BuildRecentResultsCard(row2, teamColor); BuildRosterSummaryCard(row2, team, teamColor);
+            var row2 = CreateRow(cr, "Row2", 140); BuildRecentResultsCard(row2, team, teamColor); BuildRosterSummaryCard(row2, team, teamColor);
             var row3 = CreateRow(cr, "Row3", 140); BuildFinancialCard(row3, team, teamColor); BuildCoachingStaffCard(row3, team, teamColor);
             var row4 = CreateRow(cr, "Row4", 160); BuildScheduleCard(row4, team, teamColor);
         }
@@ -87,11 +87,35 @@ namespace NBAHeadCoach.UI.GamePanels
             B.FillCard(info); info.lineSpacing = 1.5f;
         }
 
-        private void BuildRecentResultsCard(RectTransform parent, Color teamColor)
+        private void BuildRecentResultsCard(RectTransform parent, Team team, Color teamColor)
         {
             var card = B.Card(parent, "RECENT RESULTS", teamColor);
-            var text = B.Text(card, "Content", "No games played yet", 13, FontStyle.Italic, UITheme.TextSecondary);
-            B.FillCard(text); text.alignment = TextAnchor.MiddleCenter;
+
+            var recent = GameManager.Instance?.SeasonController?.CompletedGames?
+                .Where(g => g.HomeTeamId == team.TeamId || g.AwayTeamId == team.TeamId)
+                .OrderByDescending(g => g.Date)
+                .Take(4)
+                .ToList();
+
+            if (recent == null || recent.Count == 0)
+            {
+                var empty = B.Text(card, "Content", "No games played yet", 13, FontStyle.Italic, UITheme.TextSecondary);
+                B.FillCard(empty); empty.alignment = TextAnchor.MiddleCenter;
+                return;
+            }
+
+            var lines = recent.Select(g =>
+            {
+                bool home = g.HomeTeamId == team.TeamId;
+                string opp = home ? g.AwayTeamId : g.HomeTeamId;
+                int us = home ? g.HomeScore : g.AwayScore;
+                int them = home ? g.AwayScore : g.HomeScore;
+                string tag = us > them ? "W" : "L";
+                return $"{tag}  {(home ? "vs" : "@")} {opp}  {us}-{them}";
+            });
+
+            var text = B.Text(card, "Content", string.Join("\n", lines), 13, FontStyle.Normal, UITheme.TextSecondary);
+            B.FillCard(text); text.lineSpacing = 1.4f;
         }
 
         private void BuildRosterSummaryCard(RectTransform parent, Team team, Color teamColor)
@@ -109,10 +133,29 @@ namespace NBAHeadCoach.UI.GamePanels
         private void BuildFinancialCard(RectTransform parent, Team team, Color teamColor)
         {
             var card = B.Card(parent, "FINANCES", teamColor);
-            var info = B.Text(card, "Info", "Salary Cap:  $140.6M\nTeam Payroll:  —\nCap Space:  —\nLuxury Tax:  No",
-                13, FontStyle.Normal, UITheme.TextSecondary);
+
+            var cap = GameManager.Instance?.SalaryCapManager;
+            string content;
+            if (cap != null)
+            {
+                long payroll = cap.GetTeamPayroll(team.TeamId);
+                long capSpace = cap.GetCapSpace(team.TeamId);
+                bool overTax = payroll >= LeagueCBA.LUXURY_TAX_LINE;
+                content = $"Salary Cap:  {Money(LeagueCBA.SALARY_CAP)}\n" +
+                          $"Team Payroll:  {Money(payroll)}\n" +
+                          $"Cap Space:  {(capSpace >= 0 ? Money(capSpace) : $"-{Money(-capSpace)}")}\n" +
+                          $"Luxury Tax:  {(overTax ? "OVER" : "No")}";
+            }
+            else
+            {
+                content = "Finances unavailable";
+            }
+
+            var info = B.Text(card, "Info", content, 13, FontStyle.Normal, UITheme.TextSecondary);
             B.FillCard(info); info.lineSpacing = 1.5f;
         }
+
+        private static string Money(long amount) => $"${amount / 1_000_000f:0.0}M";
 
         private void BuildCoachingStaffCard(RectTransform parent, Team team, Color teamColor)
         {

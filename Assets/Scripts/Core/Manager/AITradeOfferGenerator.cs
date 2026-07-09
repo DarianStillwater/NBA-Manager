@@ -11,8 +11,18 @@ namespace NBAHeadCoach.Core.Manager
     /// Generates incoming trade offers from AI teams to the player's team.
     /// Offers are rare (1-2 per week) and based on FO personality.
     /// </summary>
-    public class AITradeOfferGenerator
+    public class AITradeOfferGenerator : IDailyTickable, ISaveSection
     {
+        public string SystemId => "TradeOffers";
+        public int TickOrder => Manager.TickOrder.TradeOffers;
+        public void DailyTick(in DailyTickContext ctx) => ProcessDailyOffers();
+
+        public void WriteSave(SaveData data) => data.IncomingOffersData = CreateSaveData();
+        public void ReadSave(SaveData data, in SaveReadContext ctx)
+        {
+            if (data.IncomingOffersData != null) RestoreFromSave(data.IncomingOffersData);
+        }
+
         private PlayerDatabase _playerDatabase;
         private SalaryCapManager _capManager;
         private PlayerValueCalculator _valueCalculator;
@@ -122,6 +132,10 @@ namespace NBAHeadCoach.Core.Manager
 
             // Expire old offers
             ExpireOldOffers();
+
+            // No new offers once the trade deadline passes — the market reopens
+            // after the season.
+            if (LeagueCBA.IsPastTradeDeadline(TradeSystem.GameNow())) return;
 
             // Check if we should generate a new offer today
             if (ShouldGenerateOffer())
@@ -301,7 +315,7 @@ namespace NBAHeadCoach.Core.Manager
         /// </summary>
         private TradeProposal BuildTradeProposal(FrontOfficeProfile offeringFO, Player targetPlayer)
         {
-            var proposal = new TradeProposal { ProposedDate = DateTime.Now };
+            var proposal = new TradeProposal { ProposedDate = TradeSystem.GameNow() };
             var targetContract = _capManager?.GetContract(targetPlayer.PlayerId);
 
             if (targetContract == null) return null;
@@ -371,7 +385,7 @@ namespace NBAHeadCoach.Core.Manager
                     if (proposal.AllAssets.Count(a => a.Type == TradeAssetType.DraftPick) >= 2) break;
 
                     float pickValue = pick.IsFirstRound ? 25f : 5f;
-                    int yearsAway = pick.Year - DateTime.Now.Year;
+                    int yearsAway = pick.Year - TradeSystem.GameNow().Year;
                     pickValue *= Math.Max(0.3f, 1f - yearsAway * 0.1f);
 
                     proposal.AllAssets.Add(new TradeAsset
@@ -501,6 +515,13 @@ namespace NBAHeadCoach.Core.Manager
 
         public IncomingOffersSaveData CreateSaveData()
         {
+            // DateTime fields don't survive JsonUtility — stamp ISO strings.
+            foreach (var offer in _pendingOffers)
+            {
+                offer.ReceivedAtStr = offer.ReceivedAt.ToString("o");
+                offer.ExpiresAtStr = offer.ExpiresAt.ToString("o");
+            }
+
             return new IncomingOffersSaveData
             {
                 Offers = new List<IncomingTradeOffer>(_pendingOffers)
@@ -510,6 +531,25 @@ namespace NBAHeadCoach.Core.Manager
         public void RestoreFromSave(IncomingOffersSaveData data)
         {
             _pendingOffers = data?.Offers ?? new List<IncomingTradeOffer>();
+
+            foreach (var offer in _pendingOffers)
+            {
+                if (DateTime.TryParse(offer.ReceivedAtStr, null,
+                        System.Globalization.DateTimeStyles.RoundtripKind, out var received))
+                    offer.ReceivedAt = received;
+                if (DateTime.TryParse(offer.ExpiresAtStr, null,
+                        System.Globalization.DateTimeStyles.RoundtripKind, out var expires))
+                    offer.ExpiresAt = expires;
+
+                // Offers from saves predating proposal serialization load as husks
+                // (no assets) — expire them rather than surfacing a broken offer.
+                if (offer.Status == IncomingOfferStatus.Pending &&
+                    (offer.Proposal == null || offer.Proposal.AllAssets == null ||
+                     offer.Proposal.AllAssets.Count == 0))
+                {
+                    offer.Status = IncomingOfferStatus.Expired;
+                }
+            }
         }
     }
 
@@ -523,8 +563,10 @@ namespace NBAHeadCoach.Core.Manager
         public string OfferingTeamId;
         public TradeProposal Proposal;
         public string OfferMessage;
-        public DateTime ReceivedAt;
-        public DateTime ExpiresAt;
+        [NonSerialized] public DateTime ReceivedAt;
+        [NonSerialized] public DateTime ExpiresAt;
+        public string ReceivedAtStr;   // ISO round-trip — JsonUtility drops DateTime
+        public string ExpiresAtStr;
         public IncomingOfferStatus Status;
 
         /// <summary>

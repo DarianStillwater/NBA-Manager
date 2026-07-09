@@ -9,8 +9,15 @@ namespace NBAHeadCoach.Core.Manager
     /// <summary>
     /// Manages team chemistry, morale events, and personality interactions.
     /// </summary>
-    public class PersonalityManager
+    public class PersonalityManager : ISaveSection
     {
+        public string SystemId => "Personality";
+        public void WriteSave(Data.SaveData data) => data.PersonalityData = CreateSaveData();
+        public void ReadSave(Data.SaveData data, in SaveReadContext ctx)
+        {
+            if (data.PersonalityData != null) LoadSaveData(data.PersonalityData);
+        }
+
         private Dictionary<string, Personality> _playerPersonalities = new Dictionary<string, Personality>();
         private Dictionary<string, float> _teamChemistry = new Dictionary<string, float>(); // teamId -> chemistry
 

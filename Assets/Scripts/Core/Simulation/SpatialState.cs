@@ -14,7 +14,10 @@ namespace NBAHeadCoach.Core.Simulation
         public float GameClock;        // Seconds remaining in quarter (720 -> 0)
         public int Quarter;            // 1-4 (or 5+ for OT)
         public float PossessionClock;  // Shot clock (24 -> 0)
-        
+
+        /// <summary>Presentational phase hint set by the choreographer (additive; default Advance).</summary>
+        public Choreography.PossessionPhase Phase;
+
         public PlayerSnapshot[] Players = new PlayerSnapshot[10];
         public BallState Ball;
 
@@ -80,6 +83,10 @@ namespace NBAHeadCoach.Core.Simulation
         public BallStatus Status;
         public string HeldByPlayerId;  // null if loose
 
+        /// <summary>Presentational: the shot type driving this flight (null when not shot-related).
+        /// Lets the renderer differentiate a dunk's carried thrust from a rainbow three (spin, FX).</summary>
+        public ShotType? ShotStyle;
+
         public BallState(float x, float y, float height = 4f)
         {
             X = x;
@@ -87,6 +94,7 @@ namespace NBAHeadCoach.Core.Simulation
             Height = height;
             Status = BallStatus.Held;
             HeldByPlayerId = null;
+            ShotStyle = null;
         }
     }
 

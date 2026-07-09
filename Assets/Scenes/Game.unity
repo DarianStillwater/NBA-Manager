@@ -2836,7 +2836,6 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1126923404}
-  - component: {fileID: 1126923403}
   m_Layer: 0
   m_Name: GameSceneController
   m_TagString: Untagged
@@ -2844,45 +2843,6 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &1126923403
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1126923402}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: da02444289ead38478c1fc31df87f2df, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::NBAHeadCoach.UI.GameSceneController
-  _contentParent: {fileID: 679144848}
-  _headerText: {fileID: 1733933766}
-  _dateText: {fileID: 957802643}
-  _recordText: {fileID: 140232663}
-  _dashboardButton: {fileID: 723044347}
-  _rosterButton: {fileID: 275964631}
-  _scheduleButton: {fileID: 2020290528}
-  _standingsButton: {fileID: 701532347}
-  _inboxButton: {fileID: 2117403094}
-  _advanceDayButton: {fileID: 1018530471}
-  _simToNextGameButton: {fileID: 1067704284}
-  _saveButton: {fileID: 1908990607}
-  _menuButton: {fileID: 1220910941}
-  _dashboardPanel: {fileID: 630875822}
-  _rosterPanel: {fileID: 1205249767}
-  _schedulePanel: {fileID: 1510723079}
-  _standingsPanel: {fileID: 2009271760}
-  _inboxPanel: {fileID: 1823233387}
-  _preGamePanel: {fileID: 2045180807}
-  _postGamePanel: {fileID: 1962068339}
-  _dashboardPanelComponent: {fileID: 0}
-  _rosterPanelComponent: {fileID: 0}
-  _calendarPanelComponent: {fileID: 0}
-  _standingsPanelComponent: {fileID: 0}
-  _inboxPanelComponent: {fileID: 0}
-  _preGamePanelComponent: {fileID: 0}
-  _postGamePanelComponent: {fileID: 0}
 --- !u!4 &1126923404
 Transform:
   m_ObjectHideFlags: 0

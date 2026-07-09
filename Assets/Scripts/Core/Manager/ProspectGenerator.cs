@@ -64,6 +64,10 @@ namespace NBAHeadCoach.Core.Manager
         /// </summary>
         public List<DraftProspect> GenerateDraftClass(int draftYear)
         {
+            // Names must be as deterministic as the class itself — reseed the
+            // shared name stream from this generator's seeded rng.
+            NameGenerator.Reseed(_rng.Next());
+
             var prospects = new List<DraftProspect>();
             
             // Generate different tiers

@@ -42,6 +42,8 @@ namespace NBAHeadCoach.Core
         [SerializeField] private int _currentSeason;
         [SerializeField] private DateTime _currentDate;
         [SerializeField] private UserRoleConfiguration _userRoleConfig;
+        private DifficultySettings _difficulty = new DifficultySettings();
+        public DifficultySettings Difficulty => _difficulty;
 
         public UnifiedCareerProfile Career => _career;
         public string PlayerTeamId => _playerTeamId;
@@ -68,18 +70,40 @@ namespace NBAHeadCoach.Core
         public SaveLoadManager SaveLoad { get; private set; }
         public GamePreferences Preferences { get; set; } = new GamePreferences();
 
-        // These managers are MonoBehaviours that register themselves
-        // We store references when they initialize
+        // Plain C# manager systems, constructed in Initialize()
         private SalaryCapManager _salaryCapManager;
         public SalaryCapManager SalaryCapManager => _salaryCapManager;
         private RosterManager _rosterManager;
         private TradeSystem _tradeSystem;
+        public TradeSystem Trades => _tradeSystem;
+        private TradeDeskSystem _tradeDesk;
+        public TradeDeskSystem TradeDesk => _tradeDesk;
+        private InSeasonFreeAgencySystem _inSeasonSigning;
+        public InSeasonFreeAgencySystem InSeasonSigning => _inSeasonSigning;
+        private FinanceSystem _financeSystem;
+        public FinanceSystem FinanceSystem => _financeSystem;
+        private DevelopmentSystem _developmentDesk;
+        public DevelopmentSystem DevelopmentDesk => _developmentDesk;
+        private ScoutingSystem _scoutingSystem;
+        public ScoutingSystem Scouting => _scoutingSystem;
         private FreeAgentManager _freeAgentManager;
+        public FreeAgentManager FreeAgents => _freeAgentManager;
         private DraftSystem _draftSystem;
         public DraftSystem DraftSystem => _draftSystem;
         private OffseasonManager _offseasonManager;
+        public OffseasonManager Offseason => _offseasonManager;
         private PlayerDevelopmentManager _developmentManager;
+        public PlayerDevelopmentManager Development => _developmentManager;
         private JobSecurityManager _jobSecurityManager;
+        public JobSecurityManager JobSecurity => _jobSecurityManager;
+        private CareerStakesSystem _careerStakes;
+        public CareerStakesSystem CareerStakes => _careerStakes;
+        private TransactionLog _transactionLog;
+        public TransactionLog Transactions => _transactionLog;
+        private InboxService _inboxService;
+        public InboxService Inbox => _inboxService;
+        private AwardsStore _awardsStore;
+        public AwardsStore Awards => _awardsStore;
         private AllStarManager _allStarManager;
         private PersonnelManager _personnelManager;
         public PersonnelManager PersonnelManager => _personnelManager;
@@ -105,6 +129,26 @@ namespace NBAHeadCoach.Core
         public FormerPlayerCareerManager FormerPlayerCareerManager => _formerPlayerCareerManager;
         private JobMarketManager _jobMarketManager;
         public JobMarketManager JobMarketManager => _jobMarketManager;
+        private MentorshipManager _mentorshipManager;
+        public MentorshipManager MentorshipManager => _mentorshipManager;
+        private RetirementManager _retirementManager;
+        public RetirementManager RetirementManager => _retirementManager;
+        private GMJobSecurityManager _gmJobSecurityManager;
+        public GMJobSecurityManager GMJobSecurityManager => _gmJobSecurityManager;
+        private DraftClassGenerator _draftClassGenerator;
+        public DraftClassGenerator DraftClassGenerator => _draftClassGenerator;
+        private LeagueEventsManager _leagueEventsManager;
+        public LeagueEventsManager LeagueEventsManager => _leagueEventsManager;
+        private SummerLeagueManager _summerLeagueManager;
+        public SummerLeagueManager SummerLeagueManager => _summerLeagueManager;
+        private GamePlanBuilder _gamePlanBuilder;
+        public GamePlanBuilder GamePlanBuilder => _gamePlanBuilder;
+        private ScoutingReportGenerator _scoutingReportGenerator;
+        public ScoutingReportGenerator ScoutingReportGenerator => _scoutingReportGenerator;
+        private Manager.AgentManager _agentManager;
+        public Manager.AgentManager AgentManager => _agentManager;
+        private ContractNegotiationManager _contractNegotiationManager;
+        public ContractNegotiationManager ContractNegotiationManager => _contractNegotiationManager;
 
         private FinanceManager _financeManager;
         public FinanceManager FinanceManager => _financeManager;
@@ -163,6 +207,24 @@ namespace NBAHeadCoach.Core
 
         #region Unity Lifecycle
 
+        /// <summary>
+        /// Direct-play safety net: the runtime menu is injected by MenuInjector,
+        /// which lives on the GameManager from the Boot scene. Pressing Play with
+        /// the MainMenu scene open used to fall back to the deleted legacy
+        /// MainMenuController — instead, bootstrap a GameManager so the real menu
+        /// builds. Skipped during headless test runs (__TestRunner__ present).
+        /// </summary>
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+        private static void BootstrapForDirectScenePlay()
+        {
+            if (Instance != null) return;
+            if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name != "MainMenu") return;
+            if (GameObject.Find("__TestRunner__") != null) return;
+
+            Debug.Log("[GameManager] MainMenu scene played directly — bootstrapping GameManager");
+            new GameObject("GameManager").AddComponent<GameManager>();
+        }
+
         private void Awake()
         {
             if (Instance == null)
@@ -192,6 +254,19 @@ namespace NBAHeadCoach.Core
             }
         }
 
+        /// <summary>
+        /// Manifest of live game systems. The daily loop (and, as migration proceeds,
+        /// the save pipeline and phase fan-out) iterates this registry instead of
+        /// hand-maintained call lists.
+        /// </summary>
+        public GameSystemRegistry Systems { get; private set; }
+
+        /// <summary>
+        /// THE post-game processor — every sim path (league auto-sim, quick-sim,
+        /// interactive match) records completed games through this pipeline.
+        /// </summary>
+        public Simulation.GameCompletionPipeline GameCompletion { get; private set; }
+
         private void Initialize()
         {
             Debug.Log("[GameManager] Initializing...");
@@ -207,6 +282,43 @@ namespace NBAHeadCoach.Core
             _personalityManager = new PersonalityManager();
             _financeManager = new FinanceManager();
 
+            // Construct the (formerly MonoBehaviour, formerly dormant) manager systems.
+            // Order matters: FormerPlayerCareerManager and GMJobSecurityManager subscribe to
+            // RetirementManager events in their constructors; MoraleChemistryManager shares
+            // GameManager's PersonalityManager so restored personalities drive chemistry.
+            _personnelManager = new PersonnelManager();
+            _injuryManager = new InjuryManager();
+            _mentorshipManager = new MentorshipManager();
+            _retirementManager = new RetirementManager();
+            _formerPlayerCareerManager = new FormerPlayerCareerManager();
+            _gmJobSecurityManager = new GMJobSecurityManager();
+            _moraleChemistryManager = new MoraleChemistryManager(_personalityManager);
+            _mediaManager = new MediaManager();
+            _revenueManager = new RevenueManager();
+            _trainingCampManager = new TrainingCampManager();
+            _allStarManager = new AllStarManager();
+            _advanceScoutingManager = new AdvanceScoutingManager();
+            _historyManager = new HistoryManager();
+            _jobMarketManager = new JobMarketManager();
+            _offseasonManager = new OffseasonManager();
+            _draftClassGenerator = new DraftClassGenerator();
+            _playoffManager = new PlayoffManager();
+            _leagueEventsManager = new LeagueEventsManager();
+            _summerLeagueManager = new SummerLeagueManager();
+            _gamePlanBuilder = new GamePlanBuilder();
+            _scoutingReportGenerator = new ScoutingReportGenerator();
+            _agentManager = new Manager.AgentManager();
+            _contractNegotiationManager = new ContractNegotiationManager(_agentManager);
+
+            // Plain C# managers that previously relied on never-called Register hooks
+            _draftSystem = new DraftSystem(_salaryCapManager, PlayerDatabase);
+            _freeAgentManager = new FreeAgentManager(_salaryCapManager, PlayerDatabase);
+            _jobSecurityManager = new JobSecurityManager();
+            _developmentManager = new PlayerDevelopmentManager();
+            _transactionLog = new TransactionLog();
+            _inboxService = new InboxService();
+            _awardsStore = new AwardsStore();
+
             // Initialize Trade & AI Systems
             _draftPickRegistry = new DraftPickRegistry();
             _tradeSystem = new TradeSystem(_salaryCapManager, PlayerDatabase, _draftPickRegistry);
@@ -221,6 +333,21 @@ namespace NBAHeadCoach.Core
 
             // Load initial front office profiles (real NBA GMs as of Dec 2025)
             _tradeOfferGenerator?.LoadInitialFrontOfficeData();
+
+            // AI trade evaluations share the same front-office personalities the
+            // offer generator loaded — without this, every evaluation falls back
+            // to a bland average GM.
+            if (_tradeEvaluator != null && _tradeOfferGenerator != null)
+            {
+                foreach (var fo in _tradeOfferGenerator.GetAllFrontOffices().Values)
+                    _tradeEvaluator.RegisterFrontOffice(fo);
+            }
+
+            // League-wide trade market (AI-AI deals, deadline frenzy, offer desk)
+            _tradeDesk = TradeDeskSystem.CreateDefault(this);
+
+            // In-season free agency: AI roster patching + the player's buyout market
+            _inSeasonSigning = InSeasonFreeAgencySystem.CreateDefault(this);
 
             // Wire up trade execution -> announcements and captain detection
             if (_tradeSystem != null)
@@ -240,8 +367,97 @@ namespace NBAHeadCoach.Core
                 SeasonController.OnPhaseChanged += OnSeasonPhaseChangedHandler;
             }
 
+            // Champion crowned -> vote and announce the season's awards
+            if (_playoffManager != null)
+            {
+                _playoffManager.OnNBAChampion += OnChampionCrownedHandler;
+            }
+
+            RegisterSystems();
+
+            // Bridge existing producer events into the inbox
+            _injuryManager.OnPlayerInjured += OnPlayerInjuredLineupHook;
+            InboxWiring.Wire(this, _inboxService, _jobSecurityManager, _financeManager,
+                _tradeAnnouncementSystem, _mediaManager, _injuryManager, _playoffManager,
+                _tradeOfferGenerator, _jobMarketManager, _historyManager);
+
             // Load player/team data
             StartCoroutine(LoadGameData());
+        }
+
+        /// <summary>
+        /// Register every live system with the registry. Runs after ALL constructions —
+        /// constructor order above carries event subscriptions and must not change.
+        /// </summary>
+        private void RegisterSystems()
+        {
+            GameCompletion = Simulation.GameCompletionPipeline.CreateDefault(this);
+
+            Systems = new GameSystemRegistry();
+
+            Systems.Register(SeasonController);
+            Systems.Register(new LeagueGameSimSystem(this));
+            Systems.Register(_tradeOfferGenerator);   // also ISaveSection (incoming offers)
+            Systems.Register(_tradeDesk);             // AI-AI trades + deadline frenzy
+            Systems.Register(_inSeasonSigning);       // in-season FA wire
+
+            // Economy: owners, revenue, payroll, luxury-tax conversations.
+            // Constructed here because it hooks the completion pipeline above.
+            _financeSystem = FinanceSystem.CreateDefault(this);
+            _financeSystem.HookGameRevenue(GameCompletion);
+            Systems.Register(_financeSystem);
+
+            // Development desk: weekly practice, mentorship sessions, tendency
+            // training for the player's team (also boots the lazy engines).
+            _developmentDesk = DevelopmentSystem.CreateDefault(this);
+            Systems.Register(_developmentDesk);
+
+            // Scouting fog of war: assignments become reports; the draft-class
+            // preview shares the June draft's deterministic seed.
+            _scoutingSystem = ScoutingSystem.CreateDefault(this);
+            Systems.Register(_scoutingSystem);
+            Systems.Register(_personnelManager);      // also ISaveSection (unified careers)
+
+            // Career stakes: owner expectations, weekly hot-seat evaluation,
+            // firings, and the season-end verdict. Runs just before the job
+            // market ticks so a firing lands on a live market.
+            _careerStakes = new CareerStakesSystem(
+                _jobSecurityManager,
+                _gmJobSecurityManager,
+                id => _financeManager?.GetTeamFinances(id),
+                () => _career,
+                GetTeam,
+                FirePlayerFromCurrentJob);
+            Systems.Register(_careerStakes);
+            Systems.Register(new Manager.AIGMSystem());
+            Systems.Register(_summerLeagueManager);
+            Systems.Register(_trainingCampManager);
+            Systems.Register(_agentManager);
+            Systems.Register(_contractNegotiationManager);
+
+            Systems.Register(_jobMarketManager);      // also ISaveSection (openings/applications)
+            Systems.Register(_mentorshipManager);
+            Systems.Register(_mediaManager);          // also ISaveSection (media reputation)
+
+            // Save-section-only systems (no daily tick yet). Registration order is the
+            // save read/write order.
+            Systems.Register(_salaryCapManager);
+            Systems.Register(_injuryManager);
+            Systems.Register(_playoffManager);
+            Systems.Register(_personalityManager);
+            Systems.Register(_draftPickRegistry);
+            Systems.Register(_transactionLog);
+            Systems.Register(_inboxService);
+            Systems.Register(_awardsStore);
+            Systems.Register(_historyManager);        // season archives, records, Hall of Fame
+
+            // Every completed game feeds the record books and career milestones
+            GameCompletion.OnGameCompleted += OnGameCompletedHistoryHook;
+
+            // Phase rails: OffseasonManager stays a stub until Phase 2; AllStarManager
+            // runs the All-Star selections when the break begins.
+            Systems.Register(_offseasonManager);
+            Systems.Register(_allStarManager);
         }
 
         private IEnumerator LoadGameData()
@@ -391,10 +607,11 @@ namespace NBAHeadCoach.Core
             string fullName = $"{firstName} {lastName}";
             var team = GetTeam(teamId);
             _playerTeamId = teamId;
+            _difficulty = difficulty ?? new DifficultySettings();
 
             // Initialize season
             _currentSeason = DateTime.Now.Year;
-            _currentDate = new DateTime(_currentSeason, 10, 1); // Season starts October
+            _currentDate = new DateTime(_currentSeason, 10, 21); // Eve of regular season (first games Oct 22)
 
             // Create user role configuration
             _userRoleConfig = new UserRoleConfiguration
@@ -470,8 +687,35 @@ namespace NBAHeadCoach.Core
             // Initialize all 30 teams with AI coach personalities, lineups, and strategies
             InitializeAllTeamCoaches();
 
+            // GM-only: the generated AI head coach (not a random one) runs the bench
+            ApplyAICoachToPlayerTeam();
+
+            // Generate hidden personalities for every roster so morale/chemistry has data to work with
+            if (_moraleChemistryManager != null)
+            {
+                foreach (var rosterTeam in _allTeams)
+                {
+                    if (rosterTeam != null) _moraleChemistryManager.InitializeTeamPersonalities(rosterTeam);
+                }
+            }
+
             // Initialize season stats for all players (must be after rosters are loaded)
             SeasonController.InitializePlayerSeasonStats(_currentSeason);
+
+            // New-game-only system initialization (owners/finances, future systems).
+            // NEVER runs on load — that's the whole point of the interface.
+            var newGameCtx = new NewGameContext(teamId, _currentSeason, difficulty);
+            foreach (var initializable in Systems.NewGameInitializables)
+            {
+                try { initializable.InitializeForNewGame(newGameCtx); }
+                catch (Exception ex)
+                {
+                    Debug.LogError($"[GameManager] New-game init failed for {initializable.SystemId}: {ex.Message}");
+                }
+            }
+
+            // Owner expectations need the finances the initializables just created
+            _careerStakes?.SetPlayerSeasonExpectations();
 
             // Fire event
             OnNewGameStarted?.Invoke();
@@ -523,6 +767,74 @@ namespace NBAHeadCoach.Core
         }
 
         /// <summary>
+        /// True when the player's career is between jobs — the league keeps
+        /// running (all games auto-sim) while they work the job market.
+        /// </summary>
+        public bool IsCareerUnemployed => _career?.CurrentRole == UnifiedRole.Unemployed;
+
+        /// <summary>
+        /// Feeds every completed game into the record books: franchise/league
+        /// single-game records and career milestones (both existed with zero
+        /// callers before Phase 6).
+        /// </summary>
+        private void OnGameCompletedHistoryHook(Simulation.GameCompletionContext ctx)
+        {
+            try
+            {
+                var box = ctx.Result?.BoxScore;
+                if (box == null || _historyManager == null) return;
+
+                _historyManager.CheckGameRecordsForGame(_currentSeason, box,
+                    id => PlayerDatabase?.GetPlayer(id)?.TeamId);
+
+                foreach (var stats in box.PlayerStats.Values)
+                {
+                    if (stats.Points == 0 && stats.Rebounds == 0 && stats.Assists == 0) continue;
+                    var player = PlayerDatabase?.GetPlayer(stats.PlayerId);
+                    if (player != null) _historyManager.CheckCareerMilestones(player, stats);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[GameManager] History hook failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// The franchise-side fallout of the player losing their job: the market
+        /// flow (reputation hit, severance, openings, unemployed state), the career
+        /// record, an AI successor so the old team keeps functioning, and the inbox
+        /// notice. The owner-side message/status is JobSecurityManager's job and has
+        /// already happened by the time this runs.
+        /// </summary>
+        public void FirePlayerFromCurrentJob(FiringReason reason)
+        {
+            if (_career == null || _career.CurrentRole == UnifiedRole.Unemployed) return;
+
+            string oldTeamId = _playerTeamId;
+            var oldTeam = GetTeam(oldTeamId);
+            var oldRole = _userRoleConfig?.CurrentRole ?? UserRole.Both;
+
+            // Market flow first — it reads the current config and salary for severance
+            _jobMarketManager?.HandlePlayerFired(reason);
+
+            // Career record: history entry, unemployed track, fired counter
+            _career.HandleFired(_currentSeason, reason.ToString());
+
+            // The old franchise hires AI replacements so the league keeps running
+            if (oldTeam != null)
+            {
+                if (oldRole != UserRole.GMOnly)
+                    PersonnelManager.Instance?.RegisterProfile(GenerateAICoach(oldTeamId, oldTeam.Name));
+                if (oldRole != UserRole.HeadCoachOnly)
+                    PersonnelManager.Instance?.RegisterProfile(GenerateAIGM(oldTeamId, oldTeam.Name));
+            }
+
+            SaveLoad?.AutoSave(CreateSaveData());
+            Debug.Log($"[GameManager] Player fired from {oldTeamId} ({reason}). The job hunt begins.");
+        }
+
+        /// <summary>
         /// Start a new career after accepting a job from the job market.
         /// Used when transitioning from unemployment to a new position.
         /// </summary>
@@ -566,6 +878,19 @@ namespace NBAHeadCoach.Core
                 }
             }
 
+            // GM-only hires get their named AI coach installed on the new bench
+            ApplyAICoachToPlayerTeam();
+
+            // The new owner sets expectations on day one
+            _jobSecurityManager?.InitializeForNewSeason(_career, teamId);
+            _careerStakes?.SetPlayerSeasonExpectations();
+
+            _inboxService?.Publish(InboxMessageType.JobMarket, "League News",
+                $"You're the new {(newRole == UserRole.GMOnly ? "GM" : "head coach")} of the {team?.Name ?? teamId}",
+                "A fresh start. The owner has shared expectations for the season — they're waiting at your Career desk.",
+                highPriority: true,
+                deepLinkPanelId: "Career");
+
             // Return to playing state
             ChangeState(GameState.Playing);
 
@@ -594,6 +919,43 @@ namespace NBAHeadCoach.Core
         /// <summary>
         /// Initialize all 30 teams with AI coach personalities, starting lineups, and strategies.
         /// </summary>
+        /// <summary>
+        /// GM-only mode: replace the player team's random coach personality with one
+        /// derived from the generated AI head coach profile, and let that coach set
+        /// the strategy and starting five. No-op in Coach/Both modes.
+        /// </summary>
+        private void ApplyAICoachToPlayerTeam()
+        {
+            if (_userRoleConfig?.HasAICoach != true) return;
+            var team = GetPlayerTeam();
+            var profile = GetAICoach();
+            if (team == null || profile == null) return;
+
+            team.CoachPersonality = AI.AICoachPersonality.FromProfile(profile);
+            team.AutoSetStrategy(team.CoachPersonality);
+            team.AutoSetStartingLineup(team.CoachPersonality);
+        }
+
+        /// <summary>
+        /// When the user doesn't control coaching and a starter goes down, the AI
+        /// coach reshuffles the five and reports it.
+        /// </summary>
+        private void OnPlayerInjuredLineupHook(Player player, InjuryEvent evt)
+        {
+            if (player == null || player.TeamId != _playerTeamId) return;
+            if (Data.RolePermissions.CanEditLineupAndStrategy) return;
+
+            var team = GetPlayerTeam();
+            if (team?.StartingLineupIds == null) return;
+            if (System.Array.IndexOf(team.StartingLineupIds, player.PlayerId) < 0) return;
+
+            team.AutoSetStartingLineup(team.CoachPersonality);
+            _inboxService?.Publish(InboxMessageType.Injury, Data.RolePermissions.AICoachName,
+                $"Lineup change after {player.FullName}'s injury",
+                $"With {player.FullName} out, I'm adjusting the starting five. We'll keep competing.",
+                deepLinkPanelId: "Roster");
+        }
+
         private void InitializeAllTeamCoaches()
         {
             var rng = new System.Random();
@@ -706,7 +1068,7 @@ namespace NBAHeadCoach.Core
             else if (data.CurrentDate.Year > 1)
                 _currentDate = data.CurrentDate;
             else
-                _currentDate = new DateTime(_currentSeason, 10, 1);
+                _currentDate = new DateTime(_currentSeason, 10, 21);
 
             // Restore team states
             foreach (var teamState in data.TeamStates)
@@ -735,52 +1097,63 @@ namespace NBAHeadCoach.Core
                 }
             }
 
+            // Restore difficulty (legacy saves carry defaults)
+            _difficulty = data.Difficulty ?? new DifficultySettings();
+
             // Initialize season controller with saved calendar
             SeasonController.RestoreFromSave(data.CalendarData);
 
-            // Restore playoff state
-            if (data.PlayoffData != null)
+            // Each registered save section reads its own slice (registration order).
+            var readCtx = new SaveReadContext(
+                data.SaveVersion, SaveData.IsLegacyVersion(data.SaveVersion), _currentSeason);
+            if (Systems != null)
             {
-                _playoffManager?.RestoreFromSave(data.PlayoffData);
+                foreach (var section in Systems.SaveSections)
+                {
+                    try { section.ReadSave(data, readCtx); }
+                    catch (Exception ex)
+                    {
+                        Debug.LogError($"[GameManager] Save section {section.SystemId} failed to read: {ex}");
+                    }
+                }
             }
 
-            // Restore personality data
-            if (data.PersonalityData != null)
+            // Legacy fallback: no saved pick registry -> derive league defaults
+            if (data.DraftPickRegistryData == null && _draftPickRegistry != null && _allTeams.Count > 0)
             {
-                _personalityManager?.LoadSaveData(data.PersonalityData);
-            }
-
-            // Restore Unified Careers
-            if (data.UnifiedCareers != null)
-            {
-                PersonnelManager.Instance?.LoadSaveData(data.UnifiedCareers);
-            }
-
-            // Restore draft pick registry
-            if (data.DraftPickRegistryData != null)
-            {
-                _draftPickRegistry?.RestoreFromSave(data.DraftPickRegistryData);
-            }
-            else if (_draftPickRegistry != null && _allTeams.Count > 0)
-            {
-                // Initialize with defaults if no saved data
                 _draftPickRegistry.InitializeForSeason(_currentSeason, _allTeams);
             }
 
-            // Restore incoming trade offers
-            if (data.IncomingOffersData != null)
-            {
-                _tradeOfferGenerator?.RestoreFromSave(data.IncomingOffersData);
-            }
-
-            // Initialize contracts (from JSON data for players without saved contracts)
+            // Legacy fallback: derive contracts from base JSON for players without
+            // saved contracts (v1.1 saves restore them via the SalaryCap section,
+            // so this creates nothing on modern saves)
             InitializePlayerContracts();
 
             // Set up trade systems with loaded player team
             SetupTradeSystemsForTeam(_playerTeamId);
 
-            // Ensure all teams have valid lineups and strategies after restore
-            InitializeAllTeamCoaches();
+            // Legacy fallback ONLY: teams from v1.0 saves carry no coach/lineup state.
+            // v1.1 saves round-trip strategy/lineup/personality via TeamSaveState —
+            // re-randomizing them on every load was the old "my tactics reset" bug.
+            var coachRng = new System.Random();
+            foreach (var team in _allTeams)
+            {
+                if (team == null) continue;
+                bool hasLineup = team.StartingLineupIds != null &&
+                                 System.Array.Exists(team.StartingLineupIds, id => !string.IsNullOrEmpty(id));
+                if (team.CoachPersonality == null)
+                {
+                    team.CoachPersonality = AI.AICoachPersonality.GenerateRandom(coachRng);
+                    team.AutoSetStrategy(team.CoachPersonality);
+                    team.AutoSetStartingLineup(team.CoachPersonality);
+                }
+                else if (!hasLineup)
+                {
+                    // Restored coach/strategy but no usable lineup — fill the five
+                    // without touching the restored strategy.
+                    team.AutoSetStartingLineup(team.CoachPersonality);
+                }
+            }
 
             // Ensure all players have season stats initialized
             SeasonController.InitializePlayerSeasonStats(_currentSeason);
@@ -791,13 +1164,14 @@ namespace NBAHeadCoach.Core
         /// </summary>
         public SaveData CreateSaveData()
         {
-            return new SaveData
+            var data = new SaveData
             {
                 SaveVersion = SaveData.CURRENT_VERSION,
                 SaveTimestamp = DateTime.Now,
                 SaveTimestampStr = DateTime.Now.ToString("o"),
                 Career = _career,
                 PlayerTeamId = _playerTeamId,
+                Difficulty = _difficulty,
                 UserRoleConfig = _userRoleConfig,
                 Preferences = Preferences ?? new GamePreferences(),
                 CurrentSeason = _currentSeason,
@@ -805,13 +1179,23 @@ namespace NBAHeadCoach.Core
                 CurrentDateStr = _currentDate.ToString("o"),
                 TeamStates = CreateTeamStates(),
                 PlayerStates = CreatePlayerStates(),
-                CalendarData = SeasonController.CreateCalendarSaveData(),
-                PlayoffData = _playoffManager?.CreateSaveData(),
-                PersonalityData = _personalityManager?.CreateSaveData(),
-                UnifiedCareers = PersonnelManager.Instance?.GetSaveData(),
-                DraftPickRegistryData = _draftPickRegistry?.CreateSaveData(),
-                IncomingOffersData = _tradeOfferGenerator?.CreateSaveData()
+                CalendarData = SeasonController.CreateCalendarSaveData()
             };
+
+            // Each registered save section writes its own slice.
+            if (Systems != null)
+            {
+                foreach (var section in Systems.SaveSections)
+                {
+                    try { section.WriteSave(data); }
+                    catch (Exception ex)
+                    {
+                        Debug.LogError($"[GameManager] Save section {section.SystemId} failed to write: {ex}");
+                    }
+                }
+            }
+
+            return data;
         }
 
         private List<TeamSaveState> CreateTeamStates()
@@ -844,91 +1228,22 @@ namespace NBAHeadCoach.Core
         public void AdvanceDay()
         {
             _currentDate = _currentDate.AddDays(1);
-            SeasonController.AdvanceDay();
-
-            // Simulate all other league games for today
-            SimulateLeagueGamesForDate(_currentDate);
-
-            // Process daily trade offers from AI teams
-            _tradeOfferGenerator?.ProcessDailyOffers();
-
+            Systems?.TickDay(new DailyTickContext(_currentDate, _playerTeamId, this));
             OnDayAdvanced?.Invoke(_currentDate);
         }
 
         /// <summary>
-        /// Simulates all non-player league games scheduled for a given date.
-        /// Uses full game simulation for realistic stats and standings updates.
+        /// Apply post-game morale processing for both teams of a completed simulated game.
+        /// Safe to call from any sim path (league auto-sim, quick sim, interactive match).
         /// </summary>
-        private void SimulateLeagueGamesForDate(DateTime date)
+        public void ProcessPostGameMorale(Simulation.GameResult result, bool isPlayoff = false)
         {
-            if (SeasonController == null || _allTeams == null || _allTeams.Count == 0) return;
+            if (result == null || _moraleChemistryManager == null) return;
 
-            // Get all games for today from the master schedule (league-wide)
-            var todaysGames = SeasonController.Schedule?
-                .Where(g => g.Date.Date == date.Date && !g.IsCompleted && g.Type == Data.CalendarEventType.Game)
-                .ToList();
-
-            if (todaysGames == null || todaysGames.Count == 0) return;
-
-            string playerTeamId = PlayerTeamId;
-            var simulator = new Simulation.GameSimulator(PlayerDatabase);
-
-            // Only skip the player's NEXT game (the one they'll manually play/sim)
-            var nextPlayerGame = SeasonController.GetNextGame();
-
-            foreach (var game in todaysGames)
-            {
-                // Only skip the specific game the player is about to play
-                if (nextPlayerGame != null && game.EventId == nextPlayerGame.EventId)
-                    continue;
-
-                var homeTeam = GetTeam(game.HomeTeamId);
-                var awayTeam = GetTeam(game.AwayTeamId);
-                if (homeTeam == null || awayTeam == null) continue;
-
-                try
-                {
-                    var result = simulator.SimulateGame(homeTeam, awayTeam);
-                    simulator.RecordGameToPlayerStats(result, game.EventId, game.Date);
-                    SeasonController.RecordGameResult(game, result.HomeScore, result.AwayScore);
-                    LeagueStats.AddGameResult(result.BoxScore);
-                }
-                catch (System.Exception ex)
-                {
-                    // Fallback: random result if simulation fails
-                    Debug.LogWarning($"[GameManager] League sim failed for {game.AwayTeamId}@{game.HomeTeamId}: {ex.Message}");
-                    int homeScore = UnityEngine.Random.Range(90, 120);
-                    int awayScore = UnityEngine.Random.Range(90, 120);
-                    if (homeScore == awayScore) homeScore += 2; // no ties
-                    SeasonController.RecordGameResult(game, homeScore, awayScore);
-                }
-            }
-
-            // Recalculate league averages and advanced stats for all players
-            LeagueStats.Recalculate();
-            RecalculateAllAdvancedStats();
-        }
-
-        /// <summary>
-        /// Recalculate advanced stats for all players who have played games.
-        /// </summary>
-        private void RecalculateAllAdvancedStats()
-        {
-            var allPlayers = PlayerDatabase?.GetAllPlayers();
-            if (allPlayers == null) return;
-            foreach (var player in allPlayers)
-            {
-                if (player.CurrentSeasonStats != null && player.CurrentSeasonStats.GamesPlayed > 0)
-                    LeagueStats.CalculatePlayerAdvancedStats(player.CurrentSeasonStats);
-            }
-        }
-
-        /// <summary>
-        /// Advance to the next scheduled event (usually next game)
-        /// </summary>
-        public void AdvanceToNextEvent()
-        {
-            SeasonController.AdvanceToNextEvent();
+            var homeTeam = GetTeam(result.HomeTeamId);
+            var awayTeam = GetTeam(result.AwayTeamId);
+            if (homeTeam != null) _moraleChemistryManager.ProcessGameResult(result, homeTeam, isPlayoff);
+            if (awayTeam != null) _moraleChemistryManager.ProcessGameResult(result, awayTeam, isPlayoff);
         }
 
         /// <summary>
@@ -937,8 +1252,8 @@ namespace NBAHeadCoach.Core
         public void StartNewSeason()
         {
             _currentSeason++;
-            _currentDate = new DateTime(_currentSeason, 10, 1);
-            
+            _currentDate = new DateTime(_currentSeason, 10, 21);
+
             if (_career != null)
             {
                 _career.CurrentAge++;
@@ -946,7 +1261,12 @@ namespace NBAHeadCoach.Core
                     _career.CurrentContract.CurrentYear++;
             }
 
-            SeasonController.InitializeSeason(_currentSeason);
+            // TransitionToNewSeason (not InitializeSeason directly) so the completed
+            // season is ARCHIVED first: game logs cleared, YearsPro++, per-season
+            // counters reset — then the new season initializes on top.
+            SeasonController.TransitionToNewSeason(_currentSeason);
+            _financeSystem?.OnNewSeason(_currentSeason);
+            _careerStakes?.OnNewSeason();
             OnSeasonChanged?.Invoke(_currentSeason);
 
             ChangeState(GameState.Playing);
@@ -1077,10 +1397,87 @@ namespace NBAHeadCoach.Core
         /// <summary>
         /// Handle trade execution - check if captain was traded away.
         /// </summary>
+        /// <summary>
+        /// Season finale: the champion is crowned, so the season's awards are voted
+        /// on regular-season stats, recorded, and announced.
+        /// </summary>
+        private void OnChampionCrownedHandler(string championId, string runnerUpId)
+        {
+            try
+            {
+                var players = PlayerDatabase?.GetAllPlayers();
+                if (players == null || _allTeams == null || _allTeams.Count == 0) return;
+
+                var teams = _allTeams.Where(t => t != null).ToDictionary(t => t.TeamId, t => t);
+                var results = AwardManager.VoteSeasonAwards(_currentSeason, players, teams);
+                string cotyTeamId = AwardManager.VoteCoachOfYear(_currentSeason, teams);
+                var champTeam = GetTeam(championId);
+                var finalsMvp = AwardManager.VoteFinalsMVP(_currentSeason, champTeam?.Roster, championId);
+
+                _awardsStore?.RecordSeasonAwards(_currentSeason, results, cotyTeamId,
+                    finalsMvp?.PlayerId, championId, runnerUpId);
+
+                // The season is over — hand off to the offseason engine
+                _offseasonManager?.SetSeasonClosingData(results);
+                _offseasonManager?.BeginOffseason(_currentSeason, _currentDate);
+
+                if (_inboxService != null)
+                {
+                    if (finalsMvp != null)
+                        _inboxService.Publish(InboxMessageType.League, "League Office",
+                            $"{finalsMvp.FullName} named Finals MVP",
+                            $"{finalsMvp.FullName} of the {champTeam?.Name} takes home the Finals MVP trophy.");
+
+                    if (results?.MVP != null)
+                        _inboxService.Publish(InboxMessageType.League, "League Office",
+                            $"{results.MVP.FullName} wins MVP",
+                            $"{results.MVP.FullName} is the {_currentSeason} Most Valuable Player " +
+                            $"({results.MVP.CurrentSeasonStats?.PPG:0.0} PPG).",
+                            highPriority: results.MVP.TeamId == _playerTeamId);
+
+                    string Line(string label, Player p) =>
+                        p != null ? $"{label}: {p.FullName}\n" : "";
+                    _inboxService.Publish(InboxMessageType.League, "League Office",
+                        $"{_currentSeason} season awards announced",
+                        Line("DPOY", results?.DPOY) + Line("Rookie of the Year", results?.ROTY) +
+                        Line("Sixth Man", results?.SixthMan) + Line("Most Improved", results?.MIP) +
+                        $"Coach of the Year: {GetTeam(cotyTeamId)?.Name ?? cotyTeamId}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[GameManager] Awards ceremony failed: {ex}");
+            }
+        }
+
         private void OnTradeExecutedHandler(TradeProposal proposal)
         {
+            // Move traded players between Team rosters — the trade engine only
+            // rewrites contracts and PlayerDatabase TeamIds. Without this the
+            // rosters (and everything reading them) go stale.
+            TradeDeskSystem.ApplyRosterSync(proposal, GetTeam);
+
             // Generate trade announcement
             _tradeAnnouncementSystem?.GenerateAnnouncement(proposal);
+
+            // Record in transaction history
+            if (_transactionLog != null && proposal != null)
+            {
+                var teamIds = new List<string>();
+                var playerIds = new List<string>();
+                foreach (var asset in proposal.AllAssets)
+                {
+                    if (!string.IsNullOrEmpty(asset.SendingTeamId) && !teamIds.Contains(asset.SendingTeamId))
+                        teamIds.Add(asset.SendingTeamId);
+                    if (asset.Type == TradeAssetType.Player && !string.IsNullOrEmpty(asset.PlayerId))
+                        playerIds.Add(asset.PlayerId);
+                }
+                var names = playerIds
+                    .Select(id => PlayerDatabase?.GetPlayer(id)?.FullName)
+                    .Where(n => !string.IsNullOrEmpty(n));
+                _transactionLog.Add(TransactionType.Trade, _currentDate, teamIds, playerIds,
+                    $"Trade between {string.Join("/", teamIds)}: {string.Join(", ", names)}");
+            }
 
             // Check if player team's captain was traded away
             if (string.IsNullOrEmpty(_playerTeamId)) return;
@@ -1187,32 +1584,7 @@ namespace NBAHeadCoach.Core
 
         #endregion
 
-        #region Manager Registration
-
-        // Managers call these to register themselves when they initialize
-
-        public void RegisterSalaryCapManager(SalaryCapManager manager) => _salaryCapManager = manager;
-        public void RegisterRosterManager(RosterManager manager) => _rosterManager = manager;
-        public void RegisterTradeSystem(TradeSystem manager) => _tradeSystem = manager;
-        public void RegisterFreeAgentManager(FreeAgentManager manager) => _freeAgentManager = manager;
-        public void RegisterDraftSystem(DraftSystem manager) => _draftSystem = manager;
-        public void RegisterOffseasonManager(OffseasonManager manager) => _offseasonManager = manager;
-        public void RegisterDevelopmentManager(PlayerDevelopmentManager manager) => _developmentManager = manager;
-        public void RegisterJobSecurityManager(JobSecurityManager manager) => _jobSecurityManager = manager;
-        public void RegisterAllStarManager(AllStarManager manager) => _allStarManager = manager;
-        public void RegisterPersonnelManager(PersonnelManager manager) => _personnelManager = manager;
-        public void RegisterInjuryManager(InjuryManager manager) => _injuryManager = manager;
-        public void RegisterPlayoffManager(PlayoffManager manager) => _playoffManager = manager;
-        public void RegisterHistoryManager(HistoryManager manager) => _historyManager = manager;
-        public void RegisterTrainingCampManager(TrainingCampManager manager) => _trainingCampManager = manager;
-        public void RegisterMoraleChemistryManager(MoraleChemistryManager manager) => _moraleChemistryManager = manager;
-        public void RegisterMediaManager(MediaManager manager) => _mediaManager = manager;
-        public void RegisterRevenueManager(RevenueManager manager) => _revenueManager = manager;
-        public void RegisterAdvanceScoutingManager(AdvanceScoutingManager manager) => _advanceScoutingManager = manager;
-        public void RegisterFormerPlayerCareerManager(FormerPlayerCareerManager manager) => _formerPlayerCareerManager = manager;
-        public void RegisterJobMarketManager(JobMarketManager manager) => _jobMarketManager = manager;
-
-        #endregion
+        // (Manager registration hooks removed — all managers are constructed directly in Initialize())
 
         #region Debug
 

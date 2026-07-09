@@ -156,7 +156,7 @@ namespace NBAHeadCoach.Core
             Team awayTeam = _isHomeGame ? _opponentTeam : _playerTeam;
 
             // Simulate the game
-            var gameResult = _simulator.SimulateGame(homeTeam, awayTeam);
+            var gameResult = _simulator.SimulateGame(homeTeam, awayTeam, _currentGame?.IsPlayoffGame ?? false);
             _matchResult = gameResult.BoxScore;
 
             // Complete the match
@@ -273,10 +273,8 @@ namespace NBAHeadCoach.Core
         {
             _currentPhase = MatchPhase.PostGame;
 
-            // Record the result in season controller
-            int homeScore = result.HomeScore;
-            int awayScore = result.AwayScore;
-            _gameManager.SeasonController.RecordGameResult(_currentGame, homeScore, awayScore);
+            // AutonomousGameResult carries no box score — standings only.
+            _gameManager.GameCompletion.CompleteScoreOnly(_currentGame, result.HomeScore, result.AwayScore);
 
             // Fire events
             OnAutonomousGameCompleted?.Invoke(result);
@@ -297,18 +295,26 @@ namespace NBAHeadCoach.Core
         {
             _currentPhase = MatchPhase.PostGame;
 
-            // Determine scores based on home/away
             int homeScore = result.HomeScore;
             int awayScore = result.AwayScore;
 
-            // Record the result
-            _gameManager.SeasonController.RecordGameResult(_currentGame, homeScore, awayScore);
-
-            // Update player stats
-            UpdatePlayerStats(result);
-
-            // Check for injuries
-            ProcessInjuries(result);
+            // All domain effects (season stats, standings, league aggregates, morale)
+            // run through the shared pipeline — identical to auto-sim and quick-sim.
+            _gameManager.GameCompletion.Complete(new Simulation.GameCompletionContext(
+                _currentGame,
+                new Simulation.GameResult
+                {
+                    HomeTeamId = result.HomeTeamId,
+                    AwayTeamId = result.AwayTeamId,
+                    HomeScore = homeScore,
+                    AwayScore = awayScore,
+                    BoxScore = result,
+                    Quarters = 4
+                },
+                Simulation.GameSource.InteractiveMatch,
+                _gameManager.PlayerTeamId,
+                _currentGame?.IsPlayoffGame ?? false,
+                _currentGame?.PlayoffRound ?? 0));
 
             // Fire event
             OnMatchCompleted?.Invoke(result);
@@ -382,92 +388,6 @@ namespace NBAHeadCoach.Core
             if (_matchResult == null) return "";
 
             return $"{_matchResult.AwayTeam?.Name} {_matchResult.AwayScore} @ {_matchResult.HomeTeam?.Name} {_matchResult.HomeScore}";
-        }
-
-        private void UpdatePlayerStats(BoxScore result)
-        {
-            // Update career/season stats for all players who played
-            // This would integrate with the player stats system
-        }
-
-        private void ProcessInjuries(BoxScore result)
-        {
-            var injuryManager = InjuryManager.Instance;
-            if (injuryManager == null)
-            {
-                Debug.LogWarning("[MatchFlowController] InjuryManager not found - skipping injury processing");
-                return;
-            }
-
-            // Get current date and check if back-to-back
-            DateTime currentDate = _gameManager.CurrentDate;
-            bool isBackToBack = IsBackToBackGame(currentDate);
-            bool isPlayoffs = _gameManager.SeasonController?.CurrentPhase == SeasonPhase.Playoffs;
-
-            // Process all players who participated
-            var allStats = result.HomePlayerStats.Concat(result.AwayPlayerStats);
-
-            foreach (var stats in allStats)
-            {
-                if (stats.Minutes <= 0) continue;  // Didn't play
-
-                var player = _gameManager.PlayerDatabase?.GetPlayer(stats.PlayerId);
-                if (player == null) continue;
-                if (player.IsInjured) continue;  // Already injured
-
-                // Build injury context
-                var context = new InjuryContext
-                {
-                    IsGameAction = true,
-                    IsContactPlay = DetermineIfContactHeavy(stats),
-                    PlayerEnergy = player.Energy,
-                    MinutesThisGame = stats.Minutes,
-                    MinutesLast7Days = player.GetMinutesInLastDays(7),
-                    IsBackToBack = isBackToBack,
-                    IsPlayoffs = isPlayoffs
-                };
-
-                // Check for injury
-                var injuryEvent = injuryManager.CheckForInjury(player, context);
-                if (injuryEvent != null)
-                {
-                    injuryManager.ApplyInjury(player, injuryEvent);
-                }
-
-                // Record minutes played for load management
-                injuryManager.RecordMinutesPlayed(player, stats.Minutes, currentDate, isBackToBack);
-            }
-        }
-
-        /// <summary>
-        /// Determine if a player's game was contact-heavy based on their stats.
-        /// </summary>
-        private bool DetermineIfContactHeavy(PlayerGameStats stats)
-        {
-            // High rebounds = lots of physical battles
-            // High points with drives = physical play
-            // High fouls = physical game
-            int contactIndicator = stats.TotalRebounds * 2 +
-                                   stats.PersonalFouls * 3 +
-                                   stats.Blocks * 2;
-
-            // Players with significant physical involvement
-            return contactIndicator > 10;
-        }
-
-        /// <summary>
-        /// Check if today is the second game of a back-to-back.
-        /// </summary>
-        private bool IsBackToBackGame(DateTime currentDate)
-        {
-            var schedule = _gameManager.SeasonController?.Schedule;
-            if (schedule == null) return false;
-
-            // Check if there was a game yesterday
-            var yesterday = currentDate.AddDays(-1);
-            return schedule.Any(e =>
-                e.Type == CalendarEventType.Game &&
-                e.Date.Date == yesterday.Date);
         }
 
         private float CalculateTeamOffensiveRating(Team team)

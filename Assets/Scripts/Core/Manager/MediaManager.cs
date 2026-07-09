@@ -12,8 +12,12 @@ namespace NBAHeadCoach.Core.Manager
     /// Manages media interactions including press conferences, interviews,
     /// and their consequences on morale, reputation, and relationships.
     /// </summary>
-    public class MediaManager : MonoBehaviour
+    public class MediaManager : IDailyTickable, ISaveSection
     {
+        public string SystemId => "Media";
+        public int TickOrder => Manager.TickOrder.Media;
+        public void DailyTick(in DailyTickContext ctx) => ProcessDailyReputation();
+
         public static MediaManager Instance { get; private set; }
 
         #region Configuration
@@ -59,23 +63,11 @@ namespace NBAHeadCoach.Core.Manager
 
         #region Unity Lifecycle
 
-        private void Awake()
+        public MediaManager()
         {
-            if (Instance == null)
-            {
-                Instance = this;
-                DontDestroyOnLoad(gameObject);
-            }
-            else
-            {
-                Destroy(gameObject);
-            }
+            Instance = this;
         }
 
-        private void Start()
-        {
-            GameManager.Instance?.RegisterMediaManager(this);
-        }
 
         #endregion
 
@@ -649,6 +641,27 @@ namespace NBAHeadCoach.Core.Manager
         }
 
         /// <summary>
+        /// Persist media reputation (it feeds job-market hire chances, so it must
+        /// survive a reload). Everything else media-side is ephemeral flavor.
+        /// </summary>
+        public void WriteSave(SaveData data)
+        {
+            if (data == null) return;
+            var save = new MediaSaveData();
+            foreach (var kv in _mediaReputation)
+                save.Reputations.Add(new MediaReputationRecord { CoachId = kv.Key, Value = kv.Value });
+            data.MediaData = save;
+        }
+
+        public void ReadSave(SaveData data, in SaveReadContext ctx)
+        {
+            if (data?.MediaData?.Reputations == null) return; // legacy save: neutral rep
+            _mediaReputation.Clear();
+            foreach (var rec in data.MediaData.Reputations)
+                _mediaReputation[rec.CoachId] = rec.Value;
+        }
+
+        /// <summary>
         /// Process daily reputation decay toward neutral.
         /// </summary>
         public void ProcessDailyReputation()
@@ -874,4 +887,19 @@ namespace NBAHeadCoach.Core.Manager
     }
 
     #endregion
+
+    /// <summary>JsonUtility-safe media persistence.</summary>
+    [System.Serializable]
+    public class MediaSaveData
+    {
+        public System.Collections.Generic.List<MediaReputationRecord> Reputations =
+            new System.Collections.Generic.List<MediaReputationRecord>();
+    }
+
+    [System.Serializable]
+    public class MediaReputationRecord
+    {
+        public string CoachId;
+        public int Value;
+    }
 }

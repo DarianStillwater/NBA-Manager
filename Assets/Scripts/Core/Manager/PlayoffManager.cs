@@ -10,16 +10,194 @@ namespace NBAHeadCoach.Core.Manager
     /// Manages the NBA Playoff tournament including Play-In, bracket progression, and Finals.
     /// Singleton that coordinates with SeasonController and GameManager.
     /// </summary>
-    public class PlayoffManager : MonoBehaviour
+    public class PlayoffManager : ISaveSection, ISeasonPhaseListener, IDailyTickable
     {
+        public string SystemId => "Playoffs";
+        public int TickOrder => Manager.TickOrder.PlayoffSchedule;
+
+        /// <summary>
+        /// Seeding is triggered by SeasonController.BeginPlayoffs at the phase flip;
+        /// scheduling is self-healing via DailyTick, so entry needs no work here.
+        /// </summary>
+        public void OnSeasonPhaseChanged(Data.SeasonPhase oldPhase, Data.SeasonPhase newPhase, System.DateTime date)
+        {
+        }
+
+        /// <summary>
+        /// Daily orchestration: route completed playoff games from the calendar into
+        /// the bracket (advancing series/rounds and crowning the champion), then keep
+        /// the calendar fed — when no playoff games are pending, schedule the next
+        /// slate from the current bracket state. Runs BEFORE the league sim so games
+        /// scheduled for today are simulated today. Self-healing: after a mid-playoff
+        /// load (playoff events are not part of the regenerated schedule) the next
+        /// tick reschedules everything from the restored bracket.
+        /// </summary>
+        public void DailyTick(in DailyTickContext ctx)
+        {
+            var season = ctx.Game?.SeasonController;
+            if (season == null) return;
+            if (!_isPlayoffsActive || _currentBracket == null || _currentBracket.IsComplete) return;
+
+            // Rescue orphaned games: an uncompleted playoff event whose date passed
+            // would stall the bracket forever (the league sim only looks at today).
+            foreach (var evt in season.Schedule)
+            {
+                if (evt != null && evt.IsPlayoffGame && !evt.IsCompleted && evt.Date.Date < ctx.Date.Date)
+                    evt.Date = ctx.Date;
+            }
+
+            ReconcileCompletedEvents(season.Schedule);
+
+            if (_currentBracket.IsComplete) return; // reconciliation may have crowned a champion
+
+            var slate = BuildNextSlate(ctx.Date, season.Schedule);
+            if (slate.Count > 0)
+            {
+                season.AddScheduledEvents(slate);
+                Debug.Log($"[PlayoffManager] Scheduled {slate.Count} {CurrentPhase} game(s) starting {slate[0].Date:MMM dd}");
+            }
+        }
+
+        /// <summary>
+        /// Route completed playoff calendar events into the bracket. Idempotent —
+        /// already-recorded games are skipped — so it is safe to run every day and
+        /// works for every sim path (league auto-sim, quick-sim, interactive).
+        /// </summary>
+        public void ReconcileCompletedEvents(IReadOnlyList<CalendarEvent> schedule)
+        {
+            if (_currentBracket == null || schedule == null) return;
+
+            foreach (var evt in schedule)
+            {
+                if (evt == null || !evt.IsPlayoffGame || !evt.IsCompleted) continue;
+
+                var playInGame = FindPlayInGame(evt.EventId);
+                if (playInGame != null)
+                {
+                    if (playInGame.IsComplete) continue;
+                    int higherScore = playInGame.HigherSeedTeamId == evt.HomeTeamId ? evt.HomeScore : evt.AwayScore;
+                    int lowerScore = playInGame.HigherSeedTeamId == evt.HomeTeamId ? evt.AwayScore : evt.HomeScore;
+                    RecordPlayInResult(playInGame, higherScore, lowerScore);
+                    continue;
+                }
+
+                var (series, game) = FindSeriesGame(evt.EventId);
+                if (series != null && game != null && !game.IsComplete)
+                {
+                    RecordPlayoffGameResult(series, game.GameNumber, evt.HomeScore, evt.AwayScore);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Build the next batch of playoff calendar events from the bracket state.
+        /// Returns nothing while any playoff game is still pending on the calendar —
+        /// rounds move in day-lockstep, the next slate lands once the current one
+        /// resolves. Play-in games pair up two per day (both conferences share dates);
+        /// series games run every other day per series.
+        /// </summary>
+        public List<CalendarEvent> BuildNextSlate(DateTime today, IReadOnlyList<CalendarEvent> schedule)
+        {
+            var events = new List<CalendarEvent>();
+            if (_currentBracket == null || _currentBracket.IsComplete) return events;
+
+            bool hasPending = schedule != null &&
+                schedule.Any(e => e != null && e.IsPlayoffGame && !e.IsCompleted);
+            if (hasPending) return events;
+
+            if (CurrentPhase == PlayoffPhase.PlayIn)
+            {
+                var pending = GetPendingPlayInGames()
+                    .OrderBy(g => g.GameType)
+                    .ThenBy(g => g.Conference)
+                    .ToList();
+                for (int i = 0; i < pending.Count; i++)
+                {
+                    var date = today.AddDays(1 + i / 2); // two games per day
+                    events.Add(CreatePlayInCalendarEvent(pending[i], date));
+                }
+            }
+            else
+            {
+                foreach (var series in GetActiveSeries())
+                {
+                    if (series.IsComplete) continue;
+
+                    var lastGameDate = series.Games
+                        .Where(g => g.IsComplete && g.Date.Year > 1)
+                        .Select(g => g.Date)
+                        .DefaultIfEmpty(DateTime.MinValue)
+                        .Max();
+
+                    var earliest = today.AddDays(1);
+                    var date = lastGameDate.Year > 1 && lastGameDate.AddDays(2) > earliest
+                        ? lastGameDate.AddDays(2)
+                        : earliest;
+
+                    events.Add(CreatePlayoffCalendarEvent(series, series.NextGameNumber, date));
+                }
+            }
+
+            return events;
+        }
+
+        private PlayInGame FindPlayInGame(string gameId)
+        {
+            if (string.IsNullOrEmpty(gameId) || _currentBracket?.PlayIn == null) return null;
+
+            foreach (var bracket in new[] { _currentBracket.PlayIn.East, _currentBracket.PlayIn.West })
+            {
+                if (bracket == null) continue;
+                if (bracket.SevenVsEight?.GameId == gameId) return bracket.SevenVsEight;
+                if (bracket.NineVsTen?.GameId == gameId) return bracket.NineVsTen;
+                if (bracket.EightSeedGame?.GameId == gameId) return bracket.EightSeedGame;
+            }
+            return null;
+        }
+
+        private (PlayoffSeries series, PlayoffGame game) FindSeriesGame(string gameId)
+        {
+            if (string.IsNullOrEmpty(gameId)) return (null, null);
+
+            foreach (var series in AllSeries())
+            {
+                var game = series?.Games?.FirstOrDefault(g => g.GameId == gameId);
+                if (game != null) return (series, game);
+            }
+            return (null, null);
+        }
+
+        /// <summary>Every series in the bracket — season-close consumers
+        /// (finance, awards) need the playoff field.</summary>
+        public IEnumerable<PlayoffSeries> AllSeries()
+        {
+            if (_currentBracket == null) yield break;
+
+            foreach (var conf in new[] { _currentBracket.Eastern, _currentBracket.Western })
+            {
+                if (conf == null) continue;
+                if (conf.FirstRound != null)
+                    foreach (var s in conf.FirstRound) if (s != null) yield return s;
+                if (conf.ConferenceSemis != null)
+                    foreach (var s in conf.ConferenceSemis) if (s != null) yield return s;
+                if (conf.ConferenceFinals != null) yield return conf.ConferenceFinals;
+            }
+            if (_currentBracket.Finals != null) yield return _currentBracket.Finals;
+        }
+
+        public void WriteSave(Data.SaveData data) => data.PlayoffData = CreateSaveData();
+        public void ReadSave(Data.SaveData data, in SaveReadContext ctx)
+        {
+            if (data.PlayoffData != null) RestoreFromSave(data.PlayoffData);
+        }
+
         public static PlayoffManager Instance { get; private set; }
 
         #region State
 
-        [Header("Current State")]
-        [SerializeField] private PlayoffBracket _currentBracket;
-        [SerializeField] private int _currentSeason;
-        [SerializeField] private bool _isPlayoffsActive;
+        private PlayoffBracket _currentBracket;
+        private int _currentSeason;
+        private bool _isPlayoffsActive;
 
         public PlayoffBracket CurrentBracket => _currentBracket;
         public PlayoffPhase CurrentPhase => _currentBracket?.CurrentPhase ?? PlayoffPhase.NotStarted;
@@ -55,25 +233,11 @@ namespace NBAHeadCoach.Core.Manager
 
         #endregion
 
-        #region Unity Lifecycle
+        #region Lifecycle
 
-        private void Awake()
+        public PlayoffManager()
         {
-            if (Instance == null)
-            {
-                Instance = this;
-                DontDestroyOnLoad(gameObject);
-            }
-            else
-            {
-                Destroy(gameObject);
-            }
-        }
-
-        private void Start()
-        {
-            // Register with GameManager
-            GameManager.Instance?.RegisterPlayoffManager(this);
+            Instance = this;
         }
 
         #endregion
@@ -535,6 +699,16 @@ namespace NBAHeadCoach.Core.Manager
         {
             _isPlayoffsActive = false;
             Debug.Log("[PlayoffManager] Playoffs ended");
+        }
+
+        /// <summary>
+        /// Clear the bracket at season rollover so the new season starts fresh
+        /// (April's phase flip re-seeds via BeginPlayoffs).
+        /// </summary>
+        public void ResetForNewSeason()
+        {
+            _currentBracket = null;
+            _isPlayoffsActive = false;
         }
 
         #endregion

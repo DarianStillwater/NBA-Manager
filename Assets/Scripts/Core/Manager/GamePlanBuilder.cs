@@ -11,26 +11,11 @@ namespace NBAHeadCoach.Core.Manager
     /// Builds and manages pre-game preparation and game plans.
     /// Integrates scouting data to create actionable strategies.
     /// </summary>
-    public class GamePlanBuilder : MonoBehaviour
+    public class GamePlanBuilder
     {
         // ==================== SINGLETON ====================
         private static GamePlanBuilder _instance;
-        public static GamePlanBuilder Instance
-        {
-            get
-            {
-                if (_instance == null)
-                {
-                    _instance = FindFirstObjectByType<GamePlanBuilder>();
-                    if (_instance == null)
-                    {
-                        var go = new GameObject("GamePlanBuilder");
-                        _instance = go.AddComponent<GamePlanBuilder>();
-                    }
-                }
-                return _instance;
-            }
-        }
+        public static GamePlanBuilder Instance => _instance;
 
         // ==================== STATE ====================
 
@@ -540,17 +525,9 @@ namespace NBAHeadCoach.Core.Manager
 
         // ==================== LIFECYCLE ====================
 
-        private void Awake()
+        public GamePlanBuilder()
         {
-            if (_instance == null)
-            {
-                _instance = this;
-                DontDestroyOnLoad(gameObject);
-            }
-            else if (_instance != this)
-            {
-                Destroy(gameObject);
-            }
+            _instance = this;
         }
     }
 

@@ -176,6 +176,28 @@ namespace NBAHeadCoach.Core.Gameplay
         public void SetOffense(OffensiveScheme scheme)
         {
             _tactics.Offense = scheme;
+
+            // Write through to the live TeamStrategy — the possession engine reads
+            // it every trip, so the change takes effect immediately
+            if (_teamStrategy?.OffensiveSystem != null)
+            {
+                _teamStrategy.OffensiveSystem.PrimarySystem = scheme switch
+                {
+                    OffensiveScheme.Motion => OffensiveSystemType.MotionOffense,
+                    OffensiveScheme.Isolation => OffensiveSystemType.IsoHeavy,
+                    OffensiveScheme.PickAndRoll => OffensiveSystemType.PickAndRollHeavy,
+                    OffensiveScheme.PostUp => OffensiveSystemType.PostUpFocused,
+                    OffensiveScheme.ThreeHeavy => OffensiveSystemType.ThreePointOriented,
+                    OffensiveScheme.FastBreak => OffensiveSystemType.FastBreakTransition,
+                    OffensiveScheme.Princeton => OffensiveSystemType.PrincetonOffense,
+                    OffensiveScheme.Triangle => OffensiveSystemType.TriangleOffense,
+                    OffensiveScheme.FiveOut => OffensiveSystemType.FiveOut,
+                    _ => _teamStrategy.OffensiveSystem.PrimarySystem
+                };
+                if (scheme == OffensiveScheme.FastBreak)
+                    _teamStrategy.TransitionOffense = TransitionPreference.AggressivePush;
+            }
+
             OnCoachDecision?.Invoke($"Offense: {scheme}");
             Debug.Log($"[GameCoach] Offense set to: {scheme}");
         }
@@ -183,6 +205,36 @@ namespace NBAHeadCoach.Core.Gameplay
         public void SetDefense(DefensiveScheme scheme)
         {
             _tactics.Defense = scheme;
+
+            if (_teamStrategy?.DefensiveSystem != null)
+            {
+                var d = _teamStrategy.DefensiveSystem;
+                d.PrimaryScheme = scheme switch
+                {
+                    DefensiveScheme.ManToMan => DefensiveSchemeType.ManToManStandard,
+                    DefensiveScheme.Zone23 => DefensiveSchemeType.Zone2_3,
+                    DefensiveScheme.Zone32 => DefensiveSchemeType.Zone3_2,
+                    DefensiveScheme.Zone131 => DefensiveSchemeType.Zone1_3_1,
+                    DefensiveScheme.Zone122 => DefensiveSchemeType.Zone1_2_2,
+                    DefensiveScheme.BoxAndOne => DefensiveSchemeType.BoxAndOne,
+                    DefensiveScheme.TriangleAndTwo => DefensiveSchemeType.TriangleAndTwo,
+                    DefensiveScheme.SwitchAll => DefensiveSchemeType.SwitchEverything,
+                    DefensiveScheme.FullCourtPress => DefensiveSchemeType.FullCourtPress,
+                    DefensiveScheme.HalfCourtTrap => DefensiveSchemeType.HalfCourtTrap,
+                    DefensiveScheme.MatchupZone => DefensiveSchemeType.MatchupZone,
+                    _ => d.PrimaryScheme
+                };
+
+                bool isZone = scheme == DefensiveScheme.Zone23 || scheme == DefensiveScheme.Zone32 ||
+                              scheme == DefensiveScheme.Zone131 || scheme == DefensiveScheme.Zone122 ||
+                              scheme == DefensiveScheme.BoxAndOne || scheme == DefensiveScheme.TriangleAndTwo ||
+                              scheme == DefensiveScheme.MatchupZone;
+                d.ZoneUsage = isZone ? Mathf.Max(d.ZoneUsage, 70) : 0;
+
+                if (scheme == DefensiveScheme.SwitchAll)
+                    d.SwitchingLevel = SwitchingLevel.SwitchAll;
+            }
+
             OnCoachDecision?.Invoke($"Defense: {scheme}");
             Debug.Log($"[GameCoach] Defense set to: {scheme}");
         }
@@ -190,6 +242,29 @@ namespace NBAHeadCoach.Core.Gameplay
         public void SetPace(GamePace pace)
         {
             _tactics.Pace = pace;
+
+            if (_teamStrategy != null)
+            {
+                _teamStrategy.PacePreference = pace switch
+                {
+                    GamePace.Push => PacePreference.AlwaysPush,
+                    GamePace.Slow => PacePreference.Deliberate,
+                    _ => PacePreference.Balanced
+                };
+                _teamStrategy.TargetPace = pace switch
+                {
+                    GamePace.Push => 106f,
+                    GamePace.Slow => 90f,
+                    _ => 98f
+                };
+                _teamStrategy.TransitionOffense = pace switch
+                {
+                    GamePace.Push => TransitionPreference.AggressivePush,
+                    GamePace.Slow => TransitionPreference.NoPush,
+                    _ => TransitionPreference.OpportunisticPush
+                };
+            }
+
             OnCoachDecision?.Invoke($"Pace: {pace}");
             Debug.Log($"[GameCoach] Pace set to: {pace}");
         }
@@ -197,6 +272,30 @@ namespace NBAHeadCoach.Core.Gameplay
         public void SetIntensity(IntensityLevel intensity)
         {
             _tactics.Intensity = intensity;
+
+            if (_teamStrategy?.DefensiveSystem != null)
+            {
+                var d = _teamStrategy.DefensiveSystem;
+                d.DefensiveIntensity = intensity switch
+                {
+                    IntensityLevel.Conservative => DefensiveIntensity.Low,
+                    IntensityLevel.Aggressive => DefensiveIntensity.VeryHigh,
+                    _ => DefensiveIntensity.Normal
+                };
+                d.OnBallPressure = intensity switch
+                {
+                    IntensityLevel.Conservative => 35,
+                    IntensityLevel.Aggressive => 80,
+                    _ => 60
+                };
+                d.GamblingFrequency = intensity switch
+                {
+                    IntensityLevel.Conservative => 15,
+                    IntensityLevel.Aggressive => 55,
+                    _ => 30
+                };
+            }
+
             OnCoachDecision?.Invoke($"Intensity: {intensity}");
             Debug.Log($"[GameCoach] Intensity set to: {intensity}");
         }
@@ -207,6 +306,22 @@ namespace NBAHeadCoach.Core.Gameplay
         public void SetPickAndRollCoverage(PnRCoverageScheme coverage)
         {
             _tactics.PnRCoverage = coverage;
+
+            if (_teamStrategy?.DefensiveSystem != null)
+            {
+                _teamStrategy.DefensiveSystem.PickAndRollCoverage = coverage switch
+                {
+                    PnRCoverageScheme.DropCoverage => PnRCoverage.DropCoverage,
+                    PnRCoverageScheme.ShowAndRecover => PnRCoverage.ShowAndRecover,
+                    PnRCoverageScheme.Hedge => PnRCoverage.Hedge,
+                    PnRCoverageScheme.Blitz => PnRCoverage.Blitz,
+                    PnRCoverageScheme.SwitchAll => PnRCoverage.SwitchAll,
+                    PnRCoverageScheme.Ice => PnRCoverage.Ice,
+                    PnRCoverageScheme.UnderScreen => PnRCoverage.UnderScreen,
+                    _ => _teamStrategy.DefensiveSystem.PickAndRollCoverage
+                };
+            }
+
             OnCoachDecision?.Invoke($"PnR Coverage: {coverage}");
             Debug.Log($"[GameCoach] PnR Coverage set to: {coverage}");
         }
@@ -217,7 +332,47 @@ namespace NBAHeadCoach.Core.Gameplay
         public void SetTransitionDefense(TransitionDefenseLevel level)
         {
             _tactics.TransitionDefense = level;
+
+            if (_teamStrategy != null)
+            {
+                _teamStrategy.TransitionDefense = level switch
+                {
+                    TransitionDefenseLevel.SprintBack => TransitionDefensePreference.SprintBack,
+                    TransitionDefenseLevel.Gambling => TransitionDefensePreference.GambleForSteals,
+                    _ => TransitionDefensePreference.BalancedTransition
+                };
+            }
+
             Debug.Log($"[GameCoach] Transition Defense set to: {level}");
+        }
+
+        /// <summary>
+        /// Toggles the full-court press. Write-through: press schemes force
+        /// steals and turnovers in the possession engine.
+        /// </summary>
+        public void SetFullCourtPress(bool enabled)
+        {
+            _tactics.PressEnabled = enabled;
+            if (_teamStrategy?.DefensiveSystem != null)
+            {
+                var d = _teamStrategy.DefensiveSystem;
+                if (enabled) d.PrimaryScheme = DefensiveSchemeType.FullCourtPress;
+                else if (d.PrimaryScheme == DefensiveSchemeType.FullCourtPress)
+                    d.PrimaryScheme = DefensiveSchemeType.ManToManStandard;
+            }
+            Debug.Log($"[GameCoach] Full-court press: {enabled}");
+        }
+
+        /// <summary>
+        /// Toggles hack-a-Shaq. Write-through: end-game give-fouls target the
+        /// worst free-throw shooter while this is on.
+        /// </summary>
+        public void SetHackAShaq(bool enabled)
+        {
+            _tactics.HackAShaqEnabled = enabled;
+            if (_teamStrategy?.DefensiveSystem != null)
+                _teamStrategy.DefensiveSystem.IntentionalFoulPoorShooters = enabled;
+            Debug.Log($"[GameCoach] Hack-a-Shaq: {enabled}");
         }
 
         // ==================== MATCHUPS ====================
@@ -455,7 +610,43 @@ namespace NBAHeadCoach.Core.Gameplay
             _teamRunPoints = 0;
         }
 
+        /// <summary>The other bench called timeout to stop our run — momentum cools toward neutral.</summary>
+        public void OnOpponentTimeout()
+        {
+            _momentum = Mathf.MoveTowards(_momentum, 50f, 15f);
+            _teamRunPoints = 0;
+            _consecutiveScores = 0;
+        }
+
         // ==================== PLAY CALLS ====================
+
+        /// <summary>
+        /// The action family the possession engine should run on the next trip,
+        /// set by a play call and consumed once by the match controller.
+        /// </summary>
+        public Simulation.HalfCourtAction? PendingActionCall { get; private set; }
+
+        /// <summary>Hands the pending play call to the match controller (one use).</summary>
+        public Simulation.HalfCourtAction? ConsumePendingActionCall()
+        {
+            var call = PendingActionCall;
+            PendingActionCall = null;
+            return call;
+        }
+
+        private static Simulation.HalfCourtAction ActionForPlayType(PlayType type) => type switch
+        {
+            PlayType.PickAndRoll => Simulation.HalfCourtAction.PickAndRoll,
+            PlayType.PickAndPop => Simulation.HalfCourtAction.PickAndRoll,
+            PlayType.SpainPnR => Simulation.HalfCourtAction.PickAndRoll,
+            PlayType.HornsAction => Simulation.HalfCourtAction.PickAndRoll,
+            PlayType.Isolation => Simulation.HalfCourtAction.Isolation,
+            PlayType.PostUp => Simulation.HalfCourtAction.PostUp,
+            PlayType.Handoff => Simulation.HalfCourtAction.Handoff,
+            PlayType.BackdoorCut => Simulation.HalfCourtAction.Cut,
+            PlayType.LobPlay => Simulation.HalfCourtAction.Cut,
+            _ => Simulation.HalfCourtAction.Motion
+        };
 
         /// <summary>
         /// Calls a set play from the playbook.
@@ -474,6 +665,13 @@ namespace NBAHeadCoach.Core.Gameplay
                 Debug.LogWarning($"[GameCoach] Play {playId} not found");
                 return null;
             }
+
+            // The play's action tags decide what the possession engine runs
+            PendingActionCall = play.Tags.Contains(PlayTag.PickAndRoll) ? Simulation.HalfCourtAction.PickAndRoll
+                : play.Tags.Contains(PlayTag.Isolation) ? Simulation.HalfCourtAction.Isolation
+                : play.Tags.Contains(PlayTag.Posting) ? Simulation.HalfCourtAction.PostUp
+                : play.Tags.Contains(PlayTag.Cutting) ? Simulation.HalfCourtAction.Cut
+                : Simulation.HalfCourtAction.Motion;
 
             OnPlayCalled?.Invoke(play);
             Debug.Log($"[GameCoach] Called play: {play.PlayName}");
@@ -516,6 +714,8 @@ namespace NBAHeadCoach.Core.Gameplay
                 _ => PlayType.MotionOffense
             };
 
+            PendingActionCall = ActionForPlayType(playType);
+
             return new PlayCall
             {
                 Type = playType,
@@ -526,6 +726,8 @@ namespace NBAHeadCoach.Core.Gameplay
 
         public PlayCall CallPlay(PlayType type, string primaryPlayer = null, string secondaryPlayer = null)
         {
+            PendingActionCall = ActionForPlayType(type);
+
             return new PlayCall
             {
                 Type = type,

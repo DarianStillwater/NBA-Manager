@@ -12,8 +12,18 @@ namespace NBAHeadCoach.Core.Manager
     /// Replaces CoachingStaffManager, ScoutingManager, and UnifiedCareerManager.
     /// This is the SINGLE source of truth for all career profiles and team assignments.
     /// </summary>
-    public class PersonnelManager : MonoBehaviour
+    public class PersonnelManager : IDailyTickable, ISaveSection, INewGameInitializable
     {
+        public string SystemId => "Personnel";
+        public int TickOrder => Manager.TickOrder.Personnel;
+        public void DailyTick(in DailyTickContext ctx) => ProcessDailyWork(ctx.PlayerTeamId, ctx.Date);
+
+        public void WriteSave(SaveData data) => data.UnifiedCareers = GetSaveData();
+        public void ReadSave(SaveData data, in SaveReadContext ctx)
+        {
+            if (data.UnifiedCareers != null) LoadSaveData(data.UnifiedCareers);
+        }
+
         public static PersonnelManager Instance { get; private set; }
 
         // Limits
@@ -45,19 +55,14 @@ namespace NBAHeadCoach.Core.Manager
         public event Action<UnifiedCareerProfile, UnifiedRole, UnifiedRole> OnCareerTransition;
         public event Action<UnifiedCareerProfile> OnPersonnelRetired;
         public event Action<StaffTaskAssignment> OnStaffAssigned;
+        public event Action<StaffTaskAssignment> OnScoutAssignmentCompleted;
         public event Action<StaffTaskAssignment> OnStaffUnassigned;
         public event Action<StaffNegotiationSession> OnNegotiationStarted;
         public event Action<StaffNegotiationSession> OnNegotiationComplete;
 
-        private void Awake()
+        public PersonnelManager()
         {
-            if (Instance != null && Instance != this)
-            {
-                Destroy(gameObject);
-                return;
-            }
             Instance = this;
-            DontDestroyOnLoad(gameObject);
         }
 
         public void Initialize(UnifiedCareerSaveData saveData = null)
@@ -196,7 +201,9 @@ namespace NBAHeadCoach.Core.Manager
             var profile = GetProfile(profileId);
             if (profile == null) return (false, "Profile not found.");
 
-            if (profile.IsEmployed())
+            // Track-based IsEmployed() is true for market candidates too —
+            // only a profile actually attached to a team is off-limits.
+            if (profile.IsEmployed() && !string.IsNullOrEmpty(profile.CurrentTeamId))
                 return (false, "Person is already employed by another team.");
 
             // Check staff limits
@@ -234,7 +241,8 @@ namespace NBAHeadCoach.Core.Manager
         {
             var profile = GetProfile(profileId);
             if (profile == null) return (false, "Profile not found.");
-            if (!profile.IsEmployed()) return (false, "Person is not currently employed.");
+            if (!profile.IsEmployed() || string.IsNullOrEmpty(profile.CurrentTeamId))
+                return (false, "Person is not currently employed.");
 
             string teamId = profile.CurrentTeamId;
             
@@ -705,11 +713,34 @@ namespace NBAHeadCoach.Core.Manager
             if (_profilesById.ContainsKey(profile.ProfileId)) return;
             allProfiles.Add(profile);
             _profilesById[profile.ProfileId] = profile;
-            if (!profile.IsEmployed() && profile.CurrentTrack != UnifiedCareerTrack.Retired)
+            // "Employed" means actually on a team's payroll. IsEmployed() alone is
+            // track-based and true for generated candidates, which kept the hiring
+            // pool permanently empty.
+            bool onATeam = profile.IsEmployed() && !string.IsNullOrEmpty(profile.CurrentTeamId);
+            if (onATeam)
+            {
+                // Employed profiles must land in the team-staff index or
+                // GetTeamStaff/GetHeadCoach/quality helpers never see them.
+                if (!_teamStaffs.TryGetValue(profile.CurrentTeamId, out var staff))
+                {
+                    staff = new List<UnifiedCareerProfile>();
+                    _teamStaffs[profile.CurrentTeamId] = staff;
+                }
+                if (!staff.Contains(profile)) staff.Add(profile);
+            }
+            else if (profile.CurrentTrack != UnifiedCareerTrack.Retired)
+            {
                 _unemployedPool.Add(profile);
+            }
         }
 
         // ==================== POOL GENERATION ====================
+
+        /// <summary>New game only: stock the hiring market with candidates.</summary>
+        public void InitializeForNewGame(in NewGameContext ctx)
+        {
+            GenerateFreeAgentPool();
+        }
 
         public void GenerateFreeAgentPool(int coachCount = BASE_COACH_POOL_SIZE, int scoutCount = BASE_SCOUT_POOL_SIZE)
         {
@@ -771,7 +802,13 @@ namespace NBAHeadCoach.Core.Manager
                 assignment.AdvanceDay();
                 if (assignment.IsComplete)
                 {
-                    // Handle completion logic (e.g. generate report)
+                    // Completion produces real output — ScoutingSystem subscribes
+                    // and turns finished scout work into reports.
+                    try { OnScoutAssignmentCompleted?.Invoke(assignment); }
+                    catch (Exception ex)
+                    {
+                        Debug.LogWarning($"[PersonnelManager] Assignment completion handler failed: {ex.Message}");
+                    }
                     UnassignStaff(assignment.StaffId);
                 }
             }

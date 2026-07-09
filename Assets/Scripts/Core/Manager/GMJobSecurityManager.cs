@@ -138,7 +138,7 @@ namespace NBAHeadCoach.Core.Manager
     /// Manages GM job security, hirings, and firings for all teams.
     /// Handles former player GM promotions and career tracking.
     /// </summary>
-    public class GMJobSecurityManager : MonoBehaviour
+    public class GMJobSecurityManager
     {
         public static GMJobSecurityManager Instance { get; private set; }
 
@@ -164,33 +164,16 @@ namespace NBAHeadCoach.Core.Manager
         private int currentYear;
         private List<string> teamsNeedingGM = new List<string>();
 
-        private void Awake()
+        /// <summary>
+        /// Construct AFTER RetirementManager so the FO pipeline subscription attaches.
+        /// </summary>
+        public GMJobSecurityManager()
         {
-            if (Instance == null)
-            {
-                Instance = this;
-                DontDestroyOnLoad(gameObject);
-            }
-            else
-            {
-                Destroy(gameObject);
-            }
-        }
+            Instance = this;
 
-        private void Start()
-        {
-            // Subscribe to retirement events for FO path
             if (RetirementManager.Instance != null)
             {
                 RetirementManager.Instance.OnPlayerEnteredCoachingPipeline += HandlePlayerEnteredFOPipeline;
-            }
-        }
-
-        private void OnDestroy()
-        {
-            if (RetirementManager.Instance != null)
-            {
-                RetirementManager.Instance.OnPlayerEnteredCoachingPipeline -= HandlePlayerEnteredFOPipeline;
             }
         }
 
@@ -400,6 +383,30 @@ namespace NBAHeadCoach.Core.Manager
         /// <summary>
         /// Evaluate GM performance and update job security status
         /// </summary>
+        /// <summary>
+        /// Guarantees a career record exists for the GM running a team — used for
+        /// the player in GM-only mode, whose record isn't created by the
+        /// former-player hiring pipeline. Idempotent.
+        /// </summary>
+        public GMCareerData EnsureGMRecord(string teamId, string gmId, string gmName)
+        {
+            var existing = gmCareerData.FirstOrDefault(c => c.TeamId == teamId);
+            if (existing != null) return existing;
+
+            var record = new GMCareerData
+            {
+                GMId = gmId,
+                TeamId = teamId,
+                GMName = gmName,
+                CurrentStatus = GMJobSecurityStatus.Stable,
+                OwnerConfidence = 65f,
+                IsFormerPlayer = false
+            };
+            gmCareerData.Add(record);
+            teamsNeedingGM.Remove(teamId);
+            return record;
+        }
+
         public void EvaluateGMPerformance(string teamId, int wins, int losses, bool madePlayoffs, int playoffRoundsWon)
         {
             var career = gmCareerData.FirstOrDefault(c => c.TeamId == teamId);

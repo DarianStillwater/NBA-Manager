@@ -357,7 +357,7 @@ namespace NBAHeadCoach.Core.Manager
 
             if (winnerTeamId != null)
             {
-                // Find the Head Coach for this team using PersonnelManager
+                // Record the award on the head coach's career profile when one exists
                 var staff = PersonnelManager.Instance?.GetTeamStaff(winnerTeamId);
                 var coach = staff?.FirstOrDefault(s => s.CurrentRole == UnifiedRole.HeadCoach);
 
@@ -365,13 +365,15 @@ namespace NBAHeadCoach.Core.Manager
                 {
                     coach.AddAward(year, AwardType.CoachOfYear, winnerTeamId);
                     Debug.Log($"[AwardManager] COY: {coach.PersonName} of {winnerTeamId} (Score: {bestScore:F1})");
-                    return coach.ProfileId;
                 }
-                
-                Debug.Log($"[AwardManager] COY: Coach of {winnerTeamId} (Score: {bestScore:F1}) - Profile not found");
+                else
+                {
+                    Debug.Log($"[AwardManager] COY: Coach of {winnerTeamId} (Score: {bestScore:F1}) - Profile not found");
+                }
             }
 
-            return null;
+            // The winning TEAM is the unambiguous identity — coach profiles may not exist
+            return winnerTeamId;
         }
 
         #endregion

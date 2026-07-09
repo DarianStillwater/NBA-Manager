@@ -1,6 +1,6 @@
 # NBA Head Coach — AI Assistant Guide
 
-> **Last Updated**: March 2026
+> **Last Updated**: June 2026
 
 ## Game Overview
 
@@ -141,7 +141,7 @@ player.Energy, player.Morale, player.Form  // 0-100 dynamic state
 
 ### Namespaces
 - `NBAHeadCoach.Core` / `.Data` / `.Manager` / `.Simulation` / `.AI`
-- `NBAHeadCoach.UI` / `.Shell` / `.GamePanels` / `.Panels` / `.Modals` / `.Components`
+- `NBAHeadCoach.UI` / `.Shell` / `.GamePanels` / `.Components` / `.Menu` / `.Match`
 
 ### Adding a New Game Panel
 1. Create `UI/GamePanels/MyPanel.cs` implementing `IGamePanel`
@@ -158,13 +158,14 @@ player.Energy, player.Morale, player.Form  // 0-100 dynamic state
 
 ### New Game Initialization Flow
 1. `MenuInjector.StartGame()` → `GameManager.StartNewGame()`
-2. Sets `_currentDate` to Oct 1, creates career profile
-3. `SeasonController.InitializeSeason()` — generates full 30-team league schedule (~1000+ games)
+2. Sets `_currentDate` to Oct 21 (eve of season; first games Oct 22), creates career profile
+3. `SeasonController.InitializeSeason()` — resets team records, generates full 30-team league schedule (~1000+ games)
 4. `InitializeManagersForNewGame()` — trade systems, draft, development
 5. `InitializeAllTeamCoaches()` — generates random `AICoachPersonality` for each team, sets strategy + starting lineup
-6. Each team gets `AutoSetStartingLineup(coach)` — position-based + coach-style swaps
-7. Each team gets `AutoSetStrategy(coach)` — maps coach traits to `TeamStrategy`
-8. On `AdvanceDay()`, `SimulateLeagueGamesForDate()` auto-sims all non-player games
+6. `MoraleChemistryManager.InitializeTeamPersonalities()` — hidden personalities for every roster
+7. Each team gets `AutoSetStartingLineup(coach)` + `AutoSetStrategy(coach)`
+8. On `AdvanceDay()`: `SimulateLeagueGamesForDate()` auto-sims non-player games, then daily ticks run — injury recovery, morale decay, personnel work, job market, media reputation, weekly mentorship (Mondays)
+9. At Apr 19 the phase flips to Playoffs and `SeasonController.BeginPlayoffs()` seeds the bracket from final standings
 
 ### Game Day Flow
 1. "Sim to Game" advances days until next player game → shows PreGame → **disables sidebar buttons**
@@ -174,12 +175,13 @@ player.Energy, player.Morale, player.Form  // 0-100 dynamic state
 
 ### Known Quirks
 - `Energy`/`Morale`/`Form` default to 0 — initialized to 100/75/50 in `PlayerDatabase.LoadPlayersFromFile()`
-- Legacy panel classes in `UI/Panels/` exist but are NOT used — the runtime `GamePanels/` system replaces them
-- `Tools/UIBuilder.cs` is a separate older utility — not the same as `Shell/UIBuilder.cs`
 - UIGradient is multiplicative — set `Image.color = Color.white` before applying, or use direct colors for dark elements
+- `GameManager.CurrentDate` is the ONLY date authority (`SeasonController.CurrentDate` delegates to it); `Team.Wins/Losses` is the ONLY record store (standings sync from teams on read; playoff games route to `Team.PlayoffWins/PlayoffLosses`)
 
 ## Manager Systems (~45 managers in Core/Manager/)
 Personnel, Roster, Contracts, Trade/AI, Season/Playoffs, Development, Practice, Mentorship, Morale/Chemistry, Finance, Injury, Media, Awards, Draft, Scouting, Job Market, Offseason, Summer League, Training Camp.
+
+**All managers are plain C# classes constructed in `GameManager.Initialize()`** (no MonoBehaviour managers, no scene wiring). Each keeps a static `Instance` set by its constructor, but `GameManager.X` properties are the canonical references. Construction order matters: RetirementManager before FormerPlayerCareerManager/GMJobSecurityManager (ctor event subscriptions); PersonalityManager is injected into MoraleChemistryManager. Several systems are constructed but not yet feature-integrated (ContractNegotiation, SummerLeague, LeagueEvents, Offseason, AllStar, TrainingCamp, Revenue, History) — they are the offseason-chain backlog, do NOT delete them.
 
 ## Implemented Features
 - 5-step new game wizard (coach creation, team selection, role, difficulty, confirmation)

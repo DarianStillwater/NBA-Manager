@@ -4,21 +4,24 @@ using System.Linq;
 using UnityEngine;
 using NBAHeadCoach.Core.Data;
 using NBAHeadCoach.Core.Manager;
-using GameResult = NBAHeadCoach.Core.SavedGameResult;
+using GameResult = NBAHeadCoach.Core.Data.SavedGameResult;
 
 namespace NBAHeadCoach.Core
 {
     /// <summary>
     /// Controls season progression, calendar advancement, and event triggering
     /// </summary>
-    public class SeasonController
+    public class SeasonController : IDailyTickable
     {
+        public string SystemId => "SeasonCalendar";
+        public int TickOrder => Manager.TickOrder.SeasonCalendar;
+        public void DailyTick(in DailyTickContext ctx) => AdvanceDay();
+
         private GameManager _gameManager;
         private SeasonCalendar _playerCalendar;
         private LeagueCalendar _leagueCalendar;
 
         private int _currentSeason;
-        private DateTime _currentDate;
         private SeasonPhase _currentPhase;
         private int _currentGameIndex;
 
@@ -35,7 +38,6 @@ namespace NBAHeadCoach.Core
         private DateTime _freeAgencyStart;
 
         // Events
-        public event Action<CalendarEvent> OnGameDay;
         public event Action<SeasonPhase> OnPhaseChanged;
         public event Action<DateTime> OnDateChanged;
         public event Action OnTradeDeadline;
@@ -56,7 +58,6 @@ namespace NBAHeadCoach.Core
         public void InitializeSeason(int season)
         {
             _currentSeason = season;
-            _currentDate = new DateTime(season, 10, 22); // Regular season start
             _currentPhase = SeasonPhase.RegularSeason;
             _currentGameIndex = 0;
 
@@ -66,6 +67,16 @@ namespace NBAHeadCoach.Core
             _playoffsStart = new DateTime(season + 1, 4, 19);
             _draftDate = new DateTime(season + 1, 6, 22);
             _freeAgencyStart = new DateTime(season + 1, 7, 1);
+
+            // Reset team records (Team.Wins/Losses is the single record authority)
+            foreach (var team in _gameManager.AllTeams)
+            {
+                if (team == null) continue;
+                team.Wins = 0;
+                team.Losses = 0;
+                team.PlayoffWins = 0;
+                team.PlayoffLosses = 0;
+            }
 
             // Generate schedule
             GenerateSchedule();
@@ -178,13 +189,33 @@ namespace NBAHeadCoach.Core
             if (saveData == null) return;
 
             _currentSeason = saveData.Season;
-            _currentDate = saveData.CurrentDate;
+            // Date is restored by GameManager (single date authority); saveData.CurrentDate
+            // never roundtrips through JsonUtility anyway (raw DateTime).
             _currentPhase = saveData.Phase;
             _currentGameIndex = saveData.CurrentGameIndex;
             _completedGames = saveData.CompletedGames ?? new List<GameResult>();
 
-            // Regenerate schedule (or load from save)
+            // Regenerate schedule (deterministic: seeded by season, so EventIds match)
             GenerateSchedule();
+
+            // Re-mark completed games on the regenerated schedule — otherwise the
+            // Schedule panel loses W/L results and GetNextGame re-offers played games.
+            if (_completedGames.Count > 0)
+            {
+                var byId = new Dictionary<string, CalendarEvent>();
+                foreach (var evt in _schedule)
+                    if (!string.IsNullOrEmpty(evt.EventId)) byId[evt.EventId] = evt;
+
+                foreach (var played in _completedGames)
+                {
+                    if (played?.GameId != null && byId.TryGetValue(played.GameId, out var evt))
+                    {
+                        evt.IsCompleted = true;
+                        evt.HomeScore = played.HomeScore;
+                        evt.AwayScore = played.AwayScore;
+                    }
+                }
+            }
 
             // Rebuild standings from completed games
             RebuildStandings();
@@ -198,7 +229,7 @@ namespace NBAHeadCoach.Core
             return new CalendarSaveData
             {
                 Season = _currentSeason,
-                CurrentDate = _currentDate,
+                CurrentDate = CurrentDate,
                 Phase = _currentPhase,
                 CurrentGameIndex = _currentGameIndex,
                 CompletedGames = _completedGames
@@ -350,11 +381,7 @@ namespace NBAHeadCoach.Core
         private void RebuildStandings()
         {
             InitializeStandings();
-
-            foreach (var game in _completedGames)
-            {
-                UpdateStandingsFromGame(game);
-            }
+            SyncStandingsFromTeams();
         }
 
         #endregion
@@ -366,8 +393,8 @@ namespace NBAHeadCoach.Core
         /// </summary>
         public void AdvanceDay()
         {
-            _currentDate = _currentDate.AddDays(1);
-            OnDateChanged?.Invoke(_currentDate);
+            // GameManager (the single date authority) has already advanced the date.
+            OnDateChanged?.Invoke(CurrentDate);
 
             // Check for phase transitions
             CheckPhaseTransition();
@@ -379,42 +406,9 @@ namespace NBAHeadCoach.Core
             ProcessDailyEvents();
         }
 
-        /// <summary>
-        /// Advance to the next scheduled event (game or important date)
-        /// </summary>
-        public void AdvanceToNextEvent()
-        {
-            // Find next game
-            var nextGame = GetNextGame();
-
-            if (nextGame != null)
-            {
-                // Check for special events before the game
-                while (_currentDate < nextGame.Date)
-                {
-                    AdvanceDay();
-
-                    // Stop if we hit a special event
-                    if (IsSpecialEventDay(_currentDate))
-                    {
-                        return;
-                    }
-                }
-
-                // We're at game day
-                OnGameDay?.Invoke(nextGame);
-                _gameManager.ChangeState(GameState.PreGame, nextGame);
-            }
-            else if (_currentPhase == SeasonPhase.RegularSeason)
-            {
-                // Season is over, move to playoffs or offseason
-                HandleSeasonEnd();
-            }
-        }
-
         private void CheckPhaseTransition()
         {
-            var newPhase = DeterminePhase(_currentDate);
+            var newPhase = DeterminePhase(CurrentDate);
 
             if (newPhase != _currentPhase)
             {
@@ -422,22 +416,54 @@ namespace NBAHeadCoach.Core
                 _currentPhase = newPhase;
                 OnPhaseChanged?.Invoke(_currentPhase);
 
+                // Fan out to registered phase listeners — the rail playoffs/offseason
+                // orchestration hangs from. One failing listener must not block others.
+                var listeners = _gameManager?.Systems?.PhaseListeners;
+                if (listeners != null)
+                {
+                    foreach (var listener in listeners)
+                    {
+                        try { listener.OnSeasonPhaseChanged(oldPhase, newPhase, CurrentDate); }
+                        catch (Exception ex)
+                        {
+                            Debug.LogError($"[SeasonController] {listener.SystemId} phase handler failed: {ex}");
+                        }
+                    }
+                }
+
                 Debug.Log($"[SeasonController] Phase changed: {oldPhase} → {_currentPhase}");
+
+                // Entering the playoffs: seed and initialize the bracket from final standings
+                if (newPhase == SeasonPhase.Playoffs &&
+                    PlayoffManager.Instance != null && !PlayoffManager.Instance.IsPlayoffsActive)
+                {
+                    BeginPlayoffs();
+                }
             }
         }
 
         private SeasonPhase DeterminePhase(DateTime date)
         {
-            // Check date ranges for each phase
-            if (date >= _draftDate && date < _freeAgencyStart)
+            // Playoffs run until the bracket completes — a long Finals can cross the
+            // draft date, and a Finals game must never be classified as offseason.
+            if (date >= _playoffsStart &&
+                PlayoffManager.Instance != null &&
+                PlayoffManager.Instance.IsPlayoffsActive &&
+                PlayoffManager.Instance.CurrentPhase != PlayoffPhase.Complete)
+                return SeasonPhase.Playoffs;
+
+            // Offseason windows belong to the summer AFTER this season
+            // (season year 2025 = Oct 2025 – Jun 2026; its offseason is summer 2026).
+            int off = _currentSeason + 1;
+            if (date >= OffseasonDates.Draft(off) && date < OffseasonDates.FreeAgency(off))
                 return SeasonPhase.Draft;
-            if (date >= _freeAgencyStart && date < new DateTime(_currentSeason, 7, 7))
+            if (date >= OffseasonDates.FreeAgency(off) && date < OffseasonDates.SummerLeague(off))
                 return SeasonPhase.FreeAgency;
-            if (date >= new DateTime(_currentSeason, 7, 7) && date < new DateTime(_currentSeason, 9, 27))
+            if (date >= OffseasonDates.SummerLeague(off) && date < OffseasonDates.CampStart(off))
                 return SeasonPhase.SummerLeague;
-            if (date >= new DateTime(_currentSeason, 9, 27) && date < new DateTime(_currentSeason, 10, 4))
+            if (date >= OffseasonDates.CampStart(off) && date < OffseasonDates.PreseasonLabel(off))
                 return SeasonPhase.TrainingCamp;
-            if (date >= new DateTime(_currentSeason, 10, 4) && date < new DateTime(_currentSeason, 10, 22))
+            if (date >= OffseasonDates.PreseasonLabel(off) && date < OffseasonDates.Rollover(off).AddDays(1))
                 return SeasonPhase.Preseason;
             if (date >= _allStarBreak && date < _allStarBreak.AddDays(4))
                 return SeasonPhase.AllStarBreak;
@@ -449,15 +475,15 @@ namespace NBAHeadCoach.Core
 
         private void CheckSpecialEvents()
         {
-            if (_currentDate.Date == _tradeDeadline.Date)
+            if (CurrentDate.Date == _tradeDeadline.Date)
             {
                 OnTradeDeadline?.Invoke();
             }
-            else if (_currentDate.Date == _allStarBreak.Date)
+            else if (CurrentDate.Date == _allStarBreak.Date)
             {
                 OnAllStarBreak?.Invoke();
             }
-            else if (_currentDate.Date == _playoffsStart.Date)
+            else if (CurrentDate.Date == _playoffsStart.Date)
             {
                 OnPlayoffsStart?.Invoke();
             }
@@ -500,26 +526,40 @@ namespace NBAHeadCoach.Core
                     }
                 }
 
-                // Recover energy (higher on rest days)
-                bool hasGameToday = HasGameOnDate(player.TeamId, _currentDate);
-                float energyRecovery = hasGameToday ? 5f : 15f;
+                // Recover energy (higher on rest days; a genuinely gassed player
+                // recovers fastest — the payoff of a DNP-rest night)
+                bool hasGameToday = HasGameOnDate(player.TeamId, CurrentDate);
+                float energyRecovery = hasGameToday ? 5f : (player.Energy < 40f ? 22f : 15f);
                 player.Energy = Mathf.Min(100, player.Energy + energyRecovery);
 
+                // Form cools toward neutral on idle days; game days recompute it
+                // from results in the completion pipeline.
+                if (!hasGameToday)
+                    Simulation.FormTracker.DriftTowardNeutral(player);
+
                 // Clean up old minutes tracking (keep last 14 days)
-                if (player.RecentMinutes != null && _currentDate.Year > 1)
+                if (player.RecentMinutes != null && CurrentDate.Year > 1)
                 {
-                    var cutoff = _currentDate.AddDays(-14);
+                    var cutoff = CurrentDate.AddDays(-14);
                     player.RecentMinutes.RemoveAll(r => r.Date < cutoff);
                 }
             }
 
             // Cleanup old injury records periodically
-            if (injuryManager != null && _currentDate.Day == 1)
+            if (injuryManager != null && CurrentDate.Day == 1)
             {
                 injuryManager.CleanupOldRecords(30);
             }
 
-            // AI team activities could go here
+            // Daily morale processing for every team (decay toward neutral, escalation checks)
+            var moraleManager = MoraleChemistryManager.Instance;
+            if (moraleManager != null)
+            {
+                foreach (var team in _gameManager.AllTeams)
+                {
+                    if (team != null) moraleManager.ProcessDailyMorale(team);
+                }
+            }
         }
 
         /// <summary>
@@ -530,9 +570,13 @@ namespace NBAHeadCoach.Core
             if (string.IsNullOrEmpty(teamId)) return 1f;
 
             var team = _gameManager.GetTeam(teamId);
-            if (team?.TrainingFacility == null) return 1f;
+            float facility = team?.TrainingFacility != null
+                ? team.TrainingFacility.InjuryRecoveryMultiplier
+                : 1f;
 
-            return team.TrainingFacility.InjuryRecoveryMultiplier;
+            // Better staff gets players back faster — up to +20% at quality 100.
+            int staffQuality = Manager.PersonnelManager.Instance?.GetStaffQuality(teamId) ?? 0;
+            return facility * (1f + staffQuality / 100f * 0.2f);
         }
 
         /// <summary>
@@ -548,7 +592,7 @@ namespace NBAHeadCoach.Core
                 (e.HomeTeamId == teamId || e.AwayTeamId == teamId));
         }
 
-        private void HandleSeasonEnd()
+        private void BeginPlayoffs()
         {
             var playerTeam = _gameManager.GetPlayerTeam();
             var playerStandings = GetTeamStandings(_gameManager.PlayerTeamId);
@@ -591,13 +635,24 @@ namespace NBAHeadCoach.Core
         #region Game Management
 
         /// <summary>
+        /// Append events to the schedule (playoff rounds land here as the bracket
+        /// advances), keeping it date-sorted.
+        /// </summary>
+        public void AddScheduledEvents(IEnumerable<CalendarEvent> events)
+        {
+            if (events == null) return;
+            _schedule.AddRange(events.Where(e => e != null));
+            _schedule.Sort((a, b) => a.Date.CompareTo(b.Date));
+        }
+
+        /// <summary>
         /// Get the next scheduled game
         /// </summary>
         public CalendarEvent GetNextGame()
         {
             string pid = _gameManager.PlayerTeamId;
             return _schedule
-                .Where(e => e.Type == CalendarEventType.Game && e.Date >= _currentDate && !e.IsCompleted
+                .Where(e => e.Type == CalendarEventType.Game && e.Date >= CurrentDate && !e.IsCompleted
                     && (e.HomeTeamId == pid || e.AwayTeamId == pid))
                 .OrderBy(e => e.Date)
                 .FirstOrDefault();
@@ -610,7 +665,7 @@ namespace NBAHeadCoach.Core
         {
             string pid = _gameManager.PlayerTeamId;
             return _schedule
-                .Where(e => e.Type == CalendarEventType.Game && e.Date >= _currentDate && !e.IsCompleted
+                .Where(e => e.Type == CalendarEventType.Game && e.Date >= CurrentDate && !e.IsCompleted
                     && (e.HomeTeamId == pid || e.AwayTeamId == pid))
                 .OrderBy(e => e.Date)
                 .Take(count)
@@ -625,7 +680,7 @@ namespace NBAHeadCoach.Core
             string pid = _gameManager.PlayerTeamId;
             return _schedule.FirstOrDefault(e =>
                 e.Type == CalendarEventType.Game &&
-                e.Date.Date == _currentDate.Date &&
+                e.Date.Date == CurrentDate.Date &&
                 !e.IsCompleted &&
                 (e.HomeTeamId == pid || e.AwayTeamId == pid));
         }
@@ -643,7 +698,11 @@ namespace NBAHeadCoach.Core
                 AwayTeamId = game.AwayTeamId,
                 HomeScore = homeScore,
                 AwayScore = awayScore,
-                IsPlayoff = _currentPhase == SeasonPhase.Playoffs
+                // The EVENT knows whether it's a playoff game — the date-derived phase
+                // lies when the Finals cross the draft date in June.
+                IsPlayoff = game.IsPlayoffGame,
+                PlayoffRound = game.PlayoffRound,
+                PlayoffGame = game.GameNumber
             };
 
             _completedGames.Add(result);
@@ -652,43 +711,39 @@ namespace NBAHeadCoach.Core
             game.AwayScore = awayScore;
             _currentGameIndex++;
 
-            // Update standings
-            UpdateStandingsFromGame(result);
-
-            // Update team records
+            // Team.Wins/Losses is the single authority for records; standings sync from teams.
+            // Playoff results route to the separate playoff record so the regular-season record stays frozen.
             var homeTeam = _gameManager.GetTeam(game.HomeTeamId);
             var awayTeam = _gameManager.GetTeam(game.AwayTeamId);
+            bool isPlayoff = result.IsPlayoff;
 
             if (homeScore > awayScore)
             {
-                if (homeTeam != null) homeTeam.Wins++;
-                if (awayTeam != null) awayTeam.Losses++;
+                if (homeTeam != null) { if (isPlayoff) homeTeam.PlayoffWins++; else homeTeam.Wins++; }
+                if (awayTeam != null) { if (isPlayoff) awayTeam.PlayoffLosses++; else awayTeam.Losses++; }
             }
             else
             {
-                if (homeTeam != null) homeTeam.Losses++;
-                if (awayTeam != null) awayTeam.Wins++;
+                if (homeTeam != null) { if (isPlayoff) homeTeam.PlayoffLosses++; else homeTeam.Losses++; }
+                if (awayTeam != null) { if (isPlayoff) awayTeam.PlayoffWins++; else awayTeam.Wins++; }
             }
 
-            Debug.Log($"[SeasonController] Game recorded: {game.AwayTeamId} {awayScore} @ {game.HomeTeamId} {homeScore}");
+            Debug.Log($"[SeasonController] Game recorded: {game.AwayTeamId} {awayScore} @ {game.HomeTeamId} {homeScore}{(isPlayoff ? " (playoff)" : "")}");
         }
 
-        private void UpdateStandingsFromGame(GameResult game)
+        /// <summary>
+        /// Copy regular-season records from Team (the single source of truth) into the standings entries.
+        /// </summary>
+        private void SyncStandingsFromTeams()
         {
-            if (_standings.TryGetValue(game.HomeTeamId, out var homeStandings))
+            foreach (var team in _gameManager.AllTeams)
             {
-                if (game.HomeScore > game.AwayScore)
-                    homeStandings.Wins++;
-                else
-                    homeStandings.Losses++;
-            }
-
-            if (_standings.TryGetValue(game.AwayTeamId, out var awayStandings))
-            {
-                if (game.AwayScore > game.HomeScore)
-                    awayStandings.Wins++;
-                else
-                    awayStandings.Losses++;
+                if (team == null) continue;
+                if (_standings.TryGetValue(team.TeamId, out var standings))
+                {
+                    standings.Wins = team.Wins;
+                    standings.Losses = team.Losses;
+                }
             }
         }
 
@@ -701,6 +756,7 @@ namespace NBAHeadCoach.Core
         /// </summary>
         public List<TeamStandings> GetConferenceStandings(string conference)
         {
+            SyncStandingsFromTeams();
             return _standings.Values
                 .Where(s => s.Conference == conference)
                 .OrderByDescending(s => s.WinPercentage)
@@ -713,6 +769,7 @@ namespace NBAHeadCoach.Core
         /// </summary>
         public TeamStandings GetTeamStandings(string teamId)
         {
+            SyncStandingsFromTeams();
             _standings.TryGetValue(teamId, out var standings);
             return standings;
         }
@@ -748,7 +805,7 @@ namespace NBAHeadCoach.Core
         #region Properties
 
         public int CurrentSeason => _currentSeason;
-        public DateTime CurrentDate => _currentDate;
+        public DateTime CurrentDate => _gameManager.CurrentDate;
         public SeasonPhase CurrentPhase => _currentPhase;
         public int GamesPlayed => _currentGameIndex;
         public int GamesRemaining => _schedule.Count(e => e.Type == CalendarEventType.Game && !e.IsCompleted);

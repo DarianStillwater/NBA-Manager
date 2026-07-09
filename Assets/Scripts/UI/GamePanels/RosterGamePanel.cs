@@ -55,8 +55,10 @@ namespace NBAHeadCoach.UI.GamePanels
                 B.TableCell(row, stats != null && stats.GamesPlayed > 0 ? stats.RPG.ToString("0.0") : "—", 45, FontStyle.Normal, UITheme.TextSecondary);
                 B.TableCell(row, stats != null && stats.GamesPlayed > 0 ? stats.APG.ToString("0.0") : "—", 45, FontStyle.Normal, UITheme.TextSecondary);
 
-                string status = p.IsInjured ? "INJURED" : p.Energy < 50 ? "TIRED" : "OK";
-                Color statusColor = p.IsInjured ? UITheme.Danger : p.Energy < 50 ? UITheme.Warning : UITheme.Success;
+                string status = p.IsInjured ? "INJURED" : p.Energy < 50 ? "TIRED"
+                    : p.Form >= 65 ? "HOT" : p.Form <= 35 ? "COLD" : "OK";
+                Color statusColor = p.IsInjured ? UITheme.Danger : p.Energy < 50 ? UITheme.Warning
+                    : p.Form >= 65 ? UITheme.AccentPrimary : p.Form <= 35 ? UITheme.AccentSecondary : UITheme.Success;
                 B.TableCell(row, status, 70, FontStyle.Bold, statusColor);
 
                 var player = p;
@@ -71,6 +73,163 @@ namespace NBAHeadCoach.UI.GamePanels
         {
             _shell?.RegisterPanel("PlayerDetail", new LegacyPanelAdapter((p, t, c) => BuildDetailContent(p, _detailPlayer)));
             _shell?.ShowPanel("PlayerDetail");
+        }
+
+        private void ShowCompare()
+        {
+            _shell?.RegisterPanel("PlayerCompare", new LegacyPanelAdapter((p, t, c) => BuildCompareContent(p)));
+            _shell?.ShowPanel("PlayerCompare");
+        }
+
+        // ═══════════════════════════════════════════════════════
+        //  PLAYER COMPARISON — stats and grades, never attribute numbers
+        // ═══════════════════════════════════════════════════════
+
+        private Player _comparePlayer;
+
+        private void BuildCompareContent(RectTransform parent)
+        {
+            var a = _detailPlayer;
+            if (a == null) { _shell?.ShowPanel("Roster"); return; }
+
+            // Top bar: back to the player detail
+            var topBar = B.Child(parent, "TopBar");
+            topBar.AddComponent<Image>().color = UITheme.CardHeaderFrosted;
+            var tr = topBar.GetComponent<RectTransform>();
+            tr.anchorMin = new Vector2(0, 1); tr.anchorMax = Vector2.one;
+            tr.pivot = new Vector2(0.5f, 1); tr.sizeDelta = new Vector2(0, 40);
+            var tlg = topBar.AddComponent<HorizontalLayoutGroup>();
+            tlg.spacing = 12; tlg.padding = new RectOffset(12, 12, 4, 4);
+            tlg.childControlWidth = false; tlg.childControlHeight = true; tlg.childAlignment = TextAnchor.MiddleLeft;
+
+            var backGo = B.Child(tr, "Back");
+            backGo.AddComponent<LayoutElement>().preferredWidth = 80;
+            backGo.AddComponent<Image>().color = UITheme.PanelSurface;
+            backGo.AddComponent<Button>().onClick.AddListener(RebuildDetail);
+            var bt = B.Text(backGo.GetComponent<RectTransform>(), "BT", "◀ BACK", 11, FontStyle.Bold, UITheme.AccentPrimary);
+            bt.alignment = TextAnchor.MiddleCenter; B.Stretch(bt.gameObject);
+
+            string title = _comparePlayer == null
+                ? $"COMPARE {a.FullName.ToUpper()} WITH…"
+                : $"{a.FullName.ToUpper()}  vs  {_comparePlayer.FullName.ToUpper()}";
+            var nt = B.Text(tr, "Title", title, 14, FontStyle.Bold, Color.white);
+            nt.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1;
+
+            if (_comparePlayer != null)
+            {
+                var swapGo = B.Child(tr, "Change");
+                swapGo.AddComponent<LayoutElement>().preferredWidth = 120;
+                swapGo.AddComponent<Image>().color = UITheme.PanelSurface;
+                swapGo.AddComponent<Button>().onClick.AddListener(() => { _comparePlayer = null; ShowCompare(); });
+                var st = B.Text(swapGo.GetComponent<RectTransform>(), "ST", "CHANGE PLAYER", 10, FontStyle.Bold, UITheme.TextSecondary);
+                st.alignment = TextAnchor.MiddleCenter; B.Stretch(st.gameObject);
+            }
+
+            // Content
+            var cGo = B.Child(parent, "Content");
+            var cr = cGo.GetComponent<RectTransform>();
+            cr.anchorMin = Vector2.zero; cr.anchorMax = Vector2.one;
+            cr.offsetMin = Vector2.zero; cr.offsetMax = new Vector2(0, -44);
+
+            if (_comparePlayer == null) BuildComparePicker(cr, a);
+            else BuildCompareTable(cr, a, _comparePlayer);
+        }
+
+        private void BuildComparePicker(RectTransform parent, Player a)
+        {
+            var gm = GameManager.Instance;
+            var scroll = B.ScrollArea(parent);
+
+            var hint = B.Text(scroll, "Hint", "Pick anyone in the league:", 12, FontStyle.Italic, UITheme.TextSecondary);
+            hint.gameObject.AddComponent<LayoutElement>().preferredHeight = 22;
+
+            var candidates = gm?.PlayerDatabase?.GetAllPlayers()?
+                .Where(p => p != null && p.PlayerId != a.PlayerId && p.RetirementYear == 0)
+                .OrderByDescending(p => p.CurrentSeasonStats?.PPG ?? 0)
+                .Take(120)
+                .ToList() ?? new List<Player>();
+
+            foreach (var candidate in candidates)
+            {
+                var row = B.TableRow(scroll, 26, UITheme.PanelSurface);
+                string teamName = string.IsNullOrEmpty(candidate.TeamId) ? "FA"
+                    : gm?.GetTeam(candidate.TeamId)?.Abbreviation ?? candidate.TeamId;
+                B.TableCell(row, candidate.FullName, 220, FontStyle.Bold, UITheme.TextPrimary);
+                B.TableCell(row, candidate.PositionString, 50, FontStyle.Normal, UITheme.TextSecondary);
+                B.TableCell(row, teamName, 60, FontStyle.Normal, UITheme.TextSecondary);
+                B.TableCell(row, $"{candidate.CurrentSeasonStats?.PPG ?? 0:F1} ppg", 90, FontStyle.Normal, UITheme.TextSecondary);
+
+                var pick = candidate;
+                row.gameObject.AddComponent<Button>().onClick.AddListener(() => { _comparePlayer = pick; ShowCompare(); });
+            }
+        }
+
+        private void BuildCompareTable(RectTransform parent, Player a, Player b)
+        {
+            var scroll = B.ScrollArea(parent);
+
+            CompareCard(scroll, "BIO & CONTRACT", Core.Util.PlayerComparison.BioRows(a, b), a, b);
+            CompareCard(scroll, "THIS SEASON", Core.Util.PlayerComparison.SeasonRows(a, b), a, b);
+            CompareCard(scroll, "CAREER", Core.Util.PlayerComparison.CareerRows(a, b), a, b);
+            CompareCard(scroll, "SCOUTING GRADES", Core.Util.PlayerComparison.GradeRows(a, b), a, b);
+
+            // The scouts' words, side by side
+            var gm = GameManager.Instance;
+            var generator = gm?.ScoutingReportGenerator;
+            if (generator != null)
+            {
+                var scout = gm.PersonnelManager?.GetScouts(gm.PlayerTeamId)?.FirstOrDefault() ?? gm.Career;
+                var card = B.Card(scroll, "THE SCOUT'S READ", UITheme.AccentSecondary);
+                card.gameObject.AddComponent<LayoutElement>().preferredHeight = 120;
+
+                string ReadOn(Player p)
+                {
+                    try
+                    {
+                        var report = generator.GenerateReport(p, scout,
+                            gm.Scouting?.GetTimesScouted(p.PlayerId) ?? 0,
+                            p.CurrentSeasonStats?.GamesPlayed ?? 0);
+                        return $"<b>{p.FullName}</b> — {report?.ProjectedRole ?? "?"}\n{report?.OverallSummary ?? ""}";
+                    }
+                    catch { return $"<b>{p.FullName}</b> — no read available."; }
+                }
+
+                var text = B.Text(card, "Body", $"{ReadOn(a)}\n\n{ReadOn(b)}",
+                    11, FontStyle.Normal, UITheme.TextSecondary);
+                B.FillCard(text);
+                text.lineSpacing = 1.25f;
+            }
+        }
+
+        private void CompareCard(RectTransform scroll, string header,
+            List<Core.Util.PlayerComparison.Row> rows, Player a, Player b)
+        {
+            var card = B.Card(scroll, header, UITheme.AccentSecondary);
+            card.gameObject.AddComponent<LayoutElement>().preferredHeight = 64 + rows.Count * 24;
+
+            var list = B.Child(card, "List");
+            B.Stretch(list);
+            var lv = list.AddComponent<VerticalLayoutGroup>();
+            lv.spacing = 2; lv.padding = new RectOffset(10, 10, 34, 6);
+            lv.childControlWidth = true; lv.childControlHeight = false; lv.childForceExpandWidth = true;
+            var listRT = list.GetComponent<RectTransform>();
+
+            var head = B.TableRow(listRT, 20, UITheme.CardBackground);
+            B.TableCell(head, "", 150, FontStyle.Normal, UITheme.TextSecondary);
+            B.TableCell(head, a.LastName, 170, FontStyle.Bold, UITheme.AccentPrimary);
+            B.TableCell(head, b.LastName, 170, FontStyle.Bold, UITheme.AccentSecondary);
+
+            foreach (var row in rows)
+            {
+                var r = B.TableRow(listRT, 20, UITheme.PanelSurface);
+                B.TableCell(r, row.Label, 150, FontStyle.Normal, UITheme.TextSecondary);
+                B.TableCell(r, row.Left, 170,
+                    row.Better == -1 ? FontStyle.Bold : FontStyle.Normal,
+                    row.Better == -1 ? UITheme.Success : UITheme.TextPrimary);
+                B.TableCell(r, row.Right, 170,
+                    row.Better == 1 ? FontStyle.Bold : FontStyle.Normal,
+                    row.Better == 1 ? UITheme.Success : UITheme.TextPrimary);
+            }
         }
 
         // ═══════════════════════════════════════════════════════
@@ -99,6 +258,14 @@ namespace NBAHeadCoach.UI.GamePanels
             string posStr = p.PositionString != "??" ? $"  |  {p.PositionString}" : "";
             var nt = B.Text(tr, "Name", $"#{p.JerseyNumber}  {p.FirstName} {p.LastName}{posStr}", 16, FontStyle.Bold, Color.white);
             nt.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1;
+
+            // Compare against anyone in the league
+            var cmpGo = B.Child(tr, "Compare");
+            cmpGo.AddComponent<LayoutElement>().preferredWidth = 100;
+            cmpGo.AddComponent<Image>().color = UITheme.PanelSurface;
+            cmpGo.AddComponent<Button>().onClick.AddListener(() => { _comparePlayer = null; ShowCompare(); });
+            var ct = B.Text(cmpGo.GetComponent<RectTransform>(), "CT", "⚖ COMPARE", 11, FontStyle.Bold, UITheme.AccentSecondary);
+            ct.alignment = TextAnchor.MiddleCenter; B.Stretch(ct.gameObject);
 
             // Accent line
             var accent = B.Child(parent, "Accent");
@@ -259,6 +426,69 @@ namespace NBAHeadCoach.UI.GamePanels
                 var noTend = B.Text(rightScroll, "NoTend", "No tendency data.", 12, FontStyle.Italic, UITheme.TextSecondary);
                 noTend.gameObject.AddComponent<LayoutElement>().preferredHeight = 16;
             }
+
+            // Full scout's assessment (generated by the scouting department)
+            BuildScoutAssessment(rightScroll, p);
+        }
+
+        // Cache so a player's report stays stable within a session instead of
+        // re-rolling every time the tab is opened.
+        private static readonly Dictionary<string, ScoutingReport> _reportCache = new Dictionary<string, ScoutingReport>();
+
+        private void BuildScoutAssessment(RectTransform parent, Player p)
+        {
+            var gm = GameManager.Instance;
+            if (gm == null) return;
+
+            if (!_reportCache.TryGetValue(p.PlayerId, out var report))
+            {
+                var generator = gm.ScoutingReportGenerator;
+                if (generator == null) return;
+
+                // Prefer a staff scout; fall back to the user's own profile
+                var scout = gm.PersonnelManager?.GetScouts(gm.PlayerTeamId)?.FirstOrDefault() ?? gm.Career;
+                if (scout == null) return;
+
+                int gamesObserved = p.CurrentSeasonStats?.GamesPlayed ?? 0;
+                try
+                {
+                    report = generator.GenerateReport(p, scout,
+                        gm.Scouting?.GetTimesScouted(p.PlayerId) ?? 0, gamesObserved);
+                    _reportCache[p.PlayerId] = report;
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning($"[Roster] Scouting report failed for {p.FullName}: {ex.Message}");
+                    return;
+                }
+            }
+            if (report == null) return;
+
+            AddSpacer(parent, 8);
+            var title = B.Text(parent, "AssessTitle", "SCOUT'S ASSESSMENT", 11, FontStyle.Bold, UITheme.AccentSecondary);
+            title.gameObject.AddComponent<LayoutElement>().preferredHeight = 18;
+
+            void Para(string name, string text, Color color, FontStyle style = FontStyle.Normal)
+            {
+                if (string.IsNullOrEmpty(text)) return;
+                var t = B.Text(parent, name, text, 12, style, color);
+                t.gameObject.AddComponent<LayoutElement>().minHeight = 16;
+            }
+
+            Para("Summary", report.OverallSummary, UITheme.TextPrimary);
+            Para("Role", $"Projected role: {report.ProjectedRole}", UITheme.TextSecondary);
+            if (!string.IsNullOrEmpty(report.ComparisonPlayer))
+                Para("Comp", $"Comparison: {report.ComparisonPlayer}", UITheme.TextSecondary, FontStyle.Italic);
+            Para("Strength", $"+ {report.BiggestStrength}", UITheme.Success);
+            Para("Concern", $"- {report.BiggestConcern}", UITheme.Danger);
+
+            int idx = 0;
+            foreach (var s in report.Strengths.Take(4))
+                Para($"S_{idx++}", $"+ {s}", UITheme.Success);
+            foreach (var w in report.Weaknesses.Take(4))
+                Para($"W_{idx++}", $"- {w}", UITheme.Danger);
+
+            Para("Scout", $"— {report.ScoutName}, scouting dept.", UITheme.TextSecondary, FontStyle.Italic);
         }
 
         // ═══════════════════════════════════════════════════════

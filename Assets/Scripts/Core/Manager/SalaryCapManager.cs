@@ -9,8 +9,32 @@ namespace NBAHeadCoach.Core.Manager
     /// <summary>
     /// Manages team salary cap, payroll calculations, and financial constraints.
     /// </summary>
-    public class SalaryCapManager
+    public class SalaryCapManager : ISaveSection
     {
+        public string SystemId => "SalaryCap";
+
+        public void WriteSave(Data.SaveData data)
+        {
+            data.Contracts = _contracts.Values
+                .Select(Data.ContractSaveState.CreateFrom)
+                .Where(s => s != null)
+                .ToList();
+        }
+
+        public void ReadSave(Data.SaveData data, in SaveReadContext ctx)
+        {
+            // Legacy saves carry no contracts — GameManager derives them from the
+            // base roster JSON after section reads (the pre-v1.1 behavior).
+            if (data.Contracts == null || data.Contracts.Count == 0) return;
+
+            _contracts.Clear();
+            foreach (var state in data.Contracts)
+            {
+                var contract = state?.ToContract();
+                if (contract != null) RegisterContract(contract);
+            }
+        }
+
         private Dictionary<string, Contract> _contracts;
         private Dictionary<string, List<TradedPlayerException>> _teamTPEs;
         private Dictionary<string, int> _teamTaxHistory; // Years in tax in last 4
@@ -38,6 +62,47 @@ namespace NBAHeadCoach.Core.Manager
         public Contract GetContract(string playerId)
         {
             return _contracts.TryGetValue(playerId, out var contract) ? contract : null;
+        }
+
+        /// <summary>
+        /// Removes a contract (retirement, waive, expiry).
+        /// </summary>
+        public bool RemoveContract(string playerId)
+        {
+            return _contracts.Remove(playerId);
+        }
+
+        /// <summary>
+        /// Advances every contract by one season at the offseason boundary: the final
+        /// year burns off (expired contracts are removed and returned — those players
+        /// hit free agency), remaining years roll salary by the annual raise, and
+        /// Bird-rights seasons accrue. Nothing in the codebase did this before —
+        /// contracts were effectively frozen in year one forever.
+        /// </summary>
+        public List<Contract> AdvanceContractYears()
+        {
+            var expired = new List<Contract>();
+
+            foreach (var contract in _contracts.Values.ToList())
+            {
+                contract.YearsRemaining--;
+
+                if (contract.YearsRemaining <= 0)
+                {
+                    expired.Add(contract);
+                    _contracts.Remove(contract.PlayerId);
+                    continue;
+                }
+
+                if (contract.AnnualRaisePercent > 0f)
+                {
+                    contract.CurrentYearSalary =
+                        (long)(contract.CurrentYearSalary * (1f + contract.AnnualRaisePercent / 100f));
+                }
+                contract.ConsecutiveSeasonsWithTeam++;
+            }
+
+            return expired;
         }
 
         /// <summary>

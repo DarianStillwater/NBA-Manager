@@ -20,6 +20,7 @@ namespace NBAHeadCoach.UI.Components
         [SerializeField] private Image _dotImage;
         [SerializeField] private Image _highlightRing;
         [SerializeField] private Text _jerseyNumberText;
+        [SerializeField] private RectTransform _facingRT;   // rotates a small nub to show orientation
 
         [Header("Tooltip")]
         [SerializeField] private CanvasGroup _tooltipGroup;
@@ -53,6 +54,10 @@ namespace NBAHeadCoach.UI.Components
         private int _currentPoints;
         private int _currentRebounds;
         private int _currentAssists;
+        private int _fgm;
+        private int _fga;
+        private int _minutes;
+        private int _fouls;
         private float _energy = 100f;
 
         #endregion
@@ -152,6 +157,14 @@ namespace NBAHeadCoach.UI.Components
             _rectTransform.anchoredPosition = position;
         }
 
+        /// <summary>Jump immediately to the current target, ending any in-progress walk. Used to
+        /// finalize a substitution walk before the possession timeline takes over positioning.</summary>
+        public void SnapToTarget()
+        {
+            _currentPosition = _targetPosition;
+            if (_rectTransform != null) _rectTransform.anchoredPosition = _targetPosition;
+        }
+
         /// <summary>
         /// Set whether this player has the ball (shows highlight ring).
         /// </summary>
@@ -160,6 +173,35 @@ namespace NBAHeadCoach.UI.Components
             _hasBall = hasBall;
             if (_highlightRing != null)
                 _highlightRing.gameObject.SetActive(hasBall);
+        }
+
+        /// <summary>Point the facing nub in a direction (radians). Conveys player orientation.</summary>
+        public void SetFacing(float angleRad)
+        {
+            if (_facingRT != null)
+                _facingRT.localEulerAngles = new Vector3(0f, 0f, angleRad * Mathf.Rad2Deg);
+        }
+
+        /// <summary>Reflect the current action with a subtle scale/pose cue so play reads at a glance.</summary>
+        public void SetAction(NBAHeadCoach.Core.Simulation.PlayerAction action)
+        {
+            float s;
+            switch (action)
+            {
+                case NBAHeadCoach.Core.Simulation.PlayerAction.Shooting:
+                case NBAHeadCoach.Core.Simulation.PlayerAction.Dunking:
+                case NBAHeadCoach.Core.Simulation.PlayerAction.Layup:
+                    s = 1.16f; break;
+                case NBAHeadCoach.Core.Simulation.PlayerAction.Screening:
+                case NBAHeadCoach.Core.Simulation.PlayerAction.BoxingOut:
+                case NBAHeadCoach.Core.Simulation.PlayerAction.Rebounding:
+                    s = 1.12f; break;
+                case NBAHeadCoach.Core.Simulation.PlayerAction.Contesting:
+                    s = 1.10f; break;
+                default:
+                    s = 1f; break;
+            }
+            _rectTransform.localScale = new Vector3(s, s, 1f);
         }
 
         /// <summary>
@@ -194,6 +236,10 @@ namespace NBAHeadCoach.UI.Components
                 _currentPoints = gameStats.Points;
                 _currentRebounds = gameStats.Rebounds;
                 _currentAssists = gameStats.Assists;
+                _fgm = gameStats.TotalFGM;
+                _fga = gameStats.TotalFGA;
+                _minutes = gameStats.Minutes;
+                _fouls = gameStats.PersonalFouls;
             }
 
             RefreshTooltip();
@@ -228,7 +274,9 @@ namespace NBAHeadCoach.UI.Components
         {
             if (_tooltipStatsText != null)
             {
-                _tooltipStatsText.text = $"PTS: {_currentPoints}  REB: {_currentRebounds}  AST: {_currentAssists}";
+                _tooltipStatsText.text =
+                    $"PTS {_currentPoints}  REB {_currentRebounds}  AST {_currentAssists}\n" +
+                    $"FG {_fgm}-{_fga}  MIN {_minutes}  PF {_fouls}";
             }
 
             if (_energyBarFill != null)
@@ -250,7 +298,7 @@ namespace NBAHeadCoach.UI.Components
             if (_tooltipRect == null) return;
 
             // Position tooltip above the dot
-            _tooltipRect.anchoredPosition = new Vector2(0, 40);
+            _tooltipRect.anchoredPosition = new Vector2(0, 52);
 
             // TODO: Check screen bounds and flip if needed
         }
@@ -331,12 +379,32 @@ namespace NBAHeadCoach.UI.Components
             float lum = teamColor.r * 0.299f + teamColor.g * 0.587f + teamColor.b * 0.114f;
             text.color = lum > 0.5f ? Color.black : Color.white;
 
-            // Add tooltip
+            // Facing nub: a small light dot on the leading edge, rotated by SetFacing to show orientation.
+            var faceGO = new GameObject("Facing");
+            faceGO.transform.SetParent(dotGO.transform, false);
+            var faceRT = faceGO.AddComponent<RectTransform>();
+            faceRT.anchorMin = faceRT.anchorMax = new Vector2(0.5f, 0.5f);
+            faceRT.pivot = new Vector2(0.5f, 0.5f);
+            faceRT.sizeDelta = new Vector2(dotSize, dotSize);
+            faceRT.anchoredPosition = Vector2.zero;
+            var nubGO = new GameObject("Nub");
+            nubGO.transform.SetParent(faceGO.transform, false);
+            var nubRT = nubGO.AddComponent<RectTransform>();
+            nubRT.anchorMin = nubRT.anchorMax = new Vector2(0.5f, 0.5f);
+            nubRT.pivot = new Vector2(0.5f, 0.5f);
+            nubRT.sizeDelta = new Vector2(dotSize * 0.3f, dotSize * 0.3f);
+            nubRT.anchoredPosition = new Vector2(dotSize * 0.44f, 0f);
+            var nubImg = nubGO.AddComponent<Image>();
+            nubImg.color = new Color(1f, 1f, 1f, 0.9f);
+            if (circleSprite != null) nubImg.sprite = circleSprite;
+            nubImg.raycastTarget = false;
+
+            // Add tooltip (two stat lines + energy bar)
             var tooltipGO = new GameObject("Tooltip");
             tooltipGO.transform.SetParent(dotGO.transform, false);
             var tooltipRT = tooltipGO.AddComponent<RectTransform>();
-            tooltipRT.sizeDelta = new Vector2(140, 60);
-            tooltipRT.anchoredPosition = new Vector2(0, 45);
+            tooltipRT.sizeDelta = new Vector2(176, 76);
+            tooltipRT.anchoredPosition = new Vector2(0, 52);
             var tooltipBG = tooltipGO.AddComponent<Image>();
             tooltipBG.color = new Color(0.1f, 0.1f, 0.15f, 0.95f);
 
@@ -348,7 +416,7 @@ namespace NBAHeadCoach.UI.Components
             var nameTextGO = new GameObject("NameText");
             nameTextGO.transform.SetParent(tooltipGO.transform, false);
             var nameTextRT = nameTextGO.AddComponent<RectTransform>();
-            nameTextRT.anchorMin = new Vector2(0, 0.5f);
+            nameTextRT.anchorMin = new Vector2(0, 0.66f);
             nameTextRT.anchorMax = new Vector2(1, 1);
             nameTextRT.offsetMin = new Vector2(5, 0);
             nameTextRT.offsetMax = new Vector2(-5, -3);
@@ -364,23 +432,24 @@ namespace NBAHeadCoach.UI.Components
             var statsTextGO = new GameObject("StatsText");
             statsTextGO.transform.SetParent(tooltipGO.transform, false);
             var statsTextRT = statsTextGO.AddComponent<RectTransform>();
-            statsTextRT.anchorMin = new Vector2(0, 0);
-            statsTextRT.anchorMax = new Vector2(1, 0.5f);
-            statsTextRT.offsetMin = new Vector2(5, 3);
+            statsTextRT.anchorMin = new Vector2(0, 0.16f);
+            statsTextRT.anchorMax = new Vector2(1, 0.66f);
+            statsTextRT.offsetMin = new Vector2(5, 0);
             statsTextRT.offsetMax = new Vector2(-5, 0);
             var statsText = statsTextGO.AddComponent<Text>();
-            statsText.text = "PTS: 0  REB: 0  AST: 0";
+            statsText.text = "PTS 0  REB 0  AST 0\nFG 0-0  MIN 0  PF 0";
             statsText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             statsText.fontSize = 10;
             statsText.alignment = TextAnchor.MiddleLeft;
             statsText.color = new Color(0.8f, 0.8f, 0.8f);
+            statsText.verticalOverflow = VerticalWrapMode.Overflow;
 
             // Energy bar background
             var energyBGGO = new GameObject("EnergyBG");
             energyBGGO.transform.SetParent(tooltipGO.transform, false);
             var energyBGRT = energyBGGO.AddComponent<RectTransform>();
-            energyBGRT.anchorMin = new Vector2(0.7f, 0.1f);
-            energyBGRT.anchorMax = new Vector2(0.95f, 0.4f);
+            energyBGRT.anchorMin = new Vector2(0.05f, 0.05f);
+            energyBGRT.anchorMax = new Vector2(0.95f, 0.14f);
             energyBGRT.offsetMin = Vector2.zero;
             energyBGRT.offsetMax = Vector2.zero;
             var energyBG = energyBGGO.AddComponent<Image>();
@@ -405,6 +474,7 @@ namespace NBAHeadCoach.UI.Components
             component._dotImage = dotImage;
             component._highlightRing = ringImage;
             component._jerseyNumberText = text;
+            component._facingRT = faceRT;
             component._tooltipGroup = tooltipCanvasGroup;
             component._tooltipRect = tooltipRT;
             component._tooltipNameText = nameText;

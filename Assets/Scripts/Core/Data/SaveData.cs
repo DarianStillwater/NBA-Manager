@@ -5,7 +5,7 @@ using UnityEngine;
 using NBAHeadCoach.Core.Data;
 using NBAHeadCoach.Core.Manager;
 
-namespace NBAHeadCoach.Core
+namespace NBAHeadCoach.Core.Data
 {
     /// <summary>
     /// Complete save file structure for game persistence
@@ -13,7 +13,15 @@ namespace NBAHeadCoach.Core
     [Serializable]
     public class SaveData
     {
-        public const string CURRENT_VERSION = "1.0.0";
+        public const string CURRENT_VERSION = "1.1.0";
+
+        /// <summary>
+        /// v1.0.x saves predate save-section ownership: no contracts, no team
+        /// strategy/lineup/coach state, no difficulty, no transactions. Sections
+        /// treat legacy slices as "derive like a new game" fallbacks.
+        /// </summary>
+        public static bool IsLegacyVersion(string version) =>
+            string.IsNullOrEmpty(version) || version.StartsWith("1.0");
 
         [Header("Metadata")]
         public string SaveVersion = CURRENT_VERSION;
@@ -47,6 +55,9 @@ namespace NBAHeadCoach.Core
         [Header("Playoffs")]
         public PlayoffSaveData PlayoffData;
 
+        [Header("Injuries")]
+        public Manager.InjuryManagerState InjuryData;
+
         [Header("Draft")]
         public List<DraftProspectSaveState> DraftClass = new List<DraftProspectSaveState>();
         public Dictionary<string, List<int>> TeamDraftPicks = new Dictionary<string, List<int>>();
@@ -55,7 +66,8 @@ namespace NBAHeadCoach.Core
         public List<TransactionRecord> Transactions = new List<TransactionRecord>();
 
         [Header("Awards")]
-        public Dictionary<int, SeasonAwards> AwardsHistory = new Dictionary<int, SeasonAwards>();
+        public Dictionary<int, SeasonAwards> AwardsHistory = new Dictionary<int, SeasonAwards>(); // dead: Dictionary never serializes under JsonUtility
+        public List<SeasonAwards> AwardsHistoryList = new List<SeasonAwards>();
 
         [Header("Former Player Careers")]
         public FormerPlayerCareerSaveData FormerPlayerCareers;
@@ -70,6 +82,36 @@ namespace NBAHeadCoach.Core
         [Header("Trade AI System")]
         public DraftPickRegistrySaveData DraftPickRegistryData;
         public IncomingOffersSaveData IncomingOffersData;
+
+        [Header("Inbox")]
+        public List<InboxMessage> Inbox = new List<InboxMessage>();
+
+        [Header("Offseason")]
+        public OffseasonSaveData Offseason;
+
+        [Header("Finances")]
+        public FinanceSaveData FinancesData;
+
+        [Header("Development Desk")]
+        public DevelopmentSaveData DevelopmentData;
+
+        [Header("Scouting")]
+        public ScoutingSaveData ScoutingData;
+
+        /// <summary>Job market persistence (openings, applications, unemployment) — Phase 6.</summary>
+        public JobMarketSaveData JobMarketData;
+
+        /// <summary>Media reputation persistence — Phase 6.</summary>
+        public MediaSaveData MediaData;
+
+        /// <summary>League history: season archives, records, Hall of Fame — Phase 6.</summary>
+        public HistorySectionData HistoryData;
+        public NBAHeadCoach.Core.AI.AIGMSaveData AIGMData;
+        public NBAHeadCoach.Core.Manager.AllStarSaveData AllStarData;
+        public NBAHeadCoach.Core.Manager.SummerLeagueSaveData SummerLeagueData;
+        public NBAHeadCoach.Core.Manager.TrainingCampSectionData TrainingCampData;
+        public NBAHeadCoach.Core.Manager.AgentAssignmentsSaveData AgentAssignments;
+        public NBAHeadCoach.Core.Manager.NegotiationsSaveData NegotiationsData;
 
         /// <summary>
         /// Create a display-friendly summary of the save
@@ -143,10 +185,19 @@ namespace NBAHeadCoach.Core
         public int PlayoffWins;
         public int PlayoffLosses;
         public List<string> RosterPlayerIds = new List<string>();
-        public List<int> StartingLineupIndices = new List<int>();
+        public List<int> StartingLineupIndices = new List<int>(); // legacy shape, superseded by StartingLineupPlayerIds
         public float SalaryCap;
         public float TotalSalary;
         public string HeadCoachId;
+
+        // v1.1: the state a load used to silently regenerate. JsonUtility creates
+        // default instances for absent object fields on legacy saves, so the bool
+        // flag — not null checks — is the legacy detector.
+        public bool HasExtendedState;
+        public List<string> StartingLineupPlayerIds = new List<string>(); // 5 positional slots, "" = unset
+        public TeamStrategy OffensiveStrategy;
+        public TeamStrategy DefensiveStrategy;
+        public AI.AICoachPersonality CoachPersonality;
 
         public static TeamSaveState CreateFrom(Team team)
         {
@@ -157,9 +208,23 @@ namespace NBAHeadCoach.Core
                 TeamId = team.TeamId,
                 Wins = team.Wins,
                 Losses = team.Losses,
+                PlayoffWins = team.PlayoffWins,
+                PlayoffLosses = team.PlayoffLosses,
                 RosterPlayerIds = new List<string>(),
-                StartingLineupIndices = new List<int>(team.StartingLineup ?? new int[5])
+                StartingLineupIndices = new List<int>(team.StartingLineup ?? new int[5]),
+                HasExtendedState = true,
+                OffensiveStrategy = team.OffensiveStrategy,
+                DefensiveStrategy = team.DefensiveStrategy,
+                CoachPersonality = team.CoachPersonality
             };
+
+            // Positional 5-slot lineup by player ID (indices break when rosters change)
+            for (int i = 0; i < 5; i++)
+            {
+                string id = team.StartingLineupIds != null && i < team.StartingLineupIds.Length
+                    ? team.StartingLineupIds[i] : null;
+                state.StartingLineupPlayerIds.Add(id ?? "");
+            }
 
             if (team.Roster != null)
             {
@@ -178,7 +243,26 @@ namespace NBAHeadCoach.Core
 
             team.Wins = Wins;
             team.Losses = Losses;
-            // Roster restoration would need PlayerDatabase lookup
+            team.PlayoffWins = PlayoffWins;
+            team.PlayoffLosses = PlayoffLosses;
+
+            if (!HasExtendedState) return; // legacy save: caller derives coach/lineup
+
+            if (RosterPlayerIds != null && RosterPlayerIds.Count > 0)
+                team.RosterPlayerIds = new List<string>(RosterPlayerIds);
+
+            if (StartingLineupPlayerIds != null && StartingLineupPlayerIds.Count > 0)
+            {
+                for (int i = 0; i < 5; i++)
+                {
+                    team.StartingLineupIds[i] = i < StartingLineupPlayerIds.Count
+                        ? StartingLineupPlayerIds[i] : "";
+                }
+            }
+
+            if (OffensiveStrategy != null) team.OffensiveStrategy = OffensiveStrategy;
+            if (DefensiveStrategy != null) team.DefensiveStrategy = DefensiveStrategy;
+            if (CoachPersonality != null) team.CoachPersonality = CoachPersonality;
         }
     }
 
@@ -532,6 +616,80 @@ namespace NBAHeadCoach.Core
         public bool HasPlayerOption;
         public bool HasTeamOption;
         public int OptionYear;
+
+        // v1.1: full Contract round-trip (extensions, re-signings, and trade-driven
+        // changes were previously lost — contracts re-derived from base JSON on load)
+        public ContractType Type = ContractType.Standard;
+        public long CurrentYearSalary;
+        public int YearsRemaining;
+        public long GuaranteedMoney;
+        public float AnnualRaisePercent;
+        public string SignedDateStr;    // ISO — JsonUtility can't roundtrip DateTime
+        public string GuaranteeDateStr; // ISO
+        public long PartialGuaranteeAmount;
+        public bool HasNoTradeClause;
+        public float TradeKickerPercent;
+        public int ConsecutiveSeasonsWithTeam;
+        public int TwoWayNBAGamesPlayed;
+        public List<ContractIncentive> Incentives = new List<ContractIncentive>();
+
+        public static ContractSaveState CreateFrom(Contract c)
+        {
+            if (c == null) return null;
+            return new ContractSaveState
+            {
+                PlayerId = c.PlayerId,
+                TeamId = c.TeamId,
+                YearsRemaining = c.YearsRemaining,
+                HasPlayerOption = c.HasPlayerOption,
+                HasTeamOption = c.HasTeamOption,
+                OptionYear = c.OptionYear,
+                Type = c.Type,
+                CurrentYearSalary = c.CurrentYearSalary,
+                GuaranteedMoney = c.GuaranteedMoney,
+                AnnualRaisePercent = c.AnnualRaisePercent,
+                SignedDateStr = c.SignedDate.ToString("o"),
+                GuaranteeDateStr = c.GuaranteeDate.ToString("o"),
+                PartialGuaranteeAmount = c.PartialGuaranteeAmount,
+                HasNoTradeClause = c.HasNoTradeClause,
+                TradeKickerPercent = c.TradeKickerPercent,
+                ConsecutiveSeasonsWithTeam = c.ConsecutiveSeasonsWithTeam,
+                TwoWayNBAGamesPlayed = c.TwoWayNBAGamesPlayed,
+                Incentives = c.Incentives != null
+                    ? new List<ContractIncentive>(c.Incentives)
+                    : new List<ContractIncentive>()
+            };
+        }
+
+        public Contract ToContract()
+        {
+            var c = new Contract
+            {
+                PlayerId = PlayerId,
+                TeamId = TeamId,
+                YearsRemaining = YearsRemaining,
+                HasPlayerOption = HasPlayerOption,
+                HasTeamOption = HasTeamOption,
+                OptionYear = OptionYear,
+                Type = Type,
+                CurrentYearSalary = CurrentYearSalary,
+                GuaranteedMoney = GuaranteedMoney,
+                AnnualRaisePercent = AnnualRaisePercent,
+                PartialGuaranteeAmount = PartialGuaranteeAmount,
+                HasNoTradeClause = HasNoTradeClause,
+                TradeKickerPercent = TradeKickerPercent,
+                ConsecutiveSeasonsWithTeam = ConsecutiveSeasonsWithTeam,
+                TwoWayNBAGamesPlayed = TwoWayNBAGamesPlayed,
+                Incentives = Incentives != null
+                    ? new System.Collections.Generic.List<ContractIncentive>(Incentives)
+                    : new System.Collections.Generic.List<ContractIncentive>()
+            };
+            if (!string.IsNullOrEmpty(SignedDateStr) && DateTime.TryParse(SignedDateStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out var signed))
+                c.SignedDate = signed;
+            if (!string.IsNullOrEmpty(GuaranteeDateStr) && DateTime.TryParse(GuaranteeDateStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out var guarantee))
+                c.GuaranteeDate = guarantee;
+            return c;
+        }
     }
 
     /// <summary>
@@ -572,6 +730,7 @@ namespace NBAHeadCoach.Core
     {
         public string TransactionId;
         public DateTime Date;
+        public string DateStr; // ISO — JsonUtility can't roundtrip DateTime
         public TransactionType Type;
         public List<string> TeamIds = new List<string>();
         public List<string> PlayerIds = new List<string>();
@@ -601,13 +760,57 @@ namespace NBAHeadCoach.Core
         public string RoyId;
         public string SixthManId;
         public string MipId;
-        public string CotyId;
+        public string CotyId; // team id of the Coach of the Year's team
         public List<string> AllNbaFirst = new List<string>();
         public List<string> AllNbaSecond = new List<string>();
         public List<string> AllNbaThird = new List<string>();
         public List<string> AllDefenseFirst = new List<string>();
         public List<string> AllDefenseSecond = new List<string>();
         public List<string> AllStars = new List<string>();
+
+        // Season finale
+        public string FinalsMvpId;
+        public string ChampionTeamId;
+        public string RunnerUpTeamId;
+    }
+
+    /// <summary>
+    /// Offseason engine progress — which stages have run this summer, plus the
+    /// free-agent pool (FreeAgentManager itself is not persisted).
+    /// </summary>
+    [Serializable]
+    public class OffseasonSaveData
+    {
+        public bool EngineActive;
+        public int SeasonLabel;
+        public int CalendarYear;
+        public bool PostSeasonDone;
+        public bool DraftDone;
+        public bool FreeAgencyOpen;
+        public bool SummerDone;
+        public bool CampDone;
+        public bool CampStarted;
+        public int ScrimmagesPlayed;
+        public int CampFocusInt;
+        public List<string> ScrimmageLines = new List<string>();
+        public List<FreeAgentRecord> FreeAgentPool = new List<FreeAgentRecord>();
+
+        // Mid-draft-night state (the class regenerates deterministically from the
+        // seed; already-drafted prospects are pruned by checking the player DB)
+        public bool DraftStarted;
+        public bool OnTheClock;
+        public int NextPick = 1;
+        public string DraftDayStr;
+        public List<string> DraftOrder1 = new List<string>();
+        public List<string> DraftOrder2 = new List<string>();
+    }
+
+    [Serializable]
+    public class FreeAgentRecord
+    {
+        public string PlayerId;
+        public string PreviousTeamId;
+        public int ConsecutiveSeasons;
     }
 
     /// <summary>

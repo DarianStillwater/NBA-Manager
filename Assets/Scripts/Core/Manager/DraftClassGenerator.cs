@@ -3,6 +3,10 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 
+// NOTE: intentionally NBAHeadCoach.Core (not .Core.Manager despite the folder):
+// this file defines its own DraftProspect/CombineResults which would collide with
+// the live draft system's types in DraftSystem.cs/ProspectGenerator.cs. The two
+// parallel draft ecosystems should be unified when the draft feature is built.
 namespace NBAHeadCoach.Core
 {
     /// <summary>
@@ -289,7 +293,7 @@ namespace NBAHeadCoach.Core
     /// <summary>
     /// Generates draft classes with mock drafts, big boards, and class analysis
     /// </summary>
-    public class DraftClassGenerator : MonoBehaviour
+    public class DraftClassGenerator
     {
         public static DraftClassGenerator Instance { get; private set; }
 
@@ -345,18 +349,10 @@ namespace NBAHeadCoach.Core
         public event Action<CombineResults> OnCombineResultsReleased;
         public event Action<DraftProspect> OnProspectStockChange;
 
-        private void Awake()
+        public DraftClassGenerator()
         {
-            if (Instance == null)
-            {
-                Instance = this;
-                DontDestroyOnLoad(gameObject);
-                InitializeHistoricalClasses();
-            }
-            else
-            {
-                Destroy(gameObject);
-            }
+            Instance = this;
+            InitializeHistoricalClasses();
         }
 
         /// <summary>

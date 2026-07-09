@@ -27,7 +27,7 @@ namespace NBAHeadCoach.UI.Match
 
         // UI references
         private Text _awayTeamName, _awayScoreText, _homeTeamName, _homeScoreText;
-        private Text _quarterText, _clockText;
+        private Text _quarterText, _clockText, _shotClockText;
         private Image _awayLogo, _homeLogo;
         private GameObject _homePossessionDot, _awayPossessionDot;
         private RectTransform _playByPlayContent;
@@ -35,12 +35,17 @@ namespace NBAHeadCoach.UI.Match
         private Text _gameEndTitle, _gameEndScore, _gameEndResult;
         private GameObject _gameEndOverlay;
         private RectTransform _courtArea;
-        private AnimatedCourtView _courtView;
+        private RectTransform _courtSurface;
+        private MatchCourtView _courtView;
+        private MatchPlaybackDirector _director;
+        private Text _ffTickerLabel;
+        private NarrationBarView _narrationBar;
 
         // Speed buttons
         private Button _pauseBtn, _playBtn;
         private Button[] _speedBtns;
         private Text _speedLabel;
+        private Button[] _modeBtns;
 
         // Coaching overlays
         private GameObject _coachingOverlay;
@@ -96,35 +101,58 @@ namespace NBAHeadCoach.UI.Match
             // Wait for singleton to set
             yield return null;
 
-            // Create coach for player
+            // Create coach for player — with a real playbook and default player
+            // instructions so play calls and the coaching menu actually function
             var playerCoach = new GameCoach(
                 _playerTeam.Strategy ?? new TeamStrategy(),
-                null, null);
+                PlayBook.CreateDefault(_playerTeam.TeamId),
+                TeamGameInstructions.CreateDefault(_playerTeam.TeamId,
+                    _playerTeam.Roster ?? new List<Player>()));
 
             _simController.InitializeMatch(_homeTeam, _awayTeam, _playerTeam, playerCoach);
+
+            // FM-style playback director: decides play-vs-skip per viewing mode,
+            // paces the court view, re-times ticker/scoreboard events
+            _director = gameObject.AddComponent<MatchPlaybackDirector>();
+            _director.Bind(_simController, _courtView);
+            _director.OnTickerEntry += OnPlayByPlay;
+            _director.OnScoreboard += OnScoreboardUpdate;
+            _director.OnClockTick += OnClockTick;
+            _director.OnFastForwardChanged += OnFastForwardChanged;
+
+            // Radio narration bar over the court (separate channel — never in the PBP box)
+            _narrationBar = NarrationBarView.Create(_courtSurface);
+            _director.OnNarration += _narrationBar.Show;
+
             SubscribeToEvents();
 
+            // Settle the AspectRatioFitter's rect BEFORE the court view captures
+            // PixelsPerFoot for hoop/dot/ball sizing.
+            Canvas.ForceUpdateCanvases();
+            LayoutRebuilder.ForceRebuildLayoutImmediate(_root);
+
             // Setup court view with full court sprite and actual team colors
-            var courtBgImg = _courtArea.GetComponent<Image>();
+            var courtBgImg = _courtSurface.GetComponent<Image>();
             var fullCourtSprite = ArtManager.GetFullCourt();
-            // Pick visible, contrasting team colors
-            Color homeColor = PickVisibleColor(_homeTeam);
-            Color awayColor = PickVisibleColor(_awayTeam);
-            // If too similar, pick a contrasting color for away (never white — invisible on court)
+            // Home wears its primary color, away wears its secondary (NBA convention).
+            // Each falls back to the team's other color if its choice would wash out on the wood.
+            Color homeColor = ResolveTeamColor(_homeTeam, preferSecondary: false);
+            Color awayColor = ResolveTeamColor(_awayTeam, preferSecondary: true);
+            // If the two still collide, shift the away color so the sides stay distinct.
             float colorDist = Mathf.Abs(homeColor.r - awayColor.r) + Mathf.Abs(homeColor.g - awayColor.g) + Mathf.Abs(homeColor.b - awayColor.b);
-            if (colorDist < 0.6f)
+            if (colorDist < 0.5f)
             {
-                // Rotate hue by ~180° for maximum contrast
-                Color.RGBToHSV(homeColor, out float h, out float s, out float v);
-                awayColor = Color.HSVToRGB((h + 0.5f) % 1f, Mathf.Max(s, 0.5f), Mathf.Max(v, 0.5f));
+                Color.RGBToHSV(awayColor, out float h, out float s, out float v);
+                awayColor = Color.HSVToRGB((h + 0.5f) % 1f, Mathf.Max(s, 0.5f), Mathf.Clamp(v, 0.45f, 0.9f));
             }
-            Debug.Log($"[MatchSceneSetup] Team colors: home={homeColor} away={awayColor} dist={colorDist:F2}");
+            Debug.Log($"[MatchSceneSetup] Team colors: home(primary)={homeColor} away(secondary)={awayColor} dist={colorDist:F2}");
             _courtView.Setup(courtBgImg, fullCourtSprite, homeColor, awayColor);
 
             // Initialize with starting lineups
             var homeLineup = _homeTeam.StartingLineupIds?.ToList() ?? new System.Collections.Generic.List<string>();
             var awayLineup = _awayTeam.StartingLineupIds?.ToList() ?? new System.Collections.Generic.List<string>();
             _courtView.Initialize(_homeTeam, _awayTeam, homeLineup, awayLineup);
+            _courtView.RefreshPlayerStats(_simController.LiveBoxScore);   // tooltips start at zeros
 
             // Auto-start simulation
             _simController.StartSimulation();
@@ -148,13 +176,22 @@ namespace NBAHeadCoach.UI.Match
             // ── COURT VIEW (middle, 45%) ──
             _courtArea = CreateRT(_root, "Court");
             _courtArea.anchorMin = new Vector2(0, 0.25f); _courtArea.anchorMax = new Vector2(1, 0.85f); _courtArea.sizeDelta = Vector2.zero;
-            // Court background image (full court sprite, stretched to fill)
-            var courtBgImg = _courtArea.gameObject.AddComponent<Image>();
+            // Dark margin fill behind the aspect-locked court surface
+            _courtArea.gameObject.AddComponent<Image>().color = new Color(0.03f, 0.035f, 0.06f);
+
+            // Court surface locked to true 94:50 so a court foot is the same length in both
+            // axes — circles are circles, X-speed reads like Y-speed, rim geometry is honest.
+            _courtSurface = CreateRT(_courtArea, "CourtSurface");
+            Stretch(_courtSurface);
+            var fitter = _courtSurface.gameObject.AddComponent<AspectRatioFitter>();
+            fitter.aspectMode = AspectRatioFitter.AspectMode.FitInParent;
+            fitter.aspectRatio = 94f / 50f;
+            var courtBgImg = _courtSurface.gameObject.AddComponent<Image>();
             courtBgImg.color = Color.white;
             courtBgImg.type = Image.Type.Simple;
             courtBgImg.preserveAspect = false;
 
-            _courtView = _courtArea.gameObject.AddComponent<AnimatedCourtView>();
+            _courtView = _courtSurface.gameObject.AddComponent<MatchCourtView>();
 
             // ── PLAY-BY-PLAY (bottom 35%) ──
             var pbpArea = CreateRT(_root, "PBP");
@@ -199,14 +236,28 @@ namespace NBAHeadCoach.UI.Match
             var apImg = _awayPossessionDot.AddComponent<Image>(); apImg.color = UITheme.AccentPrimary;
             _awayPossessionDot.SetActive(false);
 
-            // Center info (quarter/clock)
-            var center = CreateRT(parent, "Center"); center.gameObject.AddComponent<LayoutElement>().preferredWidth = 120;
+            // Center info (quarter / game clock / shot clock)
+            var center = CreateRT(parent, "Center"); center.gameObject.AddComponent<LayoutElement>().preferredWidth = 160;
             var cvlg = center.gameObject.AddComponent<VerticalLayoutGroup>();
             cvlg.childControlWidth = true; cvlg.childControlHeight = true; cvlg.childForceExpandWidth = true;
             _quarterText = MkText(center, "Q1", 14, FontStyle.Bold, UITheme.AccentPrimary, TextAnchor.MiddleCenter);
             _quarterText.gameObject.AddComponent<LayoutElement>().flexibleHeight = 1;
-            _clockText = MkText(center, "12:00", 20, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
-            _clockText.gameObject.AddComponent<LayoutElement>().flexibleHeight = 1;
+
+            var clockRow = CreateRT(center, "ClockRow");
+            clockRow.gameObject.AddComponent<LayoutElement>().flexibleHeight = 1;
+            var crHlg = clockRow.gameObject.AddComponent<HorizontalLayoutGroup>();
+            crHlg.childControlWidth = true; crHlg.childControlHeight = true;
+            crHlg.childForceExpandHeight = true; crHlg.spacing = 6;
+            crHlg.childAlignment = TextAnchor.MiddleCenter;
+
+            var clockGo = CreateRT(clockRow, "Clock");
+            clockGo.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1;
+            _clockText = MkText(clockGo, "12:00", 20, FontStyle.Bold, Color.white, TextAnchor.MiddleRight);
+
+            var shotClockGo = CreateRT(clockRow, "ShotClock");
+            shotClockGo.gameObject.AddComponent<LayoutElement>().preferredWidth = 36;
+            _shotClockText = MkText(shotClockGo, "24", 16, FontStyle.Bold,
+                new Color(1f, 0.55f, 0.15f), TextAnchor.MiddleLeft);
 
             // Possession dot home
             _homePossessionDot = CreateRT(parent, "HPoss").gameObject;
@@ -263,12 +314,31 @@ namespace NBAHeadCoach.UI.Match
             UpdateSpeedHighlight(1); // default Normal/2x
 
             // Spacer
+            CreateRT(parent, "SpModes").gameObject.AddComponent<LayoutElement>().preferredWidth = 14;
+
+            // FM-style viewing modes: which possessions play out visually
+            string[] modeLabels = { "KEY", "EXT", "FULL" };
+            var modes = new[] { Playback.ViewingMode.KeyHighlights, Playback.ViewingMode.ExtendedHighlights, Playback.ViewingMode.FullMatch };
+            _modeBtns = new Button[modeLabels.Length];
+            for (int i = 0; i < modeLabels.Length; i++)
+            {
+                int idx = i;
+                _modeBtns[i] = MkCtrlBtn(parent, modeLabels[i], 52, () => {
+                    _director?.SetMode(modes[idx]);
+                    UpdateModeHighlight(idx);
+                });
+            }
+            UpdateModeHighlight(2); // default Full match — watch every possession, no cuts
+
+            // Spacer
             CreateRT(parent, "Sp2").gameObject.AddComponent<LayoutElement>().flexibleWidth = 1;
 
             // Coaching buttons
             MkCtrlBtn(parent, "TIMEOUT", 80, () => _simController?.CallTimeout());
             MkCtrlBtn(parent, "SUBS", 60, ShowSubstitutionOverlay);
             MkCtrlBtn(parent, "STRATEGY", 80, ShowStrategyOverlay);
+            MkCtrlBtn(parent, "BOX SCORE", 88, ShowBoxScoreOverlay);
+            MkCtrlBtn(parent, "SIM REST", 80, ShowExitConfirmOverlay);
             _speedLabel = MkText(CreateRT(parent, "SpLbl"), "2x", 11, FontStyle.Normal, UITheme.TextSecondary, TextAnchor.MiddleCenter);
             _speedLabel.gameObject.AddComponent<LayoutElement>().preferredWidth = 40;
         }
@@ -284,6 +354,16 @@ namespace NBAHeadCoach.UI.Match
             if (_speedLabel != null) _speedLabel.text = names[activeIdx];
         }
 
+        private void UpdateModeHighlight(int activeIdx)
+        {
+            if (_modeBtns == null) return;
+            for (int i = 0; i < _modeBtns.Length; i++)
+            {
+                var img = _modeBtns[i].GetComponent<Image>();
+                img.color = i == activeIdx ? UITheme.AccentSecondary : UITheme.CardBackground;
+            }
+        }
+
         private void BuildPlayByPlay(RectTransform parent)
         {
             // Header
@@ -294,6 +374,11 @@ namespace NBAHeadCoach.UI.Match
             var ht = MkText(hdr, "PLAY-BY-PLAY", 10, FontStyle.Bold, UITheme.AccentPrimary, TextAnchor.MiddleLeft);
             ht.GetComponent<RectTransform>().offsetMin = new Vector2(12, 0);
 
+            // Fast-forward indicator (shown while highlight modes skip possessions)
+            _ffTickerLabel = MkText(hdr, ">> FAST FORWARD", 10, FontStyle.Bold, UITheme.AccentPrimary, TextAnchor.MiddleRight);
+            _ffTickerLabel.GetComponent<RectTransform>().offsetMax = new Vector2(-12, 0);
+            _ffTickerLabel.enabled = false;
+
             // Scroll area
             var scrollGo = CreateRT(parent, "Scroll");
             scrollGo.anchorMin = Vector2.zero; scrollGo.anchorMax = Vector2.one;
@@ -303,6 +388,10 @@ namespace NBAHeadCoach.UI.Match
             var vp = CreateRT(scrollGo, "VP"); Stretch(vp); vp.gameObject.AddComponent<RectMask2D>();
             var content = CreateRT(vp, "Content");
             content.anchorMin = new Vector2(0, 1); content.anchorMax = Vector2.one; content.pivot = new Vector2(0.5f, 1);
+            // Zero the leftover default sizeDelta (100,100) so the content matches the
+            // viewport width exactly — otherwise it is 100px too wide and overhangs the
+            // mask 50px on each side, clipping the left of every play-by-play line.
+            content.sizeDelta = Vector2.zero;
             var vlg = content.gameObject.AddComponent<VerticalLayoutGroup>();
             vlg.spacing = 1; vlg.childControlWidth = true; vlg.childControlHeight = true; vlg.childForceExpandWidth = true;
             vlg.childForceExpandHeight = false;
@@ -351,22 +440,75 @@ namespace NBAHeadCoach.UI.Match
 
         private void SubscribeToEvents()
         {
+            // Out-of-possession events still fire directly from the controller
+            // (tip-off, quarter breaks, timeouts, foul-outs, manual subs).
+            // In-possession presentation arrives re-timed via the director.
             _simController.OnScoreboardUpdate += OnScoreboardUpdate;
             _simController.OnPlayByPlay += OnPlayByPlay;
             _simController.OnPossessionChange += OnPossessionChange;
             _simController.OnGameComplete += OnGameComplete;
-            _simController.OnSpatialStateUpdate += OnSpatialStateUpdate;
-            _simController.OnShotAttempt += OnShotAttempt;
+            _simController.OnLineupChanged += OnLineupChanged;
+            _simController.OnTimeout += OnTimeoutCalled;
+            _simController.OnCoachEjected += OnCoachEjected;
+            _simController.OnSimulationResumed += OnSimulationResumed;
         }
+
+        private void OnFastForwardChanged(bool on)
+        {
+            if (_ffTickerLabel != null) _ffTickerLabel.enabled = on;
+            if (on && _narrationBar != null) _narrationBar.HideImmediate();
+        }
+
+        private int _lastHomeScore, _lastAwayScore;
 
         private void OnScoreboardUpdate(ScoreboardUpdate update)
         {
+            // Punch the scoring side's text on a score change
+            if (update.HomeScore > _lastHomeScore) StartCoroutine(PulseText(_homeScoreText));
+            if (update.AwayScore > _lastAwayScore) StartCoroutine(PulseText(_awayScoreText));
+            _lastHomeScore = update.HomeScore;
+            _lastAwayScore = update.AwayScore;
+
             _homeScoreText.text = update.HomeScore.ToString();
             _awayScoreText.text = update.AwayScore.ToString();
             _quarterText.text = $"Q{update.Quarter}";
             int mins = (int)(update.Clock / 60);
             int secs = (int)(update.Clock % 60);
             _clockText.text = $"{mins}:{secs:D2}";
+            if (_shotClockText != null)
+                _shotClockText.text = Mathf.CeilToInt(update.ShotClock).ToString();
+        }
+
+        /// <summary>Per-frame clock tick during played possessions — writes ONLY the two clock
+        /// texts. Scores stay on the discrete scoreboard events so a make isn't revealed early.</summary>
+        private void OnClockTick(float gameClock, float shotClock)
+        {
+            if (_clockText != null)
+            {
+                int mins = (int)(gameClock / 60);
+                int secs = (int)(gameClock % 60);
+                _clockText.text = $"{mins}:{secs:D2}";
+            }
+            if (_shotClockText != null)
+                _shotClockText.text = Mathf.CeilToInt(shotClock).ToString();
+        }
+
+        private IEnumerator PulseText(Text text)
+        {
+            if (text == null) yield break;
+            var baseColor = Color.white;
+            float t = 0f;
+            while (t < 0.35f)
+            {
+                t += Time.deltaTime;
+                float u = Mathf.Clamp01(t / 0.35f);
+                float scale = 1f + 0.3f * Mathf.Sin(u * Mathf.PI);
+                text.transform.localScale = Vector3.one * scale;
+                text.color = Color.Lerp(UITheme.AccentPrimary, baseColor, u);
+                yield return null;
+            }
+            text.transform.localScale = Vector3.one;
+            text.color = baseColor;
         }
 
         private void OnPlayByPlay(PlayByPlayEntry entry)
@@ -416,17 +558,57 @@ namespace NBAHeadCoach.UI.Match
         {
             _homePossessionDot.SetActive(homeHasBall);
             _awayPossessionDot.SetActive(!homeHasBall);
-            _courtView?.SetOffense(homeHasBall);
+
+            // Refresh dot tooltips here: this fires only AFTER the possession finished
+            // presenting, so hover stats never reveal a play before it's shown.
+            _courtView?.RefreshPlayerStats(_simController?.LiveBoxScore);
         }
 
-        private void OnSpatialStateUpdate(SpatialState state)
+        private void OnTimeoutCalled(string teamId, Core.Gameplay.TimeoutReason reason)
         {
-            _courtView?.EnqueueState(state);
+            // The calling team's coach gathers his players at the bench for the huddle.
+            if (_courtView != null && _homeTeam != null)
+                _courtView.SetCoachHuddle(teamId == _homeTeam.TeamId, huddling: true);
+
+            // Your timeout = a coaching window: the sim is paused, so open the
+            // strategy overlay (with its SUBSTITUTIONS shortcut) automatically.
+            if (_playerTeam != null && teamId == _playerTeam.TeamId)
+                ShowStrategyOverlay();
         }
 
-        private void OnShotAttempt(ShotMarkerData data)
+        private void OnSimulationResumed()
         {
-            _courtView?.AddShotMarker(data);
+            // Break the huddle when play resumes — coaches return to pacing the sideline.
+            if (_courtView == null) return;
+            _courtView.SetCoachHuddle(true, huddling: false);
+            _courtView.SetCoachHuddle(false, huddling: false);
+        }
+
+        private void OnCoachEjected(string teamId)
+        {
+            if (_courtView == null || _homeTeam == null) return;
+            bool isHome = teamId == _homeTeam.TeamId;
+            _courtView.EjectCoach(isHome);
+
+            // Tell the story on the play-by-play ticker (no numbers — a name-level beat).
+            string teamName = isHome ? _homeTeam?.Name : _awayTeam?.Name;
+            OnPlayByPlay(new PlayByPlayEntry
+            {
+                Type = PlayByPlayType.Substitution,
+                IsHighlight = true,
+                Description = $"The {teamName} head coach has been EJECTED after a second technical!"
+            });
+        }
+
+        private void OnLineupChanged(string teamId, string outId, string inId)
+        {
+            // Swap court dots for both manual subs and foul-out auto-subs. The player walks
+            // off to the bench and the reserve walks on (see MatchCourtView.AnimateSubstitution);
+            // subs fire at dead balls, so this never fights a live possession.
+            if (_courtView == null || _simController == null) return;
+            bool isHome = _homeTeam != null && teamId == _homeTeam.TeamId;
+            _courtView.AnimateSubstitution(outId, inId, isHome);
+            _courtView.RefreshPlayerStats(_simController.LiveBoxScore);
         }
 
         private void OnGameComplete(BoxScore boxScore)
@@ -500,6 +682,32 @@ namespace NBAHeadCoach.UI.Match
             return panel;
         }
 
+        private void ShowExitConfirmOverlay()
+        {
+            var panel = CreateOverlay("EXIT MATCH");
+
+            var msg = CreateRT(panel, "Msg");
+            msg.gameObject.AddComponent<LayoutElement>().preferredHeight = 70;
+            msg.gameObject.AddComponent<Image>().color = Color.clear;
+            MkText(msg,
+                "Stop watching and simulate the rest of this game?\nThe current score, stats, and fouls carry over.",
+                13, FontStyle.Normal, Color.white, TextAnchor.MiddleCenter);
+
+            var row = CreateRT(panel, "Row");
+            row.gameObject.AddComponent<LayoutElement>().preferredHeight = 46;
+            row.gameObject.AddComponent<Image>().color = Color.clear;
+            var hlg = row.gameObject.AddComponent<HorizontalLayoutGroup>();
+            hlg.spacing = 12; hlg.childControlWidth = true; hlg.childControlHeight = true;
+            hlg.childForceExpandWidth = true; hlg.childForceExpandHeight = true;
+
+            MkCtrlBtn(row, "SIM TO END", 160, () =>
+            {
+                if (_coachingOverlay != null) { Destroy(_coachingOverlay); _coachingOverlay = null; }
+                _simController?.FinishRemainingHeadless();
+            });
+            MkCtrlBtn(row, "KEEP WATCHING", 160, DismissOverlay);
+        }
+
         private void ShowSubstitutionOverlay()
         {
             var panel = CreateOverlay("SUBSTITUTIONS");
@@ -512,12 +720,16 @@ namespace NBAHeadCoach.UI.Match
             lblOn.gameObject.AddComponent<Image>().color = Color.clear;
             MkText(lblOn, "ON COURT", 10, FontStyle.Bold, UITheme.AccentPrimary, TextAnchor.MiddleLeft);
 
-            var currentIds = _playerTeam.StartingLineupIds;
+            // The sim's live lineup is the single source of truth — StartingLineupIds
+            // goes stale after any sub or foul-out and must never drive this menu.
+            var currentIds = _simController != null
+                ? _simController.GetLineup(_playerTeam.TeamId).ToList()
+                : (_playerTeam.StartingLineupIds?.ToList() ?? new List<string>());
             string[] posLabels = { "PG", "SG", "SF", "PF", "C" };
             string selectedOut = null;
             var onCourtBgs = new List<Image>();
 
-            for (int i = 0; i < 5 && i < currentIds.Length; i++)
+            for (int i = 0; i < 5 && i < currentIds.Count; i++)
             {
                 int posIdx = i;
                 string pid = currentIds[i];
@@ -550,7 +762,9 @@ namespace NBAHeadCoach.UI.Match
             lblBench.gameObject.AddComponent<Image>().color = Color.clear;
             MkText(lblBench, "BENCH — tap player above, then bench player to swap", 9, FontStyle.Normal, UITheme.TextSecondary, TextAnchor.MiddleLeft);
 
-            var benchIds = _playerTeam.RosterPlayerIds?.Where(id => !currentIds.Contains(id)).ToList() ?? new List<string>();
+            var benchIds = _playerTeam.RosterPlayerIds?
+                .Where(id => !currentIds.Contains(id) && !(_simController?.HasFouledOut(id) ?? false))
+                .ToList() ?? new List<string>();
             foreach (var bid in benchIds)
             {
                 var bp = db.GetPlayer(bid);
@@ -566,9 +780,47 @@ namespace NBAHeadCoach.UI.Match
                 brow.gameObject.AddComponent<Button>().onClick.AddListener(() => {
                     if (selectedOut == null) return;
                     _simController?.MakeSubstitution(selectedOut, capturedBid);
+                    _courtView?.RefreshPlayerStats(_simController?.LiveBoxScore);
                     DismissOverlay();
                 });
             }
+        }
+
+        private void ShowBoxScoreOverlay()
+        {
+            var live = _simController?.LiveBoxScore;
+            if (live == null) return;
+
+            var panel = CreateOverlay("BOX SCORE");   // pauses; CLOSE resumes
+
+            var host = CreateRT(panel, "Body");
+            host.gameObject.AddComponent<LayoutElement>().flexibleHeight = 1;
+            var scroll = UIBuilder.FixedArea(host, spacing: 0, padding: 2);
+            var vlg = scroll.GetComponent<VerticalLayoutGroup>();
+            if (vlg != null) { vlg.spacing = 0; vlg.padding = new RectOffset(4, 4, 2, 2); }
+
+            // The current five always render (zeros at tip-off); bench shows with floor time.
+            var onCourt = new HashSet<string>(
+                _simController.CurrentHomeLineup.Concat(_simController.CurrentAwayLineup));
+            Func<PlayerGameStats, bool> include =
+                s => s != null && (s.SecondsPlayed > 0.01f || onCourt.Contains(s.PlayerId));
+
+            var first = _playerIsHome ? _homeTeam : _awayTeam;
+            var second = _playerIsHome ? _awayTeam : _homeTeam;
+
+            AddBoxScoreTeamLabel(scroll, first, UITheme.AccentPrimary);
+            BoxScoreTable.Build(scroll, first, live, UITheme.AccentPrimary, include);
+            AddBoxScoreTeamLabel(scroll, second, UITheme.AccentSecondary);
+            BoxScoreTable.Build(scroll, second, live, UITheme.AccentSecondary, include);
+        }
+
+        private static void AddBoxScoreTeamLabel(RectTransform scroll, Team team, Color color)
+        {
+            var row = CreateRT(scroll, "TeamLbl");
+            row.gameObject.AddComponent<LayoutElement>().preferredHeight = 26;
+            row.gameObject.AddComponent<Image>().color = UITheme.FMCardHeaderBg;
+            var t = MkText(row, $"{team.City} {team.Name}".ToUpper(), 12, FontStyle.Bold, color, TextAnchor.MiddleLeft);
+            t.GetComponent<RectTransform>().offsetMin = new Vector2(10, 0);
         }
 
         private void ShowStrategyOverlay()
@@ -578,20 +830,93 @@ namespace NBAHeadCoach.UI.Match
 
             var strat = _playerTeam.Strategy;
 
-            // Offense
+            // Two-column body so every sim-read control fits without scrolling.
+            var body = CreateRT(panel, "Cols");
+            body.gameObject.AddComponent<LayoutElement>().flexibleHeight = 1;
+            var cols = body.gameObject.AddComponent<HorizontalLayoutGroup>();
+            cols.childControlWidth = true; cols.childControlHeight = true;
+            cols.childForceExpandWidth = true; cols.childForceExpandHeight = true;
+            cols.spacing = 12;
+
+            RectTransform Column(string name)
+            {
+                var col = CreateRT(body, name);
+                col.gameObject.AddComponent<Image>().color = Color.clear;
+                var v = col.gameObject.AddComponent<VerticalLayoutGroup>();
+                v.childControlWidth = true; v.childControlHeight = true;
+                v.childForceExpandWidth = true; v.childForceExpandHeight = false;
+                v.spacing = 3;
+                return col;
+            }
+            var offCol = Column("Offense");
+            var defCol = Column("Defense");
+
+            void Section(RectTransform col, string title)
+            {
+                var hdr = CreateRT(col, "Sec_" + title);
+                hdr.gameObject.AddComponent<LayoutElement>().preferredHeight = 20;
+                hdr.gameObject.AddComponent<Image>().color = Color.clear;
+                MkText(hdr, title, 11, FontStyle.Bold, UITheme.AccentPrimary, TextAnchor.MiddleLeft);
+            }
+
+            void PresetRow(RectTransform col, string label, Core.Data.StrategyPresets.Preset[] set)
+            {
+                int cur = Core.Data.StrategyPresets.CurrentIndex(set, strat);
+                MkOverlayCycle(col, label, set.Select(p => p.Label).ToArray(), cur,
+                    v => set[v].Apply(strat));
+            }
+
+            // ── OFFENSE (all read live by the possession sim) ──
+            Section(offCol, "OFFENSE");
             string[] offNames = Enum.GetNames(typeof(OffensiveSystemType));
             int offIdx = (int)(strat.OffensiveSystem?.PrimarySystem ?? OffensiveSystemType.MotionOffense);
-            MkOverlayCycle(panel, "Offense", offNames, offIdx, v => { if (strat.OffensiveSystem != null) strat.OffensiveSystem.PrimarySystem = (OffensiveSystemType)v; });
+            MkOverlayCycle(offCol, "System", offNames, offIdx, v => { if (strat.OffensiveSystem != null) strat.OffensiveSystem.PrimarySystem = (OffensiveSystemType)v; });
 
-            // Defense
+            PresetRow(offCol, "Shot Mix", Core.Data.StrategyPresets.ShotMix);
+            PresetRow(offCol, "Post Ups", Core.Data.StrategyPresets.PostUps);
+            PresetRow(offCol, "Ball Movement", Core.Data.StrategyPresets.BallMovement);
+            PresetRow(offCol, "Crash Glass", Core.Data.StrategyPresets.CrashGlass);
+
+            string[] transNames = Enum.GetNames(typeof(TransitionPreference));
+            MkOverlayCycle(offCol, "Transition", transNames, (int)strat.TransitionOffense,
+                v => strat.TransitionOffense = (TransitionPreference)v);
+
+            string[] paceNames = Enum.GetNames(typeof(PacePreference));
+            MkOverlayCycle(offCol, "Pace", paceNames, (int)strat.PacePreference,
+                v => strat.ApplyPacePreference((PacePreference)v));
+
+            // ── DEFENSE ──
+            Section(defCol, "DEFENSE");
             string[] defNames = Enum.GetNames(typeof(DefensiveSchemeType));
             int defIdx = (int)(strat.DefensiveSystem?.PrimaryScheme ?? DefensiveSchemeType.ManToManStandard);
-            MkOverlayCycle(panel, "Defense", defNames, defIdx, v => { if (strat.DefensiveSystem != null) strat.DefensiveSystem.PrimaryScheme = (DefensiveSchemeType)v; });
+            MkOverlayCycle(defCol, "Scheme", defNames, defIdx, v => { if (strat.DefensiveSystem != null) strat.DefensiveSystem.PrimaryScheme = (DefensiveSchemeType)v; });
 
-            // Pace
-            string[] paceNames = Enum.GetNames(typeof(PacePreference));
-            int paceIdx = (int)strat.PacePreference;
-            MkOverlayCycle(panel, "Pace", paceNames, paceIdx, v => strat.PacePreference = (PacePreference)v);
+            PresetRow(defCol, "Zone Mix", Core.Data.StrategyPresets.ZoneMix);
+            PresetRow(defCol, "Pressure", Core.Data.StrategyPresets.Pressure);
+            PresetRow(defCol, "Gambling", Core.Data.StrategyPresets.Gambling);
+            PresetRow(defCol, "Contesting", Core.Data.StrategyPresets.Contesting);
+
+            var dsys = strat.DefensiveSystem;
+            if (dsys != null)
+            {
+                MkOverlayCycle(defCol, "Help", Enum.GetNames(typeof(HelpDefenseLevel)),
+                    (int)dsys.HelpDefense, v => dsys.HelpDefense = (HelpDefenseLevel)v);
+                MkOverlayCycle(defCol, "Switching", Enum.GetNames(typeof(SwitchingLevel)),
+                    (int)dsys.SwitchingLevel, v => dsys.SwitchingLevel = (SwitchingLevel)v);
+                MkOverlayCycle(defCol, "PnR Coverage", Enum.GetNames(typeof(PnRCoverage)),
+                    (int)dsys.PickAndRollCoverage, v => dsys.PickAndRollCoverage = (PnRCoverage)v);
+                MkOverlayCycle(defCol, "Closeouts", Enum.GetNames(typeof(CloseoutStyle)),
+                    (int)dsys.CloseoutStyle, v => dsys.CloseoutStyle = (CloseoutStyle)v);
+                MkOverlayCycle(defCol, "Intensity", Enum.GetNames(typeof(DefensiveIntensity)),
+                    (int)dsys.DefensiveIntensity, v => dsys.DefensiveIntensity = (DefensiveIntensity)v);
+            }
+
+            // Timeout coaching window: subs live one tap away without closing the stoppage.
+            var subsRow = CreateRT(panel, "SubsShortcut");
+            subsRow.gameObject.AddComponent<LayoutElement>().preferredHeight = 32;
+            subsRow.gameObject.AddComponent<Image>().color = UITheme.CardBackground;
+            MkText(subsRow, "SUBSTITUTIONS  →", 12, FontStyle.Bold, UITheme.AccentPrimary, TextAnchor.MiddleCenter);
+            subsRow.gameObject.AddComponent<Button>().onClick.AddListener(ShowSubstitutionOverlay);
         }
 
         private void MkOverlayCycle(RectTransform parent, string label, string[] options, int currentIndex, Action<int> onChange)
@@ -633,37 +958,48 @@ namespace NBAHeadCoach.UI.Match
                 _simController.OnPlayByPlay -= OnPlayByPlay;
                 _simController.OnPossessionChange -= OnPossessionChange;
                 _simController.OnGameComplete -= OnGameComplete;
-                _simController.OnSpatialStateUpdate -= OnSpatialStateUpdate;
-                _simController.OnShotAttempt -= OnShotAttempt;
+                _simController.OnLineupChanged -= OnLineupChanged;
+                _simController.OnTimeout -= OnTimeoutCalled;
+            }
+            if (_director != null)
+            {
+                _director.OnTickerEntry -= OnPlayByPlay;
+                _director.OnScoreboard -= OnScoreboardUpdate;
+                _director.OnClockTick -= OnClockTick;
+                _director.OnFastForwardChanged -= OnFastForwardChanged;
+                if (_narrationBar != null) _director.OnNarration -= _narrationBar.Show;
             }
         }
 
         // ── HELPERS ──
 
-        private static Color PickVisibleColor(Team team)
+        /// <summary>
+        /// Home uses its primary color, away its secondary (preferSecondary=true). A near-white
+        /// choice washes out on the light wood court, so fall back to the team's other color;
+        /// if both wash out, darken while preserving hue. Dark colors (navy/black) are kept —
+        /// they read fine on wood and the dots carry a dark outline regardless.
+        /// </summary>
+        private static Color ResolveTeamColor(Team team, bool preferSecondary)
         {
-            // Try primary first, fall back to secondary, then lighten if still too dark
             Color primary = UITheme.ParseTeamColor(team.PrimaryColor, Color.gray);
             Color secondary = UITheme.ParseTeamColor(team.SecondaryColor, Color.gray);
 
-            // Use luminance to check brightness (0.3 threshold — wood court is ~0.4-0.5)
-            float primLum = primary.r * 0.299f + primary.g * 0.587f + primary.b * 0.114f;
-            float secLum = secondary.r * 0.299f + secondary.g * 0.587f + secondary.b * 0.114f;
+            Color chosen = preferSecondary ? secondary : primary;
+            Color other = preferSecondary ? primary : secondary;
 
-            Color best = secLum > primLum ? secondary : primary; // pick brighter one
-            float bestLum = Mathf.Max(primLum, secLum);
+            if (IsWashedOut(chosen) && !IsWashedOut(other))
+                chosen = other;
 
-            // If still too dark, boost brightness
-            if (bestLum < 0.35f)
+            if (IsWashedOut(chosen))
             {
-                float boost = 0.35f / Mathf.Max(bestLum, 0.05f);
-                best = new Color(
-                    Mathf.Min(best.r * boost + 0.15f, 1f),
-                    Mathf.Min(best.g * boost + 0.15f, 1f),
-                    Mathf.Min(best.b * boost + 0.15f, 1f));
+                Color.RGBToHSV(chosen, out float h, out float s, out float v);
+                chosen = Color.HSVToRGB(h, Mathf.Max(s, 0.25f), 0.7f);
             }
-            return best;
+            return chosen;
         }
+
+        /// <summary>Near-white / pale-gray: all channels high, so it disappears on the wood.</summary>
+        private static bool IsWashedOut(Color c) => c.r > 0.8f && c.g > 0.8f && c.b > 0.8f;
 
         private static RectTransform CreateRT(Transform parent, string name)
         {

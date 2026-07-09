@@ -9,8 +9,15 @@ namespace NBAHeadCoach.Core.Manager
     /// <summary>
     /// Manages all injury-related logic including generation, recovery, and load management.
     /// </summary>
-    public class InjuryManager : MonoBehaviour
+    public class InjuryManager : ISaveSection
     {
+        public string SystemId => "InjuryManager";
+        public void WriteSave(Data.SaveData data) => data.InjuryData = CreateSaveState();
+        public void ReadSave(Data.SaveData data, in SaveReadContext ctx)
+        {
+            if (data.InjuryData != null) RestoreFromSave(data.InjuryData);
+        }
+
         public static InjuryManager Instance { get; private set; }
 
         // ==================== EVENTS ====================
@@ -19,56 +26,30 @@ namespace NBAHeadCoach.Core.Manager
         public event Action<Player, InjuryStatus> OnInjuryStatusChanged;
 
         // ==================== CONFIGURATION ====================
-        [Header("Injury Generation Settings")]
-        [SerializeField] [Range(0.00001f, 0.001f)]
+        // Injury generation
         private float _baseInjuryRiskPerPossession = 0.0001f;  // 0.01% base risk
-
-        [SerializeField] [Range(1f, 5f)]
         private float _contactPlayMultiplier = 2.0f;
-
-        [SerializeField] [Range(1f, 5f)]
         private float _lowEnergyMultiplier = 2.0f;  // When energy < 50%
-
-        [SerializeField] [Range(1f, 10f)]
         private float _veryLowEnergyMultiplier = 4.0f;  // When energy < 25%
-
-        [SerializeField] [Range(1f, 3f)]
         private float _backToBackMultiplier = 1.5f;
-
-        [SerializeField] [Range(1f, 2f)]
         private float _playoffIntensityMultiplier = 1.25f;
 
-        [Header("Recovery Settings")]
-        [SerializeField] [Range(0.5f, 2f)]
+        // Recovery
         private float _baseRecoveryRate = 1.0f;  // Days healed per real day
 
-        [Header("Load Management")]
-        [SerializeField] private int _highLoadThreshold = 180;  // Minutes in 7 days
-        [SerializeField] private int _criticalLoadThreshold = 220;  // Very high load
+        // Load management
+        private int _highLoadThreshold = 180;  // Minutes in 7 days
+        private int _criticalLoadThreshold = 220;  // Very high load
 
         // ==================== STATE ====================
         private System.Random _rng;
         private List<InjuryEvent> _recentInjuries = new List<InjuryEvent>();
 
         // ==================== LIFECYCLE ====================
-        private void Awake()
+        public InjuryManager()
         {
-            if (Instance == null)
-            {
-                Instance = this;
-                DontDestroyOnLoad(gameObject);
-                _rng = new System.Random();
-            }
-            else
-            {
-                Destroy(gameObject);
-            }
-        }
-
-        private void Start()
-        {
-            // Register with GameManager if available
-            GameManager.Instance?.RegisterInjuryManager(this);
+            Instance = this;
+            _rng = new System.Random();
         }
 
         // ==================== CORE INJURY METHODS ====================

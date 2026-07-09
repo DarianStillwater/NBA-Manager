@@ -258,8 +258,10 @@ namespace NBAHeadCoach.Core.Manager
     /// <summary>
     /// Manages contract negotiations between teams and players/agents
     /// </summary>
-    public class ContractNegotiationManager
+    public class ContractNegotiationManager : ISaveSection
     {
+        public string SystemId => "Negotiations";
+
         private Dictionary<string, NegotiationSession> _activeNegotiations;
         private Dictionary<string, List<NegotiationSession>> _negotiationHistory;
         private AgentManager _agentManager;
@@ -794,6 +796,76 @@ namespace NBAHeadCoach.Core.Manager
         /// <summary>
         /// Cancel/abandon an active negotiation
         /// </summary>
+        // ==================== PERSISTENCE ====================
+        // Sessions carry DateTimes and nested offers, so the save shape is a flat
+        // record per ACTIVE session; concluded rounds history is session-scoped.
+
+        public void WriteSave(Data.SaveData data)
+        {
+            if (data == null) return;
+            var dto = new NegotiationsSaveData();
+            foreach (var session in _activeNegotiations.Values)
+            {
+                if (session == null || session.Status == NegotiationStatus.Accepted ||
+                    session.Status == NegotiationStatus.Rejected ||
+                    session.Status == NegotiationStatus.WalkedAway) continue;
+                dto.Sessions.Add(new NegotiationSessionRecord
+                {
+                    NegotiationId = session.NegotiationId,
+                    PlayerId = session.PlayerId,
+                    PlayerName = session.PlayerName,
+                    TeamId = session.TeamId,
+                    AgentId = session.AgentId,
+                    StatusInt = (int)session.Status,
+                    CurrentRound = session.CurrentRound,
+                    MaxRounds = session.MaxRoundsBeforeWalkaway,
+                    MarketValue = session.PlayerMarketValue,
+                    AskingPrice = session.PlayerAskingPrice,
+                    CounterYears = session.CurrentAgentCounter?.Years ?? 0,
+                    CounterSalary = session.CurrentAgentCounter?.AnnualSalary ?? 0
+                });
+            }
+            data.NegotiationsData = dto;
+        }
+
+        public void ReadSave(Data.SaveData data, in SaveReadContext ctx)
+        {
+            var dto = data?.NegotiationsData;
+            if (dto?.Sessions == null) return;
+            _activeNegotiations.Clear();
+            foreach (var rec in dto.Sessions)
+            {
+                var session = new NegotiationSession
+                {
+                    NegotiationId = rec.NegotiationId,
+                    PlayerId = rec.PlayerId,
+                    PlayerName = rec.PlayerName,
+                    TeamId = rec.TeamId,
+                    AgentId = rec.AgentId,
+                    Status = (NegotiationStatus)rec.StatusInt,
+                    Rounds = new List<NegotiationRound>(),
+                    CurrentRound = rec.CurrentRound,
+                    MaxRoundsBeforeWalkaway = rec.MaxRounds,
+                    PlayerPriorities = PlayerPriorities.Generate(false, false, false),
+                    PlayerMarketValue = rec.MarketValue,
+                    PlayerAskingPrice = rec.AskingPrice,
+                    StartedAt = DateTime.Now,
+                    LastActivity = DateTime.Now,
+                    Deadline = DateTime.Now.AddDays(14),
+                    MediaLeaks = new List<string>()
+                };
+                if (rec.CounterSalary > 0)
+                    session.CurrentAgentCounter = new ContractOffer
+                    {
+                        PlayerId = rec.PlayerId,
+                        Years = rec.CounterYears,
+                        AnnualSalary = rec.CounterSalary,
+                        TotalValue = rec.CounterYears * rec.CounterSalary
+                    };
+                _activeNegotiations[session.NegotiationId] = session;
+            }
+        }
+
         public void AbandonNegotiation(string negotiationId)
         {
             if (_activeNegotiations.TryGetValue(negotiationId, out var session))
@@ -810,5 +882,29 @@ namespace NBAHeadCoach.Core.Manager
                 }
             }
         }
+    }
+
+    /// <summary>JsonUtility-safe snapshot of in-flight contract negotiations.</summary>
+    [Serializable]
+    public class NegotiationsSaveData
+    {
+        public List<NegotiationSessionRecord> Sessions = new List<NegotiationSessionRecord>();
+    }
+
+    [Serializable]
+    public class NegotiationSessionRecord
+    {
+        public string NegotiationId;
+        public string PlayerId;
+        public string PlayerName;
+        public string TeamId;
+        public string AgentId;
+        public int StatusInt;
+        public int CurrentRound;
+        public int MaxRounds;
+        public long MarketValue;
+        public long AskingPrice;
+        public int CounterYears;
+        public long CounterSalary;
     }
 }

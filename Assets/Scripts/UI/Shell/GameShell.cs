@@ -22,7 +22,6 @@ namespace NBAHeadCoach.UI.Shell
         private string _lastScene;
         private float _injectDelay;
         private GameObject _fmRoot;
-        private GameSceneController _sceneController;
         private Text _headerRecordText;
         private Text _headerDateText;
         private RectTransform _contentArea;
@@ -96,8 +95,6 @@ namespace NBAHeadCoach.UI.Shell
 
             var canvas = FindAnyObjectByType<Canvas>();
             if (canvas == null) return;
-
-            _sceneController = FindAnyObjectByType<GameSceneController>();
 
             Color teamPrimary = UITheme.ParseTeamColor(team.PrimaryColor, UITheme.AccentPrimary);
             Color teamSecondary = UITheme.ParseTeamColor(team.SecondaryColor, UITheme.AccentSecondary);
@@ -176,8 +173,11 @@ namespace NBAHeadCoach.UI.Shell
             // Team name
             var tn = UIBuilder.Text(hr, "TeamName", $"{team.City} {team.Name}".ToUpper(), 24, FontStyle.Bold, Color.white);
             var tnr = tn.GetComponent<RectTransform>();
-            tnr.anchorMin = new Vector2(0, 0.35f); tnr.anchorMax = new Vector2(0.6f, 0.85f);
+            tnr.anchorMin = new Vector2(0, 0.35f); tnr.anchorMax = new Vector2(0.68f, 0.85f);
             tnr.offsetMin = new Vector2(textLeft, 0); tn.alignment = TextAnchor.MiddleLeft;
+            tn.resizeTextForBestFit = true; tn.resizeTextMaxSize = 24; tn.resizeTextMinSize = 13;
+            tn.horizontalOverflow = HorizontalWrapMode.Wrap;
+            tn.verticalOverflow = VerticalWrapMode.Truncate;
 
             // Coach name
             var cn = UIBuilder.Text(hr, "CoachName", $"Coach {GameManager.Instance?.Career?.PersonName ?? "Player"}", 13, FontStyle.Normal, UITheme.TextSecondary);
@@ -225,42 +225,85 @@ namespace NBAHeadCoach.UI.Shell
             sidebarImg.color = Color.white;
             UIBuilder.ApplyGradient(sidebar, UITheme.TeamSidebarGradientTop(teamColor), UITheme.TeamSidebarGradientBottom(teamColor));
 
-            var vlg = sidebar.AddComponent<VerticalLayoutGroup>();
-            vlg.childControlWidth = true; vlg.childControlHeight = false;
+            // Two zones: the nav list fills the top; Continue/Menu are pinned to
+            // the bottom so they can never be pushed off-screen as nav items grow.
+            const float actionsHeight = 96f;
+
+            var navZone = UIBuilder.Child(sidebar.GetComponent<RectTransform>(), "NavZone");
+            var nzr = navZone.GetComponent<RectTransform>();
+            nzr.anchorMin = new Vector2(0, 0); nzr.anchorMax = Vector2.one;
+            nzr.offsetMin = new Vector2(0, actionsHeight); nzr.offsetMax = Vector2.zero;
+            var vlg = navZone.AddComponent<VerticalLayoutGroup>();
+            vlg.childControlWidth = true; vlg.childControlHeight = true;
             vlg.childForceExpandWidth = true; vlg.childForceExpandHeight = false;
-            vlg.padding = new RectOffset(0, 0, 4, 4); vlg.spacing = 1;
+            vlg.padding = new RectOffset(0, 0, 4, 0); vlg.spacing = 1;
+
+            var actionZone = UIBuilder.Child(sidebar.GetComponent<RectTransform>(), "ActionZone");
+            var azr = actionZone.GetComponent<RectTransform>();
+            azr.anchorMin = Vector2.zero; azr.anchorMax = new Vector2(1, 0);
+            azr.pivot = new Vector2(0.5f, 0); azr.sizeDelta = new Vector2(0, actionsHeight);
+            var avlg = actionZone.AddComponent<VerticalLayoutGroup>();
+            avlg.childControlWidth = true; avlg.childControlHeight = true;
+            avlg.childForceExpandWidth = true; avlg.childForceExpandHeight = false;
+            avlg.padding = new RectOffset(0, 0, 0, 4); avlg.spacing = 1;
 
             string[][] navItems = {
                 new[] { "\u25A3", "Home",      "Dashboard" },
                 new[] { "\u2630", "Squad",     "Roster" },
                 new[] { "\u2637", "Schedule",  "Schedule" },
                 new[] { "\u2261", "Standings", "Standings" },
+                new[] { "\u2605", "Playoffs",  "Playoffs" },
+                new[] { "\u25CE", "League",    "League" },
+                new[] { "\u2696", "Front Office", "FrontOffice" },
+                new[] { "$", "Finances",  "Finances" },
+                new[] { "\u2692", "Development", "Development" },
                 new[] { "\u2709", "Inbox",     "Inbox" },
                 new[] { "\u2699", "Staff",     "Staff" },
+                new[] { "\u25C9", "Career",    "Career" },
+                new[] { "\u2606", "History",   "History" },
+                new[] { "\u2726", "All-Star",  "AllStar" },
             };
 
             var navGOs = new Dictionary<string, GameObject>();
+            int visibleCount = 0;
+            foreach (var nav in navItems)
+                if (!Core.Data.RolePermissions.IsPanelHidden(nav[2])) visibleCount++;
+
+            // Fit the list to the zone: shrink rows when there are many panels.
+            float bodyHeight = parent.rect.height > 1f
+                ? parent.rect.height
+                : Screen.height - UITheme.FMHeaderHeight - UITheme.FMAccentLineHeight;
+            float zoneHeight = bodyHeight - actionsHeight - 8;
+            float navHeight = Mathf.Clamp(
+                zoneHeight > 0 ? zoneHeight / Mathf.Max(1, visibleCount) - 1 : UITheme.FMNavItemHeight,
+                28f, UITheme.FMNavItemHeight);
+
             foreach (var nav in navItems)
             {
+                if (Core.Data.RolePermissions.IsPanelHidden(nav[2])) continue;
                 bool isActive = nav[2] == "Dashboard";
-                var navGo = CreateNavItem(sidebar.transform, nav[0], nav[1], nav[2], teamColor, isActive);
+                var navGo = CreateNavItem(navZone.transform, nav[0], nav[1], nav[2], teamColor, isActive);
+                navGo.GetComponent<LayoutElement>().preferredHeight = navHeight;
                 navGOs[nav[2]] = navGo;
             }
 
-            // Activity indicators
+            // Activity indicators. The inbox dot is live: visible only with unread mail.
             if (navGOs.ContainsKey("Inbox"))
-                AddActivityDot(navGOs["Inbox"], UITheme.AccentPrimary);
+            {
+                _inboxDot = AddActivityDot(navGOs["Inbox"], UITheme.AccentPrimary);
+                HookInboxBadge();
+            }
             if (navGOs.ContainsKey("Schedule") && GameManager.Instance?.SeasonController?.GetTodaysGame() != null)
                 AddActivityDot(navGOs["Schedule"], UITheme.Success);
 
-            CreateDivider(sidebar.transform);
+            CreateDivider(actionZone.transform);
 
-            CreateActionButton(sidebar.transform, "\u25B6  Continue", UITheme.Success, () =>
+            CreateActionButton(actionZone.transform, "\u25B6  Continue", UITheme.Success, () =>
             {
                 if (_continueRunning) return;
                 StartCoroutine(ContinueCoroutine());
             });
-            CreateActionButton(sidebar.transform, "\u2699  Menu", UITheme.FMNavHover, () => ShowPanel("Settings"));
+            CreateActionButton(actionZone.transform, "\u2699  Menu", UITheme.FMNavHover, () => ShowPanel("Settings"));
         }
 
         private GameObject CreateNavItem(Transform parent, string icon, string label, string panelId, Color teamColor, bool active)
@@ -319,7 +362,7 @@ namespace NBAHeadCoach.UI.Shell
             }
         }
 
-        private void AddActivityDot(GameObject navItem, Color color)
+        private GameObject AddActivityDot(GameObject navItem, Color color)
         {
             var dot = UIBuilder.Child(navItem.GetComponent<RectTransform>(), "Dot");
             var dr = dot.GetComponent<RectTransform>();
@@ -328,6 +371,30 @@ namespace NBAHeadCoach.UI.Shell
             dr.sizeDelta = new Vector2(8, 8);
             dr.anchoredPosition = new Vector2(-8, 0);
             dot.AddComponent<Image>().color = color;
+            return dot;
+        }
+
+        private GameObject _inboxDot;
+        private Core.Manager.InboxService _hookedInbox;
+
+        private void HookInboxBadge()
+        {
+            _hookedInbox = Core.Manager.InboxService.Instance;
+            if (_hookedInbox != null)
+                _hookedInbox.OnUnreadCountChanged += RefreshInboxBadge;
+            RefreshInboxBadge();
+        }
+
+        private void RefreshInboxBadge()
+        {
+            if (_inboxDot != null)
+                _inboxDot.SetActive((_hookedInbox?.UnreadCount ?? 0) > 0);
+        }
+
+        private void OnDestroy()
+        {
+            if (_hookedInbox != null)
+                _hookedInbox.OnUnreadCountChanged -= RefreshInboxBadge;
         }
 
         private void CreateActionButton(Transform parent, string label, Color bgColor, Action onClick)
@@ -376,10 +443,28 @@ namespace NBAHeadCoach.UI.Shell
             ShowPanel(panelId);
         }
 
+        /// <summary>
+        /// Show a registered panel with a deep-link payload (an entity id the panel
+        /// should focus on — e.g. a player id from an inbox message).
+        /// </summary>
+        public void ShowPanel(string panelId, string deepLinkPayload)
+        {
+            if (!string.IsNullOrEmpty(deepLinkPayload) &&
+                _panels.TryGetValue(panelId, out var p) && p is GamePanels.IDeepLinkPanel dlp)
+            {
+                dlp.SetDeepLinkPayload(deepLinkPayload);
+            }
+            ShowPanel(panelId);
+        }
+
         /// <summary>Show a registered panel by ID.</summary>
         public void ShowPanel(string panelId)
         {
             if (_contentArea == null) return;
+
+            // Panels foreign to the user's role are unreachable, even via deep links.
+            if (Core.Data.RolePermissions.IsPanelHidden(panelId))
+                panelId = "Dashboard";
 
             // Re-enable sidebar buttons when returning to a regular panel
             if (panelId != "PreGame" && panelId != "PostGame" && panelId != "PlayerDetail")
@@ -488,9 +573,14 @@ namespace NBAHeadCoach.UI.Shell
             Action<SeasonPhase> onPhase = p => { phaseChanged = true; newPhase = p; };
             sc.OnPhaseChanged += onPhase;
 
-            // Subscribe to injury events if InjuryManager exists
+            // Subscribe to injury events if InjuryManager exists. Scoped to the
+            // player's team — league-wide injuries happen daily and must not stop
+            // the Continue loop.
             var injMgr = InjuryManager.Instance;
-            Action<Player, InjuryEvent> onInjury = (p, e) => { playerInjured = true; };
+            Action<Player, InjuryEvent> onInjury = (p, e) =>
+            {
+                if (p != null && p.TeamId == gm.PlayerTeamId) playerInjured = true;
+            };
             if (injMgr != null) injMgr.OnPlayerInjured += onInjury;
 
             int safety = 0;

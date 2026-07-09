@@ -100,8 +100,12 @@ namespace NBAHeadCoach.Tests
             float threeRate = POSSESSIONS > 0 ? (float)threeAttempts / POSSESSIONS * 100f : 0;
             AssertRange(threeRate, 10f, 60f, $"Three-point attempt rate {threeRate:F1}%");
 
+            // Best-5 vs best-5 with the elite lineup ALWAYS on home offense — a deliberately
+            // favorable scenario that legitimately exceeds league-average efficiency. The old
+            // 1.3 cap predates the fix where decided "threes" were placed inside the arc and
+            // scored 2; with real three-point scoring this lineup sits ~1.3.
             float ppg = (float)totalPoints / POSSESSIONS;
-            AssertRange(ppg, 0.7f, 1.3f, $"Points per possession {ppg:F2}");
+            AssertRange(ppg, 0.7f, 1.4f, $"Points per possession {ppg:F2}");
 
             return (_passed, _failed);
         }
