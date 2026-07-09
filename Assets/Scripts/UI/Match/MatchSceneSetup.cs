@@ -447,6 +447,7 @@ namespace NBAHeadCoach.UI.Match
             _simController.OnPossessionChange += OnPossessionChange;
             _simController.OnGameComplete += OnGameComplete;
             _simController.OnLineupChanged += OnLineupChanged;
+            _simController.OnTimeout += OnTimeoutCalled;
         }
 
         private void OnFastForwardChanged(bool on)
@@ -558,6 +559,14 @@ namespace NBAHeadCoach.UI.Match
             // Refresh dot tooltips here: this fires only AFTER the possession finished
             // presenting, so hover stats never reveal a play before it's shown.
             _courtView?.RefreshPlayerStats(_simController?.LiveBoxScore);
+        }
+
+        private void OnTimeoutCalled(string teamId, Core.Gameplay.TimeoutReason reason)
+        {
+            // Your timeout = a coaching window: the sim is paused, so open the
+            // strategy overlay (with its SUBSTITUTIONS shortcut) automatically.
+            if (_playerTeam != null && teamId == _playerTeam.TeamId)
+                ShowStrategyOverlay();
         }
 
         private void OnLineupChanged(string teamId, string outId, string inId)
@@ -775,6 +784,13 @@ namespace NBAHeadCoach.UI.Match
             string[] paceNames = Enum.GetNames(typeof(PacePreference));
             int paceIdx = (int)strat.PacePreference;
             MkOverlayCycle(panel, "Pace", paceNames, paceIdx, v => strat.ApplyPacePreference((PacePreference)v));
+
+            // Timeout coaching window: subs live one tap away without closing the stoppage.
+            var subsRow = CreateRT(panel, "SubsShortcut");
+            subsRow.gameObject.AddComponent<LayoutElement>().preferredHeight = 32;
+            subsRow.gameObject.AddComponent<Image>().color = UITheme.CardBackground;
+            MkText(subsRow, "SUBSTITUTIONS  →", 12, FontStyle.Bold, UITheme.AccentPrimary, TextAnchor.MiddleCenter);
+            subsRow.gameObject.AddComponent<Button>().onClick.AddListener(ShowSubstitutionOverlay);
         }
 
         private void MkOverlayCycle(RectTransform parent, string label, string[] options, int currentIndex, Action<int> onChange)
@@ -817,6 +833,7 @@ namespace NBAHeadCoach.UI.Match
                 _simController.OnPossessionChange -= OnPossessionChange;
                 _simController.OnGameComplete -= OnGameComplete;
                 _simController.OnLineupChanged -= OnLineupChanged;
+                _simController.OnTimeout -= OnTimeoutCalled;
             }
             if (_director != null)
             {

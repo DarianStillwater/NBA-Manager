@@ -471,6 +471,7 @@ namespace NBAHeadCoach.Core
             if (result.Success)
             {
                 _isPaused = true;
+                ApplyTimeoutEffects(calledByPlayerTeam: true);
                 OnTimeout?.Invoke(_playerTeam.TeamId, TimeoutReason.Coach);
 
                 AddPlayByPlayEntry(new PlayByPlayEntry
@@ -805,11 +806,7 @@ namespace NBAHeadCoach.Core
 
                 OnTimeout?.Invoke(aiTeam.TeamId, (TimeoutReason)(int)decision.Reason);
 
-                // Reset unanswered points after timeout
-                if (checkHome)
-                    _awayUnansweredPoints = 0;
-                else
-                    _homeUnansweredPoints = 0;
+                ApplyTimeoutEffects(calledByPlayerTeam: false);
 
                 // Brief pause to show timeout
                 yield return new WaitForSeconds(0.5f);
@@ -1173,7 +1170,12 @@ namespace NBAHeadCoach.Core
 
         private Player GetPlayer(string playerId)
         {
-            return GameManager.Instance?.PlayerDatabase?.GetPlayer(playerId);
+            var p = GameManager.Instance?.PlayerDatabase?.GetPlayer(playerId);
+            if (p != null) return p;
+            // Fall back to the match teams' cached rosters (headless/test contexts
+            // where no GameManager exists).
+            p = _homeTeam?.Roster?.FirstOrDefault(x => x != null && x.PlayerId == playerId);
+            return p ?? _awayTeam?.Roster?.FirstOrDefault(x => x != null && x.PlayerId == playerId);
         }
 
         // ── Radio narration (court bar) ─────────────────────────────
@@ -1513,6 +1515,31 @@ namespace NBAHeadCoach.Core
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// What a timeout is actually FOR: everyone catches their breath (on-court
+        /// players recover more than the bench), runs are broken for both sides,
+        /// and the team that got timed-out against loses its momentum head of steam.
+        /// </summary>
+        internal void ApplyTimeoutEffects(bool calledByPlayerTeam)
+        {
+            if (_homeTeam != null && _awayTeam != null)
+            {
+                foreach (var id in _homeTeam.RosterPlayerIds.Concat(_awayTeam.RosterPlayerIds))
+                {
+                    var p = GetPlayer(id);
+                    if (p == null) continue;
+                    bool onCourt = _homeLineup.Contains(id) || _awayLineup.Contains(id);
+                    p.Energy = Mathf.Min(100f, p.Energy + (onCourt ? 6f : 3f));
+                }
+            }
+
+            _homeUnansweredPoints = 0;
+            _awayUnansweredPoints = 0;
+
+            var opposingCoach = calledByPlayerTeam ? _aiCoach : _playerCoach;
+            opposingCoach?.OnOpponentTimeout();
         }
 
         /// <summary>In-place slot replacement (preserves PG..C ordering) + change notification.</summary>

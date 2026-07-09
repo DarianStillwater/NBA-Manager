@@ -86,6 +86,7 @@ namespace NBAHeadCoach.Tests
             RunTest<PaceMappingTest>("Pace Mapping");
             RunTest<DefensiveSchemeEffectsTest>("Defensive Scheme Effects");
             RunTest<ZoneChoreographyTest>("Zone Choreography");
+            RunTest<TimeoutEffectsTest>("Timeout Effects");
 
             // Summary
             Debug.Log("\n" + new string('=', 70));

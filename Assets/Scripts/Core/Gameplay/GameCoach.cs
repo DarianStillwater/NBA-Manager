@@ -610,6 +610,14 @@ namespace NBAHeadCoach.Core.Gameplay
             _teamRunPoints = 0;
         }
 
+        /// <summary>The other bench called timeout to stop our run — momentum cools toward neutral.</summary>
+        public void OnOpponentTimeout()
+        {
+            _momentum = Mathf.MoveTowards(_momentum, 50f, 15f);
+            _teamRunPoints = 0;
+            _consecutiveScores = 0;
+        }
+
         // ==================== PLAY CALLS ====================
 
         /// <summary>
