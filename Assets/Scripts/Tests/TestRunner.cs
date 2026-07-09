@@ -55,6 +55,7 @@ namespace NBAHeadCoach.Tests
             RunTest<BenchCoachRenderTest>("Bench & Coach Render");
             RunTest<SubstitutionWalkTest>("Substitution Walk");
             RunTest<CoachBehaviorTest>("Coach Behavior & Ejection");
+            RunTest<PossessionBridgeTest>("Possession Bridge & FULL default");
             RunTest<ChoreographyTest>("Possession Choreography");
             RunTest<RegistryOrderTest>("System Registry Order");
             RunTest<GameCompletionParityTest>("Game Completion Parity");

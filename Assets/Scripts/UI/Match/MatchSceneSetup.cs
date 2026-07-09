@@ -328,7 +328,7 @@ namespace NBAHeadCoach.UI.Match
                     UpdateModeHighlight(idx);
                 });
             }
-            UpdateModeHighlight(1); // default Extended highlights
+            UpdateModeHighlight(2); // default Full match — watch every possession, no cuts
 
             // Spacer
             CreateRT(parent, "Sp2").gameObject.AddComponent<LayoutElement>().flexibleWidth = 1;

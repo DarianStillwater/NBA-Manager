@@ -54,6 +54,15 @@ namespace NBAHeadCoach.UI.Components
         private float[] _relTimes;          // seconds from possession start per state
         private int _cursor;
 
+        // Inter-possession bridge: slide dots + ball from the previous possession's final frame
+        // into this one's opening frame so motion is continuous rather than teleporting.
+        private readonly Dictionary<string, Vector2> _bridgeFrom = new Dictionary<string, Vector2>();
+        private readonly Dictionary<string, Vector2> _bridgeTo = new Dictionary<string, Vector2>();
+        private Vector2 _bridgeBallFrom, _bridgeBallTo;
+        private BallState _bridgeBallTarget;
+        private bool _bridgeReady;
+        private Vector2 _lastBallUi;
+
         public float PixelsPerFoot => _courtRect != null ? _courtRect.rect.height / 50f : 10f;
 
         #region Setup
@@ -346,6 +355,54 @@ namespace NBAHeadCoach.UI.Components
                 _relTimes[i] = rel;
                 prev = rel;
             }
+
+            CaptureBridge();
+        }
+
+        /// <summary>Snapshot where the dots + ball are now vs. where this possession opens, so the
+        /// director can slide them across the gap instead of snapping.</summary>
+        private void CaptureBridge()
+        {
+            _bridgeFrom.Clear();
+            _bridgeTo.Clear();
+            _bridgeReady = false;
+            if (_timeline == null || _timeline.Count == 0) return;
+
+            var first = _timeline[0];
+            for (int i = 0; i < first.Players.Length; i++)
+            {
+                var ps = first.Players[i];
+                if (string.IsNullOrEmpty(ps.PlayerId)) continue;
+                if (!_playerDots.TryGetValue(ps.PlayerId, out var dot) || dot == null) continue;
+                _bridgeFrom[ps.PlayerId] = dot.RectTransform.anchoredPosition;
+                _bridgeTo[ps.PlayerId] = CourtToUI(ps.X, ps.Y);
+            }
+
+            _bridgeBallTarget = first.Ball;
+            _bridgeBallTo = CourtToUI(first.Ball.X, first.Ball.Y);
+            _bridgeBallFrom = _lastBallUi == Vector2.zero ? _bridgeBallTo : _lastBallUi;
+            _bridgeReady = true;
+        }
+
+        /// <summary>Render the transition frame at fraction u (0 = previous end, 1 = this start).</summary>
+        public void BridgeRender(float u)
+        {
+            if (!_bridgeReady) return;
+            u = Mathf.Clamp01(u);
+
+            foreach (var kvp in _bridgeTo)
+            {
+                if (!_playerDots.TryGetValue(kvp.Key, out var dot) || dot == null) continue;
+                var from = _bridgeFrom.TryGetValue(kvp.Key, out var f) ? f : kvp.Value;
+                dot.SetPositionImmediate(Vector2.Lerp(from, kvp.Value, u));
+            }
+
+            if (_ball != null)
+            {
+                var pos = Vector2.Lerp(_bridgeBallFrom, _bridgeBallTo, u);
+                _ball.Render(pos, _bridgeBallTarget.Height, BallStatus.Held, _bridgeBallTarget.ShotStyle, false);
+                _lastBallUi = pos;
+            }
         }
 
         /// <summary>Render the court at playback time t (seconds from possession start).</summary>
@@ -394,7 +451,9 @@ namespace NBAHeadCoach.UI.Components
                                   Mathf.Abs(Mathf.Abs(bx) - CourtGeometry.RimX) < 1.2f &&
                                   Mathf.Abs(by) < 1.2f;
 
-                _ball.Render(CourtToUI(bx, by), bh, b.Ball.Status, b.Ball.ShotStyle, throughRim);
+                var ballUi = CourtToUI(bx, by);
+                _ball.Render(ballUi, bh, b.Ball.Status, b.Ball.ShotStyle, throughRim);
+                _lastBallUi = ballUi;
 
                 var overlay = bx >= 0f ? _rimOverlayRight : _rimOverlayLeft;
                 var other = bx >= 0f ? _rimOverlayLeft : _rimOverlayRight;

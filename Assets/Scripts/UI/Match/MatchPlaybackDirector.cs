@@ -18,7 +18,7 @@ namespace NBAHeadCoach.UI.Match
     /// </summary>
     public class MatchPlaybackDirector : MonoBehaviour
     {
-        public ViewingMode Mode { get; private set; } = ViewingMode.ExtendedHighlights;
+        public ViewingMode Mode { get; private set; } = ViewingMode.FullMatch;
 
         /// <summary>Ticker rows re-timed to playback (or condensed during skips).</summary>
         public event Action<PlayByPlayEntry> OnTickerEntry;
@@ -85,6 +85,12 @@ namespace NBAHeadCoach.UI.Match
         {
             SetFastForward(false);
             _court.BeginPossession(packet);
+
+            // Bridge the gap from the previous possession's final frame into this opening so the
+            // dots + ball slide across (inbound/transition) rather than teleporting. Skipped at
+            // Instant speed and honored through pauses.
+            if (_sim == null || _sim.CurrentSpeed != SimulationSpeed.Instant)
+                yield return BridgeIn();
 
             // Play the FULL choreographed timeline (through the shot's resolution — ball through
             // the net on a make, carom + rebound on a miss), not just up to the ball reaching the rim.
@@ -191,6 +197,22 @@ namespace NBAHeadCoach.UI.Match
             {
                 Complete();
             }
+        }
+
+        // Short transition slide from the previous possession's final frame into this opening.
+        private IEnumerator BridgeIn()
+        {
+            float speed = PlaybackDecider.SpeedMultiplier(_sim != null ? _sim.CurrentSpeed : SimulationSpeed.Normal);
+            float dur = Mathf.Clamp(0.35f / speed, 0.05f, 0.35f);
+            float b = 0f;
+            while (b < dur)
+            {
+                while (_sim != null && _sim.IsPaused) yield return null;
+                b += Time.deltaTime;
+                _court.BridgeRender(b / dur);
+                yield return null;
+            }
+            _court.BridgeRender(1f);
         }
 
         // Brief dwell on a possession that ended in a shot, so the make/miss + rebound reads.
