@@ -105,6 +105,7 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
 
             BuildOffenseAndBall();
             _defPlan = DefenseChoreographer.BuildPlan(_action, script, _rng, DefensiveScheme);
+            EmitExecutionBeats();
 
             // Builders don't run in strict time order — sort and clamp for consumers.
             for (int i = 0; i < _beats.Count; i++)
@@ -112,6 +113,32 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
             _beats.Sort((a, b) => a.T.CompareTo(b.T));
 
             return Emit();
+        }
+
+        /// <summary>
+        /// Narrate the possession's execution facts — only when they touched a real
+        /// shot, so the radio calls out the lapse the viewer can actually see.
+        /// </summary>
+        private void EmitExecutionBeats()
+        {
+            if (_shotStartT <= 0f || _s.ShooterIndex < 0) return;
+
+            if (_s.Lapse != LapseType.None && _s.LapseDefenderIndex >= 0)
+            {
+                var kind = _s.Lapse switch
+                {
+                    LapseType.LateCloseout => NarrationBeatKind.LateCloseout,
+                    LapseType.BlownRotation => NarrationBeatKind.BlownRotation,
+                    _ => NarrationBeatKind.MissedHelp
+                };
+                var beat = Beat(Math.Max(0.1f, _shotStartT - 0.35f), kind,
+                    _s.LapseDefenderIndex, _s.ShooterIndex);
+                beat.ActorIsDefense = true;
+            }
+
+            if (_s.Deviation == OffensiveDeviation.HeroBall && _s.OffDeviatorIndex >= 0)
+                Beat(Math.Max(0.1f, _shotStartT - 1.2f), NarrationBeatKind.HeroBall,
+                    _s.OffDeviatorIndex);
         }
 
         /// <summary>Record a narration beat (presentational only — never a PossessionEvent).</summary>

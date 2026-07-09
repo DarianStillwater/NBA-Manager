@@ -214,6 +214,41 @@ namespace NBAHeadCoach.Core
                         : Pick(beat.Kind, "Rims out!", "No good.", "Front iron.", "Won't go.");
                     break;
 
+                case NarrationBeatKind.LateCloseout:
+                    text = Pick(beat.Kind,
+                        $"{a} is late getting out there!",
+                        $"{a} can't get there in time — clean look coming.",
+                        $"Slow closeout from {a}!",
+                        $"{t} has all day — {a} was caught napping.");
+                    style = NarrationStyle.Excited;
+                    break;
+
+                case NarrationBeatKind.BlownRotation:
+                    text = Pick(beat.Kind,
+                        $"{a} loses his man on the rotation!",
+                        $"Blown assignment — {a} is a step behind the play.",
+                        $"{a} gets caught ball-watching!",
+                        $"The rotation breaks down on {a}'s side.");
+                    style = NarrationStyle.Excited;
+                    break;
+
+                case NarrationBeatKind.MissedHelp:
+                    text = Pick(beat.Kind,
+                        $"The help never comes from {a}!",
+                        $"{a} stays home — the lane is wide open.",
+                        $"No help-side rotation from {a}.");
+                    style = NarrationStyle.Excited;
+                    break;
+
+                case NarrationBeatKind.HeroBall:
+                    text = Pick(beat.Kind,
+                        $"{a} waves off the play and goes it alone...",
+                        $"{a} isn't giving this one up.",
+                        $"That's not the call — {a} hunting his own shot.",
+                        $"{a} freezes out the offense.");
+                    style = NarrationStyle.Excited;
+                    break;
+
                 default:
                     text = "";
                     break;

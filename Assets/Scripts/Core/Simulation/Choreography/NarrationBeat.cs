@@ -26,7 +26,13 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
         LooseBallTurnover,
         Violation,
         FreeThrowSetup,
-        FreeThrowAttempt
+        FreeThrowAttempt,
+
+        // Execution-variance beats (decided in the outcome layer, drawn here)
+        LateCloseout,     // defender late getting out to the shooter
+        BlownRotation,    // defender loses his assignment in the scheme
+        MissedHelp,       // help rotation never comes
+        HeroBall          // offensive player waves off the call and goes alone
     }
 
     /// <summary>

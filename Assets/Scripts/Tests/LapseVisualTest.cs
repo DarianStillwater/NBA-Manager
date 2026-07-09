@@ -18,6 +18,7 @@ namespace NBAHeadCoach.Tests
         {
             _passed = 0; _failed = 0;
             TestBlownRotationFreezesTheCulprit();
+            TestLapseNarrationBeats();
             return (_passed, _failed);
         }
 
@@ -91,6 +92,47 @@ namespace NBAHeadCoach.Tests
 
             Assert(verified >= 2, $"Blown-rotation possessions found and verified ({verified})");
             Assert(factChecked > 0, "Lapse facts reach the possession result in full detail");
+        }
+
+        private void TestLapseNarrationBeats()
+        {
+            var offense = Enumerable.Range(0, 5).Select(i => MakePlayer($"O{i}", 70)).ToArray();
+            var defense = Enumerable.Range(0, 5).Select(i => MakePlayer($"X{i}", 40)).ToArray();
+            var off = TeamStrategy.CreateDefault("GSW");
+            var def = TeamStrategy.CreateDefault("LAL");
+            def.DefensiveSystem.PrimaryScheme = DefensiveSchemeType.Zone1_3_1;
+
+            var lapseKinds = new[]
+            {
+                NarrationBeatKind.LateCloseout, NarrationBeatKind.BlownRotation,
+                NarrationBeatKind.MissedHelp, NarrationBeatKind.HeroBall
+            };
+
+            var sim = new PossessionSimulator(60606) { SpatialDetail = SpatialDetailLevel.Full };
+            int narrated = 0, cleanChecked = 0;
+            bool cleanStaysQuiet = true;
+
+            for (int n = 0; n < 500 && (narrated < 3 || cleanChecked < 20); n++)
+            {
+                foreach (var p in offense.Concat(defense)) p.Energy = 100f;
+                var r = sim.SimulatePossession(offense, defense, off, def,
+                    600f, 2, true, "GSW", "LAL", 0, false);
+                if (r.NarrationBeats == null) continue;
+
+                bool hasShot = r.Events.Any(e => e.Type == NBAHeadCoach.Core.Simulation.EventType.Shot);
+                bool hasLapseBeat = r.NarrationBeats.Any(b => lapseKinds.Contains(b.Kind));
+
+                if (r.Lapse != LapseType.None && hasShot && hasLapseBeat) narrated++;
+                if (r.Lapse == LapseType.None && r.Deviation == OffensiveDeviation.None)
+                {
+                    cleanChecked++;
+                    if (hasLapseBeat) cleanStaysQuiet = false;
+                }
+            }
+
+            Assert(narrated >= 3, $"Lapse possessions with shots emit a narration beat ({narrated})");
+            Assert(cleanStaysQuiet, "Clean possessions never narrate a lapse");
+            Assert(cleanChecked >= 20, $"Enough clean possessions checked ({cleanChecked})");
         }
     }
 }

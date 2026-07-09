@@ -1186,6 +1186,13 @@ namespace NBAHeadCoach.Core
         {
             switch (kind)
             {
+                // Execution lapses are the coaching story of the possession —
+                // narrate them ahead of generic action beats.
+                case Simulation.Choreography.NarrationBeatKind.LateCloseout:
+                case Simulation.Choreography.NarrationBeatKind.BlownRotation:
+                case Simulation.Choreography.NarrationBeatKind.MissedHelp:
+                case Simulation.Choreography.NarrationBeatKind.HeroBall:
+                    return 0;
                 case Simulation.Choreography.NarrationBeatKind.Drive:
                 case Simulation.Choreography.NarrationBeatKind.Curl:
                 case Simulation.Choreography.NarrationBeatKind.BackdoorCut:
