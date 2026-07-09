@@ -208,6 +208,14 @@ namespace NBAHeadCoach.Core.Simulation
             result.Lapse = lapse;
             result.LapseDefenderIndex = lapseIdx;
 
+            // ...and does somebody on offense hijack the play call?
+            var (deviation, devIdx) = ExecutionVariance.RollOffensiveDeviation(
+                _offensePlayers, _currentOffFamiliarityMult, _random);
+            _script.Deviation = deviation;
+            _script.OffDeviatorIndex = devIdx;
+            result.Deviation = deviation;
+            result.OffDeviatorIndex = devIdx;
+
             // Shot clock remaining at the end of the possession (the legacy tick loop
             // decremented this in 0.5s steps; preserved exactly for decision parity —
             // it feeds the shot-clock-pressure modifier in ExecuteShot).
@@ -240,6 +248,17 @@ namespace NBAHeadCoach.Core.Simulation
             {
                 // Select shooter (could be different from ball handler after ball movement)
                 int shooterIndex = SelectShooter();
+
+                // Hero ball: the deviator waves off the call, clears out, and forces
+                // his own look — a contested iso instead of the system's shot.
+                if (_script.Deviation == OffensiveDeviation.HeroBall &&
+                    _script.OffDeviatorIndex >= 0 && _script.OffDeviatorIndex < 5)
+                {
+                    shooterIndex = _script.OffDeviatorIndex;
+                    _ballHandlerIndex = shooterIndex;
+                    _script.InitialBallHandlerIndex = shooterIndex;
+                    _currentAction = HalfCourtAction.Isolation;
+                }
 
                 // Reposition shooter to appropriate zone based on strategy
                 RepositionShooterForZone(shooterIndex);
@@ -964,6 +983,15 @@ namespace NBAHeadCoach.Core.Simulation
             float midWeight = Mathf.Max(_offenseStrategy.MidRangeFrequency, 1f);
             float rimWeight = Mathf.Max(_offenseStrategy.RimAttackFrequency, 1f);
 
+            // A player ignoring the called system shoots from instinct, not the mix
+            if (_script != null && _script.Deviation == OffensiveDeviation.IgnoredSystem)
+            {
+                var p = _offensePlayers[shooterIndex];
+                threeWeight = Mathf.Max(p.Shot_Three, 1f);
+                midWeight = Mathf.Max(p.Shot_MidRange, 1f);
+                rimWeight = Mathf.Max(p.Finishing_Rim, 1f);
+            }
+
             // The action tilts where the shot comes from
             switch (_currentAction)
             {
@@ -1388,6 +1416,9 @@ namespace NBAHeadCoach.Core.Simulation
         private float ApplyLapseToDefenderDistance(float defenderDistance)
         {
             if (_script == null) return defenderDistance;
+            // Forced hero-ball looks come tighter-guarded than the system's shot.
+            if (_script.Deviation == OffensiveDeviation.HeroBall)
+                defenderDistance = Mathf.Max(defenderDistance - 1.5f, 0.5f);
             return _script.Lapse switch
             {
                 LapseType.LateCloseout => Mathf.Min(defenderDistance + 2.5f, 9f),

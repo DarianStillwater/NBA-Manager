@@ -61,6 +61,54 @@ namespace NBAHeadCoach.Core.Simulation
             return Mathf.Clamp(rate, 0.002f, 0.045f);
         }
 
+        /// <summary>Per-player chance of hijacking the called offense this possession.</summary>
+        public static float DeviationPropensity(Player p)
+        {
+            if (p == null) return 0.005f;
+            float ballMove = p.Tendencies != null ? p.Tendencies.BallMovement : 0f;   // −100 stopper … +100 mover
+            float risk = p.Tendencies != null ? p.Tendencies.RiskTolerance : 0f;      // −100 careful … +100 gunner
+            float discipline = p.BasketballIQ * 0.6f +
+                               (50f + ballMove * 0.5f) * 0.25f +
+                               (50f - risk * 0.5f) * 0.15f;
+            float rate = 0.003f + 0.020f * Mathf.Clamp01((70f - discipline) / 40f);
+            return Mathf.Clamp(rate, 0.002f, 0.030f);
+        }
+
+        /// <summary>
+        /// Roll whether somebody deviates from the called offense — the selfish
+        /// low-IQ gunner forcing his own look (HeroBall) or shot selection drifting
+        /// back to instinct (IgnoredSystem). familiarityMult &gt; 1 right after a
+        /// system change, when the new calls haven't sunk in yet.
+        /// </summary>
+        public static (OffensiveDeviation type, int deviatorIndex) RollOffensiveDeviation(
+            Player[] offense, float familiarityMult, System.Random rng)
+        {
+            if (offense == null || offense.Length == 0) return (OffensiveDeviation.None, -1);
+
+            float total = 0f;
+            var w = new float[offense.Length];
+            for (int i = 0; i < offense.Length; i++)
+            {
+                w[i] = DeviationPropensity(offense[i]);
+                total += w[i];
+            }
+
+            float teamRate = Mathf.Min(total * familiarityMult, 0.15f);
+            if (rng.NextDouble() >= teamRate) return (OffensiveDeviation.None, -1);
+
+            float pick = (float)rng.NextDouble() * total;
+            int deviator = offense.Length - 1;
+            for (int i = 0; i < offense.Length; i++)
+            {
+                pick -= w[i];
+                if (pick <= 0f) { deviator = i; break; }
+            }
+
+            var type = rng.NextDouble() < 0.55 ? OffensiveDeviation.HeroBall
+                                               : OffensiveDeviation.IgnoredSystem;
+            return (type, deviator);
+        }
+
         /// <summary>
         /// Roll the possession's defensive lapse. Returns (None, -1) most of the time.
         /// familiarityMult &gt; 1 right after a mid-game scheme change.

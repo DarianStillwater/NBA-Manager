@@ -104,6 +104,23 @@ namespace NBAHeadCoach.Tests
 
         // ── Seeded directional sims ──
 
+        // Directional effects are deliberately small (±4-8%), so every comparison
+        // aggregates three seeds — a single seeded stream can noise them out.
+        private static readonly int[] SEEDS = { 311, 1422, 2533 };
+
+        private Counts RunSeeds(TeamStrategy off, TeamStrategy def)
+        {
+            var total = new Counts();
+            foreach (int seed in SEEDS)
+            {
+                var c = RunBatch(off, def, seed);
+                total.Fouls += c.Fouls; total.Turnovers += c.Turnovers;
+                total.ShotsMade += c.ShotsMade; total.ShotsTaken += c.ShotsTaken;
+                total.OffRebounds += c.OffRebounds;
+            }
+            return total;
+        }
+
         private void TestZone23WallsTheRim()
         {
             var rimOffense = TeamStrategy.CreateDefault("GSW");
@@ -111,8 +128,8 @@ namespace NBAHeadCoach.Tests
             rimOffense.ThreePointFrequency = 1;
             rimOffense.MidRangeFrequency = 1;
 
-            float pct23 = FgPct(RunBatch(rimOffense, DefenseWith(DefensiveSchemeType.Zone2_3), 311));
-            float pct32 = FgPct(RunBatch(rimOffense, DefenseWith(DefensiveSchemeType.Zone3_2), 311));
+            float pct23 = FgPct(RunSeeds(rimOffense, DefenseWith(DefensiveSchemeType.Zone2_3)));
+            float pct32 = FgPct(RunSeeds(rimOffense, DefenseWith(DefensiveSchemeType.Zone3_2)));
 
             AssertGreaterThan(pct32, pct23 + 0.015f,
                 $"Rim-heavy offense shoots worse into a 2-3 than a 3-2 ({pct23:P1} vs {pct32:P1})");
@@ -121,8 +138,8 @@ namespace NBAHeadCoach.Tests
         private void Test131ForcesTurnovers()
         {
             var off = TeamStrategy.CreateDefault("GSW");
-            int tos131 = RunBatch(off, DefenseWith(DefensiveSchemeType.Zone1_3_1), 422).Turnovers;
-            int tosStd = RunBatch(off, DefenseWith(DefensiveSchemeType.ManToManStandard), 422).Turnovers;
+            int tos131 = RunSeeds(off, DefenseWith(DefensiveSchemeType.Zone1_3_1)).Turnovers;
+            int tosStd = RunSeeds(off, DefenseWith(DefensiveSchemeType.ManToManStandard)).Turnovers;
 
             AssertGreaterThan(tos131, tosStd,
                 $"1-3-1 forces more turnovers than standard man ({tos131} vs {tosStd})");
@@ -131,8 +148,8 @@ namespace NBAHeadCoach.Tests
         private void TestAggressiveManFoulsMoreThanZone()
         {
             var off = TeamStrategy.CreateDefault("GSW");
-            int foulsAgg = RunBatch(off, DefenseWith(DefensiveSchemeType.ManToManAggressive), 533).Fouls;
-            int foulsZone = RunBatch(off, DefenseWith(DefensiveSchemeType.Zone2_3), 533).Fouls;
+            int foulsAgg = RunSeeds(off, DefenseWith(DefensiveSchemeType.ManToManAggressive)).Fouls;
+            int foulsZone = RunSeeds(off, DefenseWith(DefensiveSchemeType.Zone2_3)).Fouls;
 
             AssertGreaterThan(foulsAgg, foulsZone + 5,
                 $"Aggressive man fouls more than a 2-3 zone ({foulsAgg} vs {foulsZone})");
@@ -143,8 +160,8 @@ namespace NBAHeadCoach.Tests
             var off = TeamStrategy.CreateDefault("GSW");
             off.OffensiveReboundingFocus = 4;
 
-            int oreb131 = RunBatch(off, DefenseWith(DefensiveSchemeType.Zone1_3_1), 644).OffRebounds;
-            int orebStd = RunBatch(off, DefenseWith(DefensiveSchemeType.ManToManStandard), 644).OffRebounds;
+            int oreb131 = RunSeeds(off, DefenseWith(DefensiveSchemeType.Zone1_3_1)).OffRebounds;
+            int orebStd = RunSeeds(off, DefenseWith(DefensiveSchemeType.ManToManStandard)).OffRebounds;
 
             AssertGreaterThan(oreb131, orebStd,
                 $"1-3-1 concedes more offensive boards than man ({oreb131} vs {orebStd})");

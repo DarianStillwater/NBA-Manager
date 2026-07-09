@@ -92,6 +92,7 @@ namespace NBAHeadCoach.Tests
             RunTest<ZoneMovementTest>("Zone Movement");
             RunTest<DefensiveLapseTest>("Defensive Lapses");
             RunTest<SchemeFamiliarityTest>("Scheme Familiarity");
+            RunTest<OffenseDeviationTest>("Offense Deviation");
 
             // Summary
             Debug.Log("\n" + new string('=', 70));
