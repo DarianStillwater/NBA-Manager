@@ -80,6 +80,7 @@ namespace NBAHeadCoach.Tests
             RunTest<CoachOnlyModeTest>("Coach-Only Mode");
             RunTest<AllStarWeekendTest>("All-Star Weekend");
             RunTest<SummerLeagueTest>("Summer League");
+            RunTest<TrainingCampTest>("Training Camp");
 
             // Summary
             Debug.Log("\n" + new string('=', 70));

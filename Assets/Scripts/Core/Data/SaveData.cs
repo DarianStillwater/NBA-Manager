@@ -109,6 +109,7 @@ namespace NBAHeadCoach.Core.Data
         public NBAHeadCoach.Core.AI.AIGMSaveData AIGMData;
         public NBAHeadCoach.Core.Manager.AllStarSaveData AllStarData;
         public NBAHeadCoach.Core.Manager.SummerLeagueSaveData SummerLeagueData;
+        public NBAHeadCoach.Core.Manager.TrainingCampSectionData TrainingCampData;
 
         /// <summary>
         /// Create a display-friendly summary of the save
@@ -786,6 +787,10 @@ namespace NBAHeadCoach.Core.Data
         public bool FreeAgencyOpen;
         public bool SummerDone;
         public bool CampDone;
+        public bool CampStarted;
+        public int ScrimmagesPlayed;
+        public int CampFocusInt;
+        public List<string> ScrimmageLines = new List<string>();
         public List<FreeAgentRecord> FreeAgentPool = new List<FreeAgentRecord>();
 
         // Mid-draft-night state (the class regenerates deterministically from the

@@ -267,6 +267,15 @@ namespace NBAHeadCoach.Core.Manager
         private bool _draftDone;
         private bool _freeAgencyOpen;
         private bool _summerDone;
+        private bool _campStarted;
+        private int _scrimmagesPlayed;
+        private readonly List<string> _scrimmageLines = new List<string>();
+        /// <summary>The player's chosen daily training focus during camp (UI-set).</summary>
+        public TrainingFocus CampFocus = TrainingFocus.TeamBuilding;
+        /// <summary>Most recent camp day report, for the Front Office camp card.</summary>
+        public CampDayReport LastCampReport { get; private set; }
+        public IReadOnlyList<string> ScrimmageLines => _scrimmageLines;
+        public bool CampInProgress => _campStarted && !_campDone;
         private bool _campDone;
         private System.Random _rng = new System.Random();
 
@@ -323,7 +332,7 @@ namespace NBAHeadCoach.Core.Manager
             {
                 if (!_postSeasonDone) { RunPostSeason(gm); _postSeasonDone = true; }
 
-                if (!_draftDone && date >= new DateTime(_calendarYear, 6, 22))
+                if (!_draftDone && date >= OffseasonDates.Draft(_calendarYear))
                 {
                     if (!_draftStarted) StartDraftNight(gm, date);
                     // Advancing past draft night with a pick pending = the clock ran
@@ -333,19 +342,24 @@ namespace NBAHeadCoach.Core.Manager
                     if (!_onTheClock) ContinueDraft(gm);
                 }
 
-                if (_draftDone && !_freeAgencyOpen && date >= new DateTime(_calendarYear, 7, 6))
+                if (_draftDone && !_freeAgencyOpen && date >= OffseasonDates.FreeAgency(_calendarYear))
                 { _freeAgencyOpen = true; OpenFreeAgency(gm); }
 
                 if (_freeAgencyOpen && !_campDone)
                     RunDailyFreeAgency(gm, date);
 
-                if (!_summerDone && date >= new DateTime(_calendarYear, 7, 12))
+                if (!_summerDone && date >= OffseasonDates.SummerLeague(_calendarYear))
                 { RunSummerLeague(gm); _summerDone = true; }
 
-                if (!_campDone && date >= new DateTime(_calendarYear, 9, 27))
-                { RunRosterCompliance(gm); _campDone = true; }
+                if (!_campDone && date >= OffseasonDates.CampStart(_calendarYear))
+                {
+                    if (!_campStarted) { StartCamp(gm); _campStarted = true; }
+                    RunCampDay(gm, date);
+                    if (date >= OffseasonDates.CampEnd(_calendarYear))
+                    { FinishCamp(gm); _campDone = true; }
+                }
 
-                if (_campDone && date >= new DateTime(_calendarYear, 10, 21))
+                if (_campDone && date >= OffseasonDates.Rollover(_calendarYear))
                     Rollover(gm);
             }
             catch (Exception ex)
@@ -902,6 +916,99 @@ namespace NBAHeadCoach.Core.Manager
             }
         }
 
+        /// <summary>Sep 27: camps open. The player's camp runs day-by-day with a chosen focus.</summary>
+        private void StartCamp(GameManager gm)
+        {
+            var team = gm.GetPlayerTeam();
+            var tc = gm.TrainingCampManager;
+            if (team != null && tc != null)
+                tc.StartTrainingCamp(team, (team.RosterPlayerIds ?? new List<string>())
+                    .Select(id => gm.PlayerDatabase?.GetPlayer(id))
+                    .Where(pl => pl != null).ToList());
+
+            _scrimmageLines.Clear();
+            _scrimmagesPlayed = 0;
+            InboxService.Instance?.Publish(InboxMessageType.League, "League Office",
+                "Training camps open",
+                "Pick a daily focus at the Front Office desk. Three preseason scrimmages before opening night.",
+                deepLinkPanelId: "FrontOffice");
+        }
+
+        private void RunCampDay(GameManager gm, DateTime date)
+        {
+            var team = gm.GetPlayerTeam();
+            var tc = gm.TrainingCampManager;
+            if (team == null || tc == null) return;
+
+            var roster = (team.RosterPlayerIds ?? new List<string>())
+                .Select(id => gm.PlayerDatabase?.GetPlayer(id))
+                .Where(pl => pl != null).ToList();
+
+            LastCampReport = tc.AdvanceCampDay(team, roster, CampFocus);
+
+            if (OffseasonDates.IsScrimmageDay(date) && _scrimmagesPlayed < OffseasonDates.ScrimmageDays.Length)
+                RunScrimmage(gm, team, roster, date);
+        }
+
+        /// <summary>A camp scrimmage: the REAL sim as an exhibition — no W/L, no stats.</summary>
+        private void RunScrimmage(GameManager gm, Data.Team team, List<Data.Player> roster, DateTime date)
+        {
+            var opponents = gm.AllTeams?.Where(t => t != null && t.TeamId != team.TeamId).ToList();
+            if (opponents == null || opponents.Count == 0) return;
+            var opponent = opponents[_rng.Next(opponents.Count)];
+
+            var sim = new Simulation.GameSimulator(gm.PlayerDatabase);
+            var result = sim.SimulateExhibition(team, opponent);
+            int us = result.HomeScore, them = result.AwayScore;
+
+            _scrimmagesPlayed++;
+            var game = new PreseasonGame
+            {
+                GameId = $"PRE_{_calendarYear}_{_scrimmagesPlayed}",
+                OpponentTeamId = opponent.TeamId
+            };
+            gm.TrainingCampManager?.SimulatePreseasonGame(game, team, opponent, roster,
+                (opponent.RosterPlayerIds ?? new List<string>())
+                    .Select(id => gm.PlayerDatabase?.GetPlayer(id)).Where(pl => pl != null).ToList(),
+                us, them);
+
+            string line = $"Scrimmage {_scrimmagesPlayed}: {(us > them ? "W" : "L")} {us}-{them} vs {opponent.Name}";
+            _scrimmageLines.Add(line);
+            InboxService.Instance?.Publish(InboxMessageType.League, "Coaching Staff",
+                line, "Preseason reps — the result doesn't count, the tape does.",
+                deepLinkPanelId: "FrontOffice");
+        }
+
+        /// <summary>Oct 20: camp closes — cut recommendations, then roster compliance.</summary>
+        private void FinishCamp(GameManager gm)
+        {
+            var tc = gm.TrainingCampManager;
+            var team = gm.GetPlayerTeam();
+            if (tc != null && team != null)
+            {
+                var roster = (team.RosterPlayerIds ?? new List<string>())
+                    .Select(id => gm.PlayerDatabase?.GetPlayer(id))
+                    .Where(pl => pl != null).ToList();
+                var recs = tc.GetCutRecommendations(team, roster);
+                if (recs != null && recs.Count > 0)
+                {
+                    string names = string.Join(", ", recs.Take(3).Select(r => r.PlayerName));
+                    InboxService.Instance?.Publish(InboxMessageType.League, "Coaching Staff",
+                        "Camp report: cut candidates",
+                        $"The staff would look hard at: {names}. Roster compliance runs before opening night.",
+                        deepLinkPanelId: "FrontOffice");
+                }
+                tc.CompleteCamp();
+            }
+
+            // AI teams ran their own quiet camps
+            foreach (var t in gm.AllTeams)
+                if (t != null && t.TeamId != gm.PlayerTeamId)
+                    t.TeamChemistry = Math.Min(100, t.TeamChemistry + 8f);
+
+            RunRosterCompliance(gm);
+        }
+
         /// <summary>
         /// Camp-time roster compliance: trim to 15, fill to 13 with minimum signings,
         /// and refresh every team's lineup for the new rosters.
@@ -1017,6 +1124,10 @@ namespace NBAHeadCoach.Core.Manager
                 FreeAgencyOpen = _freeAgencyOpen,
                 SummerDone = _summerDone,
                 CampDone = _campDone,
+                CampStarted = _campStarted,
+                ScrimmagesPlayed = _scrimmagesPlayed,
+                CampFocusInt = (int)CampFocus,
+                ScrimmageLines = new List<string>(_scrimmageLines),
                 DraftStarted = _draftStarted,
                 OnTheClock = _onTheClock,
                 NextPick = _nextPick,
@@ -1050,6 +1161,11 @@ namespace NBAHeadCoach.Core.Manager
             _freeAgencyOpen = s.FreeAgencyOpen;
             _summerDone = s.SummerDone;
             _campDone = s.CampDone;
+            _campStarted = s.CampStarted;
+            _scrimmagesPlayed = s.ScrimmagesPlayed;
+            CampFocus = (TrainingFocus)s.CampFocusInt;
+            _scrimmageLines.Clear();
+            if (s.ScrimmageLines != null) _scrimmageLines.AddRange(s.ScrimmageLines);
             _rng = new System.Random(_seasonLabel * 31 + 7);
 
             var gm = GameManager.Instance;

@@ -68,6 +68,7 @@ namespace NBAHeadCoach.UI.GamePanels
             var scroll = B.FixedArea(bodyGo.GetComponent<RectTransform>());
 
             BuildGMDeskCard(scroll);
+            if (_tab == "FREE AGENCY") BuildTrainingCampCard(scroll, GameManager.Instance);
             if (_tab == "FREE AGENCY") BuildSummerLeagueReview(scroll, GameManager.Instance);
             if (_tab == "DRAFT") BuildDraft(scroll);
             else if (_tab == "TRADES") BuildTrades(scroll);
@@ -188,6 +189,91 @@ namespace NBAHeadCoach.UI.GamePanels
                 11, FontStyle.Normal, UITheme.TextSecondary);
             t.gameObject.AddComponent<LayoutElement>().flexibleHeight = 1;
         }
+
+        /// <summary>Camp desk: daily focus, latest report, scrimmage results, cut watch.</summary>
+        private void BuildTrainingCampCard(RectTransform scroll, GameManager gm)
+        {
+            var off = gm.Offseason;
+            if (off == null || !off.CampInProgress) return;
+            var tc = gm.TrainingCampManager;
+            var status = tc?.GetStatus();
+            if (status == null) return;
+
+            var card = B.Card(scroll, $"TRAINING CAMP — DAY {status.Day}, {CampPhaseWord(status.Phase)}", _teamColor);
+            card.gameObject.AddComponent<LayoutElement>().preferredHeight = 200;
+            var rt = CardBody(card);
+
+            // Focus selector
+            var focusRow = B.Child(rt, "FocusRow");
+            focusRow.AddComponent<LayoutElement>().preferredHeight = 26;
+            var fh = focusRow.AddComponent<HorizontalLayoutGroup>();
+            fh.childControlWidth = true; fh.childControlHeight = true;
+            fh.childForceExpandWidth = false; fh.spacing = 8;
+            var fl = B.Text(focusRow.GetComponent<RectTransform>(), "L",
+                $"Today's focus: {FocusWord(off.CampFocus)}", 12, FontStyle.Bold, UITheme.TextPrimary);
+            fl.gameObject.AddComponent<LayoutElement>().preferredWidth = 280;
+            var fbtn = B.Child(focusRow.GetComponent<RectTransform>(), "Cycle");
+            fbtn.AddComponent<LayoutElement>().preferredWidth = 110;
+            fbtn.AddComponent<Image>().color = UITheme.DarkenColor(UITheme.AccentSecondary, 0.5f);
+            fbtn.AddComponent<Button>().onClick.AddListener(() =>
+            {
+                var values = (TrainingFocus[])Enum.GetValues(typeof(TrainingFocus));
+                off.CampFocus = values[((int)off.CampFocus + 1) % values.Length];
+                Refresh();
+            });
+            var fbt = B.Text(fbtn.GetComponent<RectTransform>(), "T", "CHANGE", 11, FontStyle.Bold, Color.white);
+            B.Stretch(fbt.gameObject); fbt.alignment = TextAnchor.MiddleCenter;
+
+            // Latest report, in words
+            var report = off.LastCampReport;
+            if (report != null)
+            {
+                string standouts = report.StandoutPerformers.Count > 0
+                    ? string.Join(", ", report.StandoutPerformers.Select(sp => sp.PlayerName)) : "nobody yet";
+                string strugglers = report.StrugglingPlayers.Count > 0
+                    ? string.Join(", ", report.StrugglingPlayers.Select(sp => sp.PlayerName)) : "nobody";
+                string chem = report.ChemistryGain > 1.2f ? "Chemistry is building fast."
+                    : report.ChemistryGain > 0.4f ? "Chemistry is coming along." : "Chemistry work has been light.";
+                var rep = B.Text(rt, "Report",
+                    $"Standing out: {standouts}\nStruggling: {strugglers}\n{chem}",
+                    11, FontStyle.Normal, UITheme.TextSecondary);
+                rep.gameObject.AddComponent<LayoutElement>().preferredHeight = 52;
+
+                foreach (var inj in report.Injuries)
+                {
+                    var it = B.Text(rt, "Inj", $"⚠ {inj.PlayerName} — {inj.Severity}, out ~{inj.DaysOut} days",
+                        11, FontStyle.Bold, UITheme.Warning);
+                    it.gameObject.AddComponent<LayoutElement>().preferredHeight = 16;
+                }
+            }
+
+            foreach (var line in off.ScrimmageLines)
+            {
+                var lt = B.Text(rt, "Scrim", line, 11, FontStyle.Italic, UITheme.TextSecondary);
+                lt.gameObject.AddComponent<LayoutElement>().preferredHeight = 16;
+            }
+        }
+
+        private static string CampPhaseWord(TrainingCampPhase phase) => phase switch
+        {
+            TrainingCampPhase.EarlyCamp => "CONDITIONING",
+            TrainingCampPhase.MidCamp => "SCRIMMAGES",
+            TrainingCampPhase.Preseason => "PRESEASON",
+            TrainingCampPhase.FinalCuts => "FINAL CUTS",
+            _ => phase.ToString().ToUpper()
+        };
+
+        private static string FocusWord(TrainingFocus focus) => focus switch
+        {
+            TrainingFocus.Offense => "Offensive sets",
+            TrainingFocus.Defense => "Defensive principles",
+            TrainingFocus.Conditioning => "Conditioning",
+            TrainingFocus.Shooting => "Shooting drills",
+            TrainingFocus.PlaybookInstallation => "Playbook installation",
+            TrainingFocus.TeamBuilding => "Team building",
+            TrainingFocus.PlayerEvaluation => "Player evaluation",
+            _ => focus.ToString()
+        };
 
         /// <summary>Post-Vegas review: your summer squad's lines and scout reads.</summary>
         private void BuildSummerLeagueReview(RectTransform scroll, GameManager gm)

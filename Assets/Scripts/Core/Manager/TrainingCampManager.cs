@@ -10,8 +10,10 @@ namespace NBAHeadCoach.Core.Manager
     /// Manages training camp and preseason activities.
     /// Handles roster cuts, playbook installation, chemistry building, and preseason games.
     /// </summary>
-    public class TrainingCampManager
+    public class TrainingCampManager : ISaveSection
     {
+        public string SystemId => "TrainingCamp";
+
         public static TrainingCampManager Instance { get; private set; }
 
         #region Configuration
@@ -228,14 +230,16 @@ namespace NBAHeadCoach.Core.Manager
         /// Simulate a preseason game
         /// </summary>
         public PreseasonGameResult SimulatePreseasonGame(PreseasonGame game, Team playerTeam, Team opponent,
-            List<Player> playerRoster, List<Player> opponentRoster)
+            List<Player> playerRoster, List<Player> opponentRoster,
+            int? realPlayerScore = null, int? realOpponentScore = null)
         {
-            // Simple simulation - focus on player evaluation
+            // Scores come from the real exhibition sim when available; the random
+            // fallback stays for legacy callers. Player evaluation runs either way.
             var result = new PreseasonGameResult
             {
                 GameId = game.GameId,
-                PlayerTeamScore = UnityEngine.Random.Range(85, 120),
-                OpponentScore = UnityEngine.Random.Range(85, 120),
+                PlayerTeamScore = realPlayerScore ?? UnityEngine.Random.Range(85, 120),
+                OpponentScore = realOpponentScore ?? UnityEngine.Random.Range(85, 120),
                 PlayerPerformances = new List<PreseasonPlayerPerformance>()
             };
 
@@ -508,6 +512,29 @@ namespace NBAHeadCoach.Core.Manager
 
         #region Save/Load
 
+        public void WriteSave(SaveData data)
+        {
+            if (data == null || _currentPhase == TrainingCampPhase.NotStarted) return;
+            data.TrainingCampData = new TrainingCampSectionData
+            {
+                PhaseInt = (int)_currentPhase,
+                CampDay = _campDay,
+                Statuses = _playerStatuses.Values.ToList(),
+                PendingCuts = new List<RosterCutDecision>(_pendingCuts)
+            };
+        }
+
+        public void ReadSave(SaveData data, in SaveReadContext ctx)
+        {
+            var dto = data?.TrainingCampData;
+            if (dto == null) return;
+            _currentPhase = (TrainingCampPhase)dto.PhaseInt;
+            _campDay = dto.CampDay;
+            _playerStatuses = (dto.Statuses ?? new List<CampPlayerStatus>())
+                .ToDictionary(st => st.PlayerId, st => st);
+            _pendingCuts = dto.PendingCuts ?? new List<RosterCutDecision>();
+        }
+
         public TrainingCampSaveData CreateSaveData()
         {
             return new TrainingCampSaveData
@@ -678,4 +705,14 @@ namespace NBAHeadCoach.Core.Manager
     }
 
     #endregion
+
+    /// <summary>JsonUtility-safe camp snapshot (the legacy TrainingCampSaveData holds a Dictionary).</summary>
+    [Serializable]
+    public class TrainingCampSectionData
+    {
+        public int PhaseInt;
+        public int CampDay;
+        public List<CampPlayerStatus> Statuses = new List<CampPlayerStatus>();
+        public List<RosterCutDecision> PendingCuts = new List<RosterCutDecision>();
+    }
 }

@@ -454,15 +454,16 @@ namespace NBAHeadCoach.Core
 
             // Offseason windows belong to the summer AFTER this season
             // (season year 2025 = Oct 2025 – Jun 2026; its offseason is summer 2026).
-            if (date >= _draftDate && date < _freeAgencyStart)
+            int off = _currentSeason + 1;
+            if (date >= OffseasonDates.Draft(off) && date < OffseasonDates.FreeAgency(off))
                 return SeasonPhase.Draft;
-            if (date >= _freeAgencyStart && date < new DateTime(_currentSeason + 1, 7, 7))
+            if (date >= OffseasonDates.FreeAgency(off) && date < OffseasonDates.SummerLeague(off))
                 return SeasonPhase.FreeAgency;
-            if (date >= new DateTime(_currentSeason + 1, 7, 7) && date < new DateTime(_currentSeason + 1, 9, 27))
+            if (date >= OffseasonDates.SummerLeague(off) && date < OffseasonDates.CampStart(off))
                 return SeasonPhase.SummerLeague;
-            if (date >= new DateTime(_currentSeason + 1, 9, 27) && date < new DateTime(_currentSeason + 1, 10, 4))
+            if (date >= OffseasonDates.CampStart(off) && date < OffseasonDates.PreseasonLabel(off))
                 return SeasonPhase.TrainingCamp;
-            if (date >= new DateTime(_currentSeason + 1, 10, 4) && date < new DateTime(_currentSeason + 1, 10, 22))
+            if (date >= OffseasonDates.PreseasonLabel(off) && date < OffseasonDates.Rollover(off).AddDays(1))
                 return SeasonPhase.Preseason;
             if (date >= _allStarBreak && date < _allStarBreak.AddDays(4))
                 return SeasonPhase.AllStarBreak;
