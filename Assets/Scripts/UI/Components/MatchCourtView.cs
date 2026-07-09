@@ -141,7 +141,9 @@ namespace NBAHeadCoach.UI.Components
         {
             float h = _courtRect != null ? _courtRect.rect.height : 500f;
             float w = _courtRect != null ? _courtRect.rect.width : 940f;
-            float y = (isHome ? -1f : 1f) * (h / 2f + benchSize * 0.85f);
+            // Just inside the sideline (home bottom, away top) so the bench stays on-screen and
+            // clear of the scoreboard/ticker that sit above and below the court view.
+            float y = (isHome ? -1f : 1f) * (h / 2f - benchSize * 0.7f);
 
             float span = w * 0.62f;
             float startX = -span / 2f + span * 0.14f;   // leave room at the left end for the coach
@@ -154,7 +156,7 @@ namespace NBAHeadCoach.UI.Components
         {
             float h = _courtRect != null ? _courtRect.rect.height : 500f;
             float w = _courtRect != null ? _courtRect.rect.width : 940f;
-            float y = (isHome ? -1f : 1f) * (h / 2f + benchSize * 0.85f);
+            float y = (isHome ? -1f : 1f) * (h / 2f - benchSize * 0.7f);
             return new Vector2(-w * 0.31f, y);
         }
 
