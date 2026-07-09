@@ -1274,7 +1274,15 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
                     // Point-of-attack defender collects the made ball under the rim
                     target = rim;
                 }
-                else if (IsContestMoment(t) && man == _s.ShooterIndex)
+                else if (_s.Lapse == LapseType.BlownRotation && i == _s.LapseDefenderIndex &&
+                         _shotStartT > 0f && t > _shotStartT - 2f && t <= _shotStartT + 0.3f)
+                {
+                    // Blown rotation: he's lost the assignment — caught flat-footed
+                    // while the play happens around him.
+                    target = _defPos[i];
+                    speed = 0f;
+                }
+                else if (IsContestMoment(t, i) && man == _s.ShooterIndex)
                 {
                     // At the shot, the contest distance is the exact inverse of the
                     // decided ContestLevel so the visual matches the probability math.
@@ -1292,7 +1300,8 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
                     speed = DefenseSprint;
                 }
                 else if (_defPlan[i].IsHelper && _defPlan[i].TagIndex >= 0 && _action.RollStartT > 0f &&
-                         t >= _action.RollStartT && t <= _action.RollStartT + 0.9f)
+                         t >= _action.RollStartT && t <= _action.RollStartT + 0.9f &&
+                         !(_s.Lapse == LapseType.MissedHelp && i == _s.LapseDefenderIndex))
                 {
                     // Low man tags the roller/popper, then recovers to his own man.
                     var roller = _offense[_defPlan[i].TagIndex].PositionAt(t);
@@ -1350,8 +1359,18 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
             }
         }
 
-        private bool IsContestMoment(float t) =>
-            _shotStartT > 0f && _s.ShooterIndex >= 0 && t > _shotStartT - 0.8f && t < _shotStartT + 0.3f;
+        private bool IsContestMoment(float t) => IsContestMoment(t, -1);
+
+        /// <summary>A late-closeout culprit leaves for his contest half a beat late.</summary>
+        private bool IsContestMoment(float t, int defenderIdx)
+        {
+            float lead = 0.8f;
+            if (defenderIdx >= 0 && _s.Lapse == LapseType.LateCloseout &&
+                defenderIdx == _s.LapseDefenderIndex)
+                lead = 0.35f;
+            return _shotStartT > 0f && _s.ShooterIndex >= 0 &&
+                   t > _shotStartT - lead && t < _shotStartT + 0.3f;
+        }
 
         // Sag depth is decided ONCE per defender in the plan — no per-tick re-roll, so no twitch.
         private float SagFor(int defenderIdx, BallState ball)
