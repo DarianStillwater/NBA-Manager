@@ -10,6 +10,7 @@ using NBAHeadCoach.Core.Gameplay;
 using NBAHeadCoach.Core.Simulation;
 using NBAHeadCoach.Core.Util;
 using NBAHeadCoach.UI.Components;
+using NBAHeadCoach.UI.Match3D;
 using NBAHeadCoach.UI.Shell;
 
 namespace NBAHeadCoach.UI.Match
@@ -38,6 +39,17 @@ namespace NBAHeadCoach.UI.Match
         private RectTransform _courtSurface;
         private MatchCourtView _courtView;
         private MatchPlaybackDirector _director;
+        private Image _rootBgImage;
+        private Image _courtAreaImage;
+
+        // 3D match view (Phase 1). Chosen via the "MatchViewMode3D" pref; the 2D court is always
+        // built and kept ready so the runtime 2D/3D toggle can swap between them at a possession
+        // boundary. The 3D world is built lazily the first time 3D is shown.
+        private const string ViewMode3DPrefKey = "MatchViewMode3D";
+        private bool _viewMode3D;
+        private Match3DWorld _world3D;
+        private Match3DView _court3D;
+        private Button _viewToggleBtn;
         private Text _ffTickerLabel;
         private NarrationBarView _narrationBar;
 
@@ -72,6 +84,9 @@ namespace NBAHeadCoach.UI.Match
             _playerTeam = mc.PlayerTeam;
             _playerIsHome = mc.IsHomeGame;
 
+            // View mode: default to 3D. The 2D court is still built either way (see ApplyViewMode).
+            _viewMode3D = PlayerPrefs.GetInt(ViewMode3DPrefKey, 1) == 1;
+
             // Find or create canvas
             _canvas = FindAnyObjectByType<Canvas>();
             if (_canvas == null)
@@ -90,7 +105,9 @@ namespace NBAHeadCoach.UI.Match
 
             // Build root
             _root = CreateRT(_canvas.transform, "MatchRoot");
-            Stretch(_root); _root.gameObject.AddComponent<Image>().color = UITheme.Background;
+            Stretch(_root);
+            _rootBgImage = _root.gameObject.AddComponent<Image>();
+            _rootBgImage.color = UITheme.Background;
 
             BuildLayout();
 
@@ -119,6 +136,7 @@ namespace NBAHeadCoach.UI.Match
             _director.OnScoreboard += OnScoreboardUpdate;
             _director.OnClockTick += OnClockTick;
             _director.OnFastForwardChanged += OnFastForwardChanged;
+            _director.OnViewApplied += HandleViewApplied;
 
             // Radio narration bar over the court (separate channel — never in the PBP box)
             _narrationBar = NarrationBarView.Create(_courtSurface);
@@ -154,6 +172,10 @@ namespace NBAHeadCoach.UI.Match
             _courtView.Initialize(_homeTeam, _awayTeam, homeLineup, awayLineup);
             _courtView.RefreshPlayerStats(_simController.LiveBoxScore);   // tooltips start at zeros
 
+            // Apply the current view mode (builds the 3D world + retargets the director if 3D is
+            // selected). The 3D view resolves its own team colors from the Team objects.
+            ApplyViewMode(_viewMode3D);
+
             // Auto-start simulation
             _simController.StartSimulation();
             Debug.Log($"[MatchSceneSetup] Match started: {_awayTeam.Name} @ {_homeTeam.Name}");
@@ -177,7 +199,8 @@ namespace NBAHeadCoach.UI.Match
             _courtArea = CreateRT(_root, "Court");
             _courtArea.anchorMin = new Vector2(0, 0.25f); _courtArea.anchorMax = new Vector2(1, 0.85f); _courtArea.sizeDelta = Vector2.zero;
             // Dark margin fill behind the aspect-locked court surface
-            _courtArea.gameObject.AddComponent<Image>().color = new Color(0.03f, 0.035f, 0.06f);
+            _courtAreaImage = _courtArea.gameObject.AddComponent<Image>();
+            _courtAreaImage.color = new Color(0.03f, 0.035f, 0.06f);
 
             // Court surface locked to true 94:50 so a court foot is the same length in both
             // axes — circles are circles, X-speed reads like Y-speed, rim geometry is honest.
@@ -331,6 +354,13 @@ namespace NBAHeadCoach.UI.Match
             UpdateModeHighlight(2); // default Full match — watch every possession, no cuts
 
             // Spacer
+            CreateRT(parent, "SpView").gameObject.AddComponent<LayoutElement>().preferredWidth = 14;
+
+            // 2D / 3D court view toggle — flips the pref and retargets the director at the next
+            // possession boundary (see ToggleViewMode / MatchPlaybackDirector.SetView).
+            _viewToggleBtn = MkCtrlBtn(parent, _viewMode3D ? "3D" : "2D", 48, ToggleViewMode);
+
+            // Spacer
             CreateRT(parent, "Sp2").gameObject.AddComponent<LayoutElement>().flexibleWidth = 1;
 
             // Coaching buttons
@@ -362,6 +392,75 @@ namespace NBAHeadCoach.UI.Match
                 var img = _modeBtns[i].GetComponent<Image>();
                 img.color = i == activeIdx ? UITheme.AccentSecondary : UITheme.CardBackground;
             }
+        }
+
+        // ── 3D VIEW MODE ──
+
+        /// <summary>Startup application of the chosen view mode. Runs pre-game (no possession
+        /// active) so the director swap and visuals take effect immediately.</summary>
+        private void ApplyViewMode(bool threeD)
+        {
+            _viewMode3D = threeD;
+            if (threeD) EnsureWorld3D();
+            IMatchView target = threeD && _court3D != null ? (IMatchView)_court3D : _courtView;
+            _director?.SetView(target);
+            // Force the initial visuals even when SetView is a no-op (e.g. default 2D never swaps).
+            HandleViewApplied(target);
+        }
+
+        /// <summary>Runtime toggle: flip the pref, ensure the target view exists, and ask the
+        /// director to swap. During live play the swap (and its visuals via OnViewApplied) is
+        /// deferred to the next possession boundary; pre-game it applies at once.</summary>
+        private void ToggleViewMode()
+        {
+            _viewMode3D = !_viewMode3D;
+            PlayerPrefs.SetInt(ViewMode3DPrefKey, _viewMode3D ? 1 : 0);
+            PlayerPrefs.Save();
+
+            if (_viewMode3D) EnsureWorld3D();
+            IMatchView target = _viewMode3D && _court3D != null ? (IMatchView)_court3D : _courtView;
+            _director?.SetView(target);
+            UpdateViewToggleLabel();
+        }
+
+        /// <summary>Build the 3D world lazily on first use (built inactive; HandleViewApplied
+        /// activates it when the director swap lands).</summary>
+        private void EnsureWorld3D()
+        {
+            if (_world3D != null) return;
+
+            _world3D = Match3DSceneBuilder.Build();
+            _court3D = _world3D.Root.AddComponent<Match3DView>();
+
+            var home = _simController != null
+                ? _simController.CurrentHomeLineup.ToList()
+                : (_homeTeam.StartingLineupIds?.ToList() ?? new List<string>());
+            var away = _simController != null
+                ? _simController.CurrentAwayLineup.ToList()
+                : (_awayTeam.StartingLineupIds?.ToList() ?? new List<string>());
+
+            _court3D.Initialize(_world3D, _homeTeam, _awayTeam, home, away);
+            _world3D.SetActive(false);
+        }
+
+        /// <summary>Flip which court's visuals show once a view swap is live. Only the court panel
+        /// hides/shows — the HUD, ticker, controls, and narration bar are untouched. In 3D the
+        /// court region of the overlay is made transparent so the camera shows through.</summary>
+        private void HandleViewApplied(IMatchView view)
+        {
+            bool threeD = _court3D != null && ReferenceEquals(view, _court3D);
+            _courtView?.SetCourtVisible(!threeD);
+            if (_courtAreaImage != null) _courtAreaImage.enabled = !threeD;
+            if (_rootBgImage != null) _rootBgImage.enabled = !threeD;
+            if (_world3D != null) _world3D.SetActive(threeD);
+            UpdateViewToggleLabel();
+        }
+
+        private void UpdateViewToggleLabel()
+        {
+            if (_viewToggleBtn == null) return;
+            var label = _viewToggleBtn.GetComponentInChildren<Text>();
+            if (label != null) label.text = _viewMode3D ? "3D" : "2D";
         }
 
         private void BuildPlayByPlay(RectTransform parent)
@@ -608,6 +707,7 @@ namespace NBAHeadCoach.UI.Match
             if (_courtView == null || _simController == null) return;
             bool isHome = _homeTeam != null && teamId == _homeTeam.TeamId;
             _courtView.AnimateSubstitution(outId, inId, isHome);
+            _court3D?.ApplySubstitution(outId, inId, isHome);
             _courtView.RefreshPlayerStats(_simController.LiveBoxScore);
         }
 
@@ -967,8 +1067,11 @@ namespace NBAHeadCoach.UI.Match
                 _director.OnScoreboard -= OnScoreboardUpdate;
                 _director.OnClockTick -= OnClockTick;
                 _director.OnFastForwardChanged -= OnFastForwardChanged;
+                _director.OnViewApplied -= HandleViewApplied;
                 if (_narrationBar != null) _director.OnNarration -= _narrationBar.Show;
             }
+            _world3D?.Destroy();
+            _world3D = null;
         }
 
         // ── HELPERS ──

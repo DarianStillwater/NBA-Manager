@@ -67,6 +67,13 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
         private float _looseBallT = -1f;
         private int _looseBallDefIdx = -1;
 
+        // ── Presentational jump/densification timing (P2). All purely for rendering —
+        //    they never touch outcomes. ──
+        private float _shotWindup;               // gather time before the shot leaves the hand
+        private float _shotRimT = -1f;           // when the shot reaches the rim (= release + flight)
+        private float _reboundArriveT = -1f;     // when the ball arrives at the rebound spot (the leap)
+        private List<float> _sharpCutTimes;      // key times where an offensive player cuts >90°
+
         public PossessionChoreographer(System.Random rng)
         {
             _rng = rng ?? new System.Random();
@@ -101,6 +108,10 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
             _ftLaneDefender = null;
             _looseBallT = -1f;
             _looseBallDefIdx = -1;
+            _shotWindup = 0f;
+            _shotRimT = -1f;
+            _reboundArriveT = -1f;
+            _sharpCutTimes = new List<float>();
             _action = ActionLibrary.Choose(script, _rng);
 
             BuildOffenseAndBall();
@@ -194,6 +205,8 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
             _liveEndT = duration;
             float shotReleaseT = duration - shotFlight;          // ball reaches rim at ~duration
             _shotStartT = hasShot ? shotReleaseT : -1f;
+            _shotWindup = hasShot ? windup : 0f;
+            _shotRimT = hasShot ? shotReleaseT + shotFlight : -1f;
             float actionEnd = hasShot ? Math.Max(advanceEnd + 0.5f, shotReleaseT - windup) : duration;
 
             _phaseMarks.Add((0f, PossessionPhase.Advance));
@@ -246,6 +259,13 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
             // Tail: micro-sway through the resolution so dots never look frozen.
             for (int i = 0; i < 5; i++)
                 _offense[i].SwayUntil(_totalT, _rng);
+
+            // Densification hints: collect sharp offensive direction changes (>90° between two
+            // real legs) so Emit can sample those cuts at the fine tick. Long fast legs only —
+            // this keeps the extra frame budget small (presentational; no outcome effect).
+            for (int i = 0; i < 5; i++)
+                _offense[i].CollectSharpTurns(_sharpCutTimes, minLegDist: 6f, minAngleDeg: 95f);
+            _sharpCutTimes.Sort();
         }
 
         /// <summary>
@@ -754,6 +774,7 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
         private void BuildReboundScramble(float ballArriveT, CourtPosition spot)
         {
             if (_s.RebounderIndex < 0) return;
+            _reboundArriveT = ballArriveT;   // the rebound leap (presentational jump timing)
 
             if (_s.RebounderIsDefense)
             {
@@ -966,6 +987,7 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
                         // Live miss: lane bodies crash the glass; the decided rebounder wins it.
                         _reboundSpot = spot;
                         _ftCrashT = cursor + flight;
+                        _reboundArriveT = _ftCrashT + 0.5f;   // the rebound leap on the FT miss
                         _ftCrashSpots = new CourtPosition[5];
                         for (int i = 0; i < 5; i++)
                             _ftCrashSpots[i] = _ftLaneDefender[i] ? NearPoint(spot, 2.5f) : _ftDefSpots[i];
@@ -1108,6 +1130,7 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
             // Defense starts in transition retreat
             _defPos = FormationLibrary.GetBackcourtSpots(_s.OffenseAttacksRight, true, _rng);
 
+            var times = new List<float>(states.Capacity);
             float t = 0f;
             float prevT = 0f;
             var prevOff = new (float x, float y)[5];
@@ -1145,15 +1168,69 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
                 hasPrev = true;
 
                 states.Add(state);
+                times.Add(t);
                 prevT = t;
 
                 var seg = BallSegmentAt(t);
                 bool inFlight = seg is PassSegment || seg is ShotSegment || seg is BankSegment ||
                                 seg is CaromSegment || seg is BlockSegment;
-                t += inFlight ? FlightTick : Tick;
+                // Densify (0.1s) during the shot windup, the rebound leap, and sharp cuts too,
+                // so P3 characters have enough frames to animate those beats convincingly.
+                t += (inFlight || InDenseActionWindow(t)) ? FlightTick : Tick;
             }
 
+            // Speed post-pass: difference each player's FINAL (post-cap) position against the
+            // adjacent frame. Done here, after the per-tick displacement cap, so the emitted
+            // speed matches the motion the renderer actually plays back.
+            ComputeSpeeds(states, times);
+
             return states;
+        }
+
+        /// <summary>Presentational densification window: the shot gather/release, the rebound
+        /// leap, and sharp offensive cuts. Ball-flight windows are already dense via the segment
+        /// check in Emit, so this only adds the non-flight beats. Never affects outcomes.</summary>
+        private bool InDenseActionWindow(float t)
+        {
+            if (_shotStartT > 0f && t >= _shotStartT - _shotWindup - 0.05f && t <= _shotStartT + 0.05f)
+                return true;
+            if (_reboundArriveT > 0f && t >= _reboundArriveT - 0.35f && t <= _reboundArriveT + 0.35f)
+                return true;
+            if (_sharpCutTimes != null)
+            {
+                for (int i = 0; i < _sharpCutTimes.Count; i++)
+                {
+                    float ct = _sharpCutTimes[i];
+                    if (t >= ct - 0.2f && t <= ct + 0.2f) return true;
+                    if (ct - 0.2f > t) break;   // sorted ascending: no later cut can contain t
+                }
+            }
+            return false;
+        }
+
+        /// <summary>Fills PlayerSnapshot.SpeedFeetPerSec by differencing adjacent frames.</summary>
+        private static void ComputeSpeeds(List<SpatialState> states, List<float> times)
+        {
+            if (states.Count < 2) return;
+            for (int k = 0; k < states.Count; k++)
+            {
+                // Backward difference (forward for the very first frame).
+                int a = k > 0 ? k - 1 : k;
+                int b = k > 0 ? k : k + 1;
+                float dt = times[b] - times[a];
+                if (dt <= 0f) continue;
+                var from = states[a];
+                var to = states[b];
+                for (int p = 0; p < 10; p++)
+                {
+                    float dx = to.Players[p].X - from.Players[p].X;
+                    float dy = to.Players[p].Y - from.Players[p].Y;
+                    float speed = (float)Math.Sqrt(dx * dx + dy * dy) / dt;
+                    var snap = states[k].Players[p];
+                    snap.SpeedFeetPerSec = speed;
+                    states[k].Players[p] = snap;
+                }
+            }
         }
 
         private SpatialState Sample(float t)
@@ -1167,26 +1244,80 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
 
             var ball = SampleBall(t);
             state.Ball = ball;
+            var ballPos = new CourtPosition(ball.X, ball.Y);
 
             for (int i = 0; i < 5; i++)
             {
                 var (pos, action, target) = _offense[i].Sample(t);
+                bool hasBall = ball.HeldByPlayerId == _s.Offense[i].PlayerId;
+                var (offVert, offPhase) = ActionDynamics(isDefense: false, idx: i, t: t, action: action);
                 state.Players[i] = new PlayerSnapshot(_s.Offense[i].PlayerId, pos.X, pos.Y)
                 {
-                    HasBall = ball.HeldByPlayerId == _s.Offense[i].PlayerId,
+                    HasBall = hasBall,
                     CurrentAction = action,
                     TargetPlayerId = target,
-                    FacingAngle = FacingFor(pos)
+                    FacingAngle = OffenseFacing(i, t, pos, hasBall, action, ballPos),
+                    VerticalOffset = offVert,
+                    ActionPhase = offPhase
                 };
 
+                var defAction = DefenseActionAt(i, t);
+                var (defVert, defPhase) = ActionDynamics(isDefense: true, idx: i, t: t, action: defAction);
                 state.Players[i + 5] = new PlayerSnapshot(_s.Defense[i].PlayerId, _defPos[i].X, _defPos[i].Y)
                 {
-                    CurrentAction = DefenseActionAt(i, t),
-                    FacingAngle = FacingFor(_defPos[i], invert: true)
+                    CurrentAction = defAction,
+                    FacingAngle = DefenseFacing(i, t, _defPos[i], defAction, ball, ballPos),
+                    DefensiveStance = defAction == PlayerAction.Defending || defAction == PlayerAction.Contesting,
+                    VerticalOffset = defVert,
+                    ActionPhase = defPhase
                 };
             }
 
             return state;
+        }
+
+        /// <summary>Angle (radians) from <paramref name="from"/> toward <paramref name="to"/> in
+        /// court space — the same convention the existing FacingFor used (atan2 of the delta).</summary>
+        private static float AngleTo(CourtPosition from, CourtPosition to)
+            => (float)Math.Atan2(to.Y - from.Y, to.X - from.X);
+
+        /// <summary>Meaningful facing for an offensive player: the ball-handler/shooter squares to
+        /// the rim, a moving player faces where they're cutting, everyone else watches the ball.</summary>
+        private float OffenseFacing(int i, float t, CourtPosition pos, bool hasBall,
+            PlayerAction action, CourtPosition ballPos)
+        {
+            var rim = new CourtPosition(_rimX, 0f);
+            bool shooting = action == PlayerAction.Shooting || action == PlayerAction.Dunking ||
+                            action == PlayerAction.Layup || action == PlayerAction.PostingUp;
+            if (hasBall || shooting)
+                return AngleTo(pos, rim);
+
+            // Facing the direction of travel when genuinely cutting/relocating.
+            var ahead = _offense[i].PositionAt(t + 0.15f);
+            float mdx = ahead.X - pos.X, mdy = ahead.Y - pos.Y;
+            if (mdx * mdx + mdy * mdy > 0.09f)   // >~2 ft/s of motion
+                return (float)Math.Atan2(mdy, mdx);
+
+            // Boxing out / rebounding: watch the rim (the shot). Otherwise track the ball.
+            if (action == PlayerAction.Rebounding || action == PlayerAction.BoxingOut)
+                return AngleTo(pos, rim);
+            return AngleTo(pos, ballPos);
+        }
+
+        /// <summary>Meaningful facing for a defender: guarding the ball → face the ball; crashing the
+        /// glass → face the rim; otherwise face the assigned man (ball-you-man orientation).</summary>
+        private float DefenseFacing(int i, float t, CourtPosition pos, PlayerAction action,
+            BallState ball, CourtPosition ballPos)
+        {
+            if (action == PlayerAction.Rebounding || action == PlayerAction.BoxingOut)
+                return AngleTo(pos, new CourtPosition(_rimX, 0f));
+
+            int man = _defPlan != null ? _defPlan[i].ManIndex : i;
+            bool guardsBall = ball.HeldByPlayerId != null &&
+                              _s.Offense[man].PlayerId == ball.HeldByPlayerId;
+            if (guardsBall || action == PlayerAction.Contesting)
+                return AngleTo(pos, ballPos);
+            return AngleTo(pos, _offense[man].PositionAt(t));   // ball-you-man: face the assigned man
         }
 
         private BallState SampleBall(float t)
@@ -1232,12 +1363,111 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
             return phase;
         }
 
-        private float FacingFor(CourtPosition pos, bool invert = false)
+        // ── Jump height + action phase (presentational; drives P3 airborne animation) ──
+
+        /// <summary>Vertical jump offset (feet) and normalized action progress (0..1) for a player
+        /// at time t. Covers the shooter's shot, the rebounder's leap, and a contesting/blocking
+        /// defender. Everyone else stays grounded (0,0). Timing reuses the same shot/rebound marks
+        /// the ball-flight choreography already uses.</summary>
+        private (float vertical, float phase) ActionDynamics(bool isDefense, int idx, float t, PlayerAction action)
         {
-            float dx = _rimX - pos.X;
-            float dy = -pos.Y;
-            float angle = (float)Math.Atan2(dy, dx);
-            return invert ? angle + (float)Math.PI : angle;
+            if (!isDefense)
+            {
+                if (_s.ShooterIndex == idx && _shotStartT > 0f)
+                {
+                    var jump = ShooterJump(t);
+                    if (jump.vertical > 0f || jump.phase > 0f) return jump;
+                }
+                if (_reboundArriveT > 0f && !_s.RebounderIsDefense && _s.RebounderIndex == idx)
+                    return ReboundLeap(t);
+                return (0f, 0f);
+            }
+
+            // Defense: the contesting man leaps at the shot (a real block goes higher); the
+            // defensive rebounder leaps for the board.
+            if (action == PlayerAction.Contesting && _shotStartT > 0f)
+            {
+                float peak = _s.Ending == ScriptEnding.BlockedShot ? 3.2f : 1.4f;
+                return Leap(t, _shotStartT - 0.10f, _shotStartT + 0.05f, _shotStartT + 0.45f, peak);
+            }
+            if (_reboundArriveT > 0f && _s.RebounderIsDefense && _s.RebounderIndex == idx &&
+                action == PlayerAction.Rebounding)
+                return ReboundLeap(t);
+            return (0f, 0f);
+        }
+
+        /// <summary>The shooter's jump: dunks/layups rise into the rim and carry; jump shots leave the
+        /// floor near release and land. ActionPhase spans windup→release→landing so a clip can sync.</summary>
+        private (float vertical, float phase) ShooterJump(float t)
+        {
+            float peak = PeakJumpFor(_s.ShotType ?? ShotType.Jumper);
+            float windupStart = _shotStartT - _shotWindup;
+            float riseStart, apexT, landEnd;
+
+            if (_s.ShotType == ShotType.Dunk)
+            {
+                riseStart = _shotStartT - 0.12f;
+                apexT = _shotRimT > 0f ? _shotRimT : _shotStartT + 0.25f;   // highest at the rim
+                landEnd = apexT + 0.35f;
+            }
+            else if (_s.ShotType == ShotType.Layup || _s.ShotType == ShotType.TipIn)
+            {
+                riseStart = _shotStartT - 0.12f;
+                apexT = (_shotRimT > 0f ? _shotRimT : _shotStartT + 0.2f) - 0.05f;
+                landEnd = apexT + 0.35f;
+            }
+            else   // jump shots / floaters / hooks / heaves
+            {
+                riseStart = _shotStartT - 0.20f;
+                apexT = _shotStartT + 0.05f;
+                landEnd = _shotStartT + 0.55f;
+            }
+
+            float vertical = Leap(t, riseStart, apexT, landEnd, peak).vertical;
+            float phaseEnd = Math.Max(landEnd, _shotRimT > 0f ? _shotRimT : landEnd);
+            float phase = 0f;
+            if (t >= windupStart && t <= phaseEnd && phaseEnd > windupStart)
+                phase = (t - windupStart) / (phaseEnd - windupStart);
+            return (vertical, Math.Min(Math.Max(phase, 0f), 1f));
+        }
+
+        private (float vertical, float phase) ReboundLeap(float t)
+            => Leap(t, _reboundArriveT - 0.30f, _reboundArriveT, _reboundArriveT + 0.30f, 2.0f);
+
+        /// <summary>A smooth jump arc: 0 at riseStart, peak at apexT, back to 0 at landEnd, using
+        /// quarter-sine halves so it's continuous at the apex. Returns (height, phase 0..1).</summary>
+        private static (float vertical, float phase) Leap(float t, float riseStart, float apexT, float landEnd, float peak)
+        {
+            if (t <= riseStart || t >= landEnd) return (0f, 0f);
+            float vertical, phase;
+            if (t <= apexT)
+            {
+                float u = apexT > riseStart ? (t - riseStart) / (apexT - riseStart) : 1f;
+                vertical = peak * (float)Math.Sin(u * Math.PI * 0.5);   // 0 → peak
+                phase = 0.5f * u;
+            }
+            else
+            {
+                float u = landEnd > apexT ? (t - apexT) / (landEnd - apexT) : 1f;
+                vertical = peak * (float)Math.Cos(u * Math.PI * 0.5);   // peak → 0
+                phase = 0.5f + 0.5f * u;
+            }
+            return (vertical, Math.Min(Math.Max(phase, 0f), 1f));
+        }
+
+        /// <summary>Peak jump height (feet) by shot type — dunks highest, set jumpers a moderate hop.</summary>
+        private static float PeakJumpFor(ShotType type)
+        {
+            switch (type)
+            {
+                case ShotType.Dunk: return 3.4f;
+                case ShotType.TipIn: return 2.6f;
+                case ShotType.Layup: return 2.4f;
+                case ShotType.Floater: return 1.4f;
+                case ShotType.Hookshot: return 1.1f;
+                case ShotType.Heave: return 0.8f;
+                default: return 1.6f;   // jump shots (mid / three)
+            }
         }
 
         // ── Defense: integrate toward shadow targets each tick ──
@@ -1478,6 +1708,26 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
                 var last = _keys[_keys.Count - 1];
                 if (last.T < endT)
                     Add(endT, last.Pos, last.Action == PlayerAction.Idle ? PlayerAction.Idle : last.Action);
+            }
+
+            /// <summary>Append the times of keys where the travel direction reverses by more than
+            /// <paramref name="minAngleDeg"/>, with both adjacent legs longer than
+            /// <paramref name="minLegDist"/> ft — sharp, fast cuts worth densifying for animation.</summary>
+            public void CollectSharpTurns(List<float> outTimes, float minLegDist, float minAngleDeg)
+            {
+                for (int i = 1; i < _keys.Count - 1; i++)
+                {
+                    var a = _keys[i - 1].Pos; var b = _keys[i].Pos; var c = _keys[i + 1].Pos;
+                    float inX = b.X - a.X, inY = b.Y - a.Y;
+                    float outX = c.X - b.X, outY = c.Y - b.Y;
+                    float inLen = (float)Math.Sqrt(inX * inX + inY * inY);
+                    float outLen = (float)Math.Sqrt(outX * outX + outY * outY);
+                    if (inLen < minLegDist || outLen < minLegDist) continue;
+                    float dot = (inX * outX + inY * outY) / (inLen * outLen);
+                    dot = Math.Min(1f, Math.Max(-1f, dot));
+                    float ang = (float)(Math.Acos(dot) * 180.0 / Math.PI);
+                    if (ang >= minAngleDeg) outTimes.Add(_keys[i].T);
+                }
             }
 
             public CourtPosition PositionAt(float t) => SampleCore(t).pos;

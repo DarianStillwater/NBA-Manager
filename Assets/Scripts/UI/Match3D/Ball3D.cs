@@ -1,0 +1,68 @@
+using UnityEngine;
+using NBAHeadCoach.Core.Simulation;
+using NBAHeadCoach.Core.Simulation.Choreography;
+
+namespace NBAHeadCoach.UI.Match3D
+{
+    /// <summary>
+    /// The 3D basketball: a small orange sphere placed directly from BallState. Court feet map
+    /// 1:1 to world units, and Height (feet) maps straight to world Y, so a shot arc, a bounce,
+    /// and a held ball at ~4 ft all read correctly without extra scaling.
+    /// </summary>
+    public class Ball3D : MonoBehaviour
+    {
+        private const float DiameterFeet = 1.0f;
+        private const float HandHeightFeet = 3.3f;   // hip/hand carry height for a held ball
+        private const float HandForwardFeet = 1.1f;  // offset ahead of the handler along facing
+
+        public static Ball3D Create(Transform parent)
+        {
+            var sphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            sphere.name = "Ball3D";
+            sphere.transform.SetParent(parent, false);
+            sphere.transform.localScale = Vector3.one * DiameterFeet;
+
+            var col = sphere.GetComponent<Collider>();
+            if (col != null) Destroy(col);
+
+            // Brighter, more saturated basketball orange with a slight self-glow so it pops
+            // against the floor under broadcast lighting.
+            var mat = Match3DMaterials.CreateLit(new Color(1f, 0.5f, 0.13f));
+            if (mat.HasProperty("_EmissionColor"))
+            {
+                mat.EnableKeyword("_EMISSION");
+                mat.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
+                mat.SetColor("_EmissionColor", new Color(0.85f, 0.34f, 0.06f) * 0.35f);
+            }
+            sphere.GetComponent<MeshRenderer>().sharedMaterial = mat;
+
+            var ball = sphere.AddComponent<Ball3D>();
+            ball.transform.localPosition = new Vector3(0f, CourtGeometry.HeldBallHeight, 0f);
+            return ball;
+        }
+
+        /// <summary>Place the ball from a court-space BallState. Height (feet) → world Y.</summary>
+        public void Render(BallState state)
+        {
+            transform.localPosition = new Vector3(state.X, Mathf.Max(state.Height, 0.1f), state.Y);
+        }
+
+        /// <summary>Place the ball at explicit interpolated court coordinates.</summary>
+        public void Render(float courtX, float courtY, float heightFeet)
+        {
+            transform.localPosition = new Vector3(courtX, Mathf.Max(heightFeet, 0.1f), courtY);
+        }
+
+        /// <summary>Carry the ball at the handler's hands: at hand height, offset slightly ahead
+        /// along the handler's facing (court radians). Used while the ball is Held/Dribbled so it
+        /// tracks the ball-handler instead of the stale/centered BallState coordinate.</summary>
+        public void RenderHeld(float handlerX, float handlerY, float facingRad)
+        {
+            float fx = handlerX + Mathf.Cos(facingRad) * HandForwardFeet;
+            float fy = handlerY + Mathf.Sin(facingRad) * HandForwardFeet;
+            transform.localPosition = new Vector3(fx, HandHeightFeet, fy);
+        }
+
+        public Vector3 WorldFocusPoint => transform.localPosition;
+    }
+}

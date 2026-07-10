@@ -6,6 +6,7 @@ using NBAHeadCoach.Core;
 using NBAHeadCoach.Core.Data;
 using NBAHeadCoach.Core.Simulation;
 using NBAHeadCoach.Core.Simulation.Choreography;
+using NBAHeadCoach.UI.Match;
 
 namespace NBAHeadCoach.UI.Components
 {
@@ -15,7 +16,7 @@ namespace NBAHeadCoach.UI.Components
     /// this view binary-advances a cursor over the dense choreographed SpatialStates and
     /// lerps the bracketing pair — no buffering, no rubber-banding, correct at any speed.
     /// </summary>
-    public class MatchCourtView : MonoBehaviour
+    public class MatchCourtView : MonoBehaviour, IMatchView
     {
         private RectTransform _courtRect;
         private Image _courtBackground;
@@ -517,6 +518,35 @@ namespace NBAHeadCoach.UI.Components
         {
             if (_dimGroup != null) _dimGroup.alpha = on ? 0.65f : 1f;
             if (_ffBadge != null) _ffBadge.enabled = on;
+        }
+
+        /// <summary>Show/hide the 2D court's own visuals (wood, dots, ball, hoops, markers, coaches)
+        /// without touching externally-parented siblings like the narration bar. Used by the 3D
+        /// view toggle: when 3D is live the 2D court hides so the 3D camera shows through the
+        /// transparent overlay. Toggles the objects this view created — nothing else.</summary>
+        public void SetCourtVisible(bool visible)
+        {
+            if (_courtBackground != null) _courtBackground.enabled = visible;
+
+            foreach (var kvp in _playerDots)
+                if (kvp.Value != null) kvp.Value.gameObject.SetActive(visible);
+            foreach (var kvp in _benchDots)
+                if (kvp.Value != null) kvp.Value.gameObject.SetActive(visible);
+            foreach (var marker in _shotMarkers)
+                if (marker != null) marker.gameObject.SetActive(visible);
+
+            if (_ball != null) _ball.gameObject.SetActive(visible);
+            if (_leftHoop != null) _leftHoop.gameObject.SetActive(visible);
+            if (_rightHoop != null) _rightHoop.gameObject.SetActive(visible);
+            if (_homeCoach != null) _homeCoach.gameObject.SetActive(visible);
+            if (_awayCoach != null) _awayCoach.gameObject.SetActive(visible);
+
+            // Rim overlays manage their own enabled flag inside RenderAt; force them off when hiding.
+            if (!visible)
+            {
+                if (_rimOverlayLeft != null) _rimOverlayLeft.enabled = false;
+                if (_rimOverlayRight != null) _rimOverlayRight.enabled = false;
+            }
         }
 
         #endregion
