@@ -59,6 +59,7 @@ namespace NBAHeadCoach.Tests
             RunTest<ExitSimRestTest>("Exit / Sim Rest");
             RunTest<HighlightSelectionTest>("Highlight Selection");
             RunTest<ChoreographyTest>("Possession Choreography");
+            RunTest<ChoreographyEnrichmentTest>("Choreography Enrichment (P2)");
             RunTest<RegistryOrderTest>("System Registry Order");
             RunTest<GameCompletionParityTest>("Game Completion Parity");
             RunTest<EnergyCarryoverTest>("Energy Carryover");

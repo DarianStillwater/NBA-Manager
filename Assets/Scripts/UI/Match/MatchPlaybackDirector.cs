@@ -33,22 +33,47 @@ namespace NBAHeadCoach.UI.Match
         /// Separate channel from OnTickerEntry — never rendered in the play-by-play box.</summary>
         public event Action<NarrationLine> OnNarration;
 
+        /// <summary>Fired when a deferred 2D/3D view swap actually takes effect (at a possession
+        /// boundary), carrying the now-live view. Lets the scene flip which court's visuals show.</summary>
+        public event Action<IMatchView> OnViewApplied;
+
         /// <summary>Per-frame clock readout during played possessions: (gameClock, shotClock)
         /// in seconds. Ticks Start→End across the live window, holds during the shot tail.
         /// Writes ONLY the clock texts — scores stay on the discrete scoreboard events.</summary>
         public event Action<float, float> OnClockTick;
 
         private MatchSimulationController _sim;
-        private MatchCourtView _court;
+        private IMatchView _court;
+        private IMatchView _pendingView;
         private Coroutine _active;
         private bool _fastForward;
         private bool _possessionPending;
 
-        public void Bind(MatchSimulationController sim, MatchCourtView court)
+        public void Bind(MatchSimulationController sim, IMatchView court)
         {
             _sim = sim;
             _court = court;
             _sim.OnPossessionReady += HandlePossessionReady;
+        }
+
+        /// <summary>Swap the live view (2D ↔ 3D). Deferred to the next possession boundary so a
+        /// swap never fights a running playback coroutine mid-possession.</summary>
+        public void SetView(IMatchView view)
+        {
+            if (view == null || ReferenceEquals(view, _court)) return;
+            _pendingView = view;
+            // Not currently presenting → safe to apply immediately.
+            if (!_possessionPending) ApplyPendingView();
+        }
+
+        private void ApplyPendingView()
+        {
+            if (_pendingView == null) return;
+            // Carry the fast-forward state onto the incoming view so a swap mid-skip stays honest.
+            _pendingView.SetFastForward(_fastForward);
+            _court = _pendingView;
+            _pendingView = null;
+            OnViewApplied?.Invoke(_court);
         }
 
         public void SetMode(ViewingMode mode)
@@ -76,6 +101,9 @@ namespace NBAHeadCoach.UI.Match
             }
 
             if (_active != null) StopCoroutine(_active);
+
+            // Possession boundary: honor any pending 2D/3D view swap before we begin.
+            ApplyPendingView();
             _possessionPending = true;
 
             // Coach reacts to the excitement: a fast-break bucket gets the scoring team's coach up.

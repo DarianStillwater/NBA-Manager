@@ -57,6 +57,29 @@ namespace NBAHeadCoach.Core.Simulation
         public string TargetPlayerId;  // For passes/screens
         public float FacingAngle;      // Direction player is facing (radians)
 
+        // ── Presentational enrichments (additive; all default 0/false so JsonUtility
+        //    round-trips and the 2D view — which ignores them — is unaffected). Populated
+        //    by the choreographer so a 3D animator (P3) can drive convincing motion.
+        //    None of these fields influence simulated outcomes. ──
+
+        /// <summary>Ground speed in feet/sec, differenced from adjacent timeline frames at
+        /// emit time (0 for a still player, ~28 at a full sprint). Drives run/idle blends.</summary>
+        public float SpeedFeetPerSec;
+
+        /// <summary>True when this player is a defender actively guarding (man-tracking or
+        /// contesting) — cue for a crouched defensive stance. Always false for the offense.</summary>
+        public bool DefensiveStance;
+
+        /// <summary>Jump height in feet above the floor for airborne moments
+        /// (shot/dunk/layup/rebound/block); 0 while grounded. Derived from the same timing
+        /// the ball-flight/dunk choreography uses.</summary>
+        public float VerticalOffset;
+
+        /// <summary>Normalized progress 0..1 through the current scripted action
+        /// (e.g. shot windup→release→follow-through) so an animator can sync a clip.
+        /// 0 when the player isn't mid-action.</summary>
+        public float ActionPhase;
+
         public PlayerSnapshot(string playerId, float x, float y)
         {
             PlayerId = playerId;
@@ -66,6 +89,10 @@ namespace NBAHeadCoach.Core.Simulation
             CurrentAction = PlayerAction.Idle;
             TargetPlayerId = null;
             FacingAngle = 0;
+            SpeedFeetPerSec = 0f;
+            DefensiveStance = false;
+            VerticalOffset = 0f;
+            ActionPhase = 0f;
         }
 
         public Data.CourtPosition GetPosition() => new Data.CourtPosition(X, Y);

@@ -153,12 +153,88 @@ MonoBehaviour:
   _newGameState: 0
   _offseasonState: 0
   _career:
-    CoachId: 
-    FirstName: 
-    LastName: 
-    Age: 0
+    ProfileId: 
+    PersonName: 
+    CurrentAge: 0
+    BirthYear: 0
+    CoachBirthDateStr: 
+    IsFormerPlayer: 0
+    FormerPlayerId: 
+    PlayingCareer:
+      PlayerId: 
+      FullName: 
+      SeasonsPlayed: 0
+      GamesPlayed: 0
+      TotalPoints: 0
+      TotalRebounds: 0
+      TotalAssists: 0
+      CareerPPG: 0
+      CareerRPG: 0
+      CareerAPG: 0
+      Championships: 0
+      AllStarSelections: 0
+      AllNbaSelections: 0
+      AllDefensiveSelections: 0
+      MVPs: 0
+      FinalsMVPs: 0
+      IsHallOfFamer: 0
+      PrimaryPosition: 0
+      SecondaryPosition: 0
+      WasKnownForDefense: 0
+      WasKnownForShooting: 0
+      WasKnownForPlaymaking: 0
+      WasKnownForLeadership: 0
+      TeamsPlayedFor: []
+      PrimaryTeam: 
+      YearsWithPrimaryTeam: 0
+      FinalBasketballIQ: 0
+      FinalLeadership: 0
+      FinalWorkEthic: 0
+      LegacyTier: 0
+      RetirementYear: 0
+    FormerPlayerCoachId: 
+    FormerPlayerGMId: 
+    CurrentTrack: 0
+    CurrentRole: 0
     CurrentTeamId: 
     CurrentTeamName: 
+    YearsInCurrentRole: 0
+    YearsUnemployed: 0
+    OffensiveScheme: 0
+    DefensiveScheme: 0
+    InGameAdjustments: 0
+    PlayDesign: 0
+    GameManagement: 0
+    ClockManagement: 0
+    RotationManagement: 0
+    PlayerDevelopment: 0
+    GuardDevelopment: 0
+    BigManDevelopment: 0
+    ShootingCoaching: 0
+    DefenseCoaching: 0
+    Motivation: 0
+    Communication: 0
+    ManManagement: 0
+    MediaHandling: 0
+    ScoutingAbility: 0
+    TalentEvaluation: 0
+    EvaluationAccuracy: 0
+    ProspectEvaluation: 0
+    ProEvaluation: 0
+    PotentialAssessment: 0
+    CollegeConnections: 0
+    InternationalConnections: 0
+    AgentRelationships: 0
+    WorkRate: 0
+    AttentionToDetail: 0
+    CharacterJudgment: 0
+    Specializations: 
+    ScoutingSpecializations: 
+    PrimaryStyle: 0
+    OffensivePhilosophy: 0
+    DefensivePhilosophy: 0
+    NotableHits: []
+    NotableMisses: []
     CurrentContract:
       ContractId: 
       TeamId: 
@@ -177,6 +253,9 @@ MonoBehaviour:
       BuyoutAmount: 0
       BuyoutPercentage: 0
       ContractType: 0
+    AnnualSalary: 0
+    ContractYearsRemaining: 0
+    BuyoutAmount: 0
     JobSecurity: 0
     CurrentExpectations:
       MinimumWins: 0
@@ -187,29 +266,37 @@ MonoBehaviour:
       ExpectsDevelopment: 0
       PlayersToDevelope: []
       OwnerStatement: 
-    Reputation: 0
-    WinningReputation: 0
-    DevelopmentReputation: 0
-    TacticalReputation: 0
-    PlayerRelationsReputation: 0
-    CareerWins: 0
-    CareerLosses: 0
-    PlayoffWins: 0
-    PlayoffLosses: 0
-    Championships: 0
-    ConferenceChampionships: 0
-    DivisionTitles: 0
-    PlayoffAppearances: 0
-    CoachOfYearAwards: 0
-    SeasonHistory: []
-    TeamsCoached: []
-    YearsCoaching: 0
-    CareerEarnings: 0
-    CurrentNetWorth: 0
-    IsEmployed: 0
-    IsAvailable: 0
+    OwnerMessages: []
+    CareerHistory: []
+    TeamsWorkedFor: []
+    YearEnteredProfession: 0
+    TotalCoachingYears: 0
+    TotalFrontOfficeYears: 0
+    TotalWins: 0
+    TotalLosses: 0
+    TotalPlayoffAppearances: 0
+    TotalChampionships: 0
+    ChampionshipsAsCoach: 0
+    ChampionshipsAsGM: 0
+    PlayoffAppearancesAsCoach: 0
+    PlayoffAppearancesAsGM: 0
+    OverallReputation: 0
+    CoachingReputation: 0
+    FrontOfficeReputation: 0
+    IsUserControlled: 0
+    TimesFired: 0
+    TimesResigned: 0
+    TrackSwitches: 0
+    Awards: []
   _playerTeamId: 
   _currentSeason: 0
+  _userRoleConfig:
+    CurrentRole: 2
+    UserGMProfileId: 
+    UserCoachProfileId: 
+    AIGMProfileId: 
+    AICoachProfileId: 
+    TeamId: 
   _allTeams: []
 --- !u!4 &99793963
 Transform:
@@ -386,6 +473,7 @@ Canvas:
   m_OverridePixelPerfect: 0
   m_SortingBucketNormalizedSize: 0
   m_VertexColorAlwaysGammaSpace: 0
+  m_UseReflectionProbes: 0
   m_AdditionalShaderChannelsFlag: 0
   m_UpdateRectTransformForStandalone: 0
   m_SortingLayerID: 0
@@ -474,7 +562,7 @@ MonoBehaviour:
     m_FontStyle: 0
     m_BestFit: 0
     m_MinSize: 10
-    m_MaxSize: 40
+    m_MaxSize: 48
     m_Alignment: 4
     m_AlignByGeometry: 0
     m_RichText: 1
@@ -490,6 +578,51 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1766767538}
   m_CullTransparentMesh: 1
+--- !u!1 &1805952835
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1805952837}
+  - component: {fileID: 1805952836}
+  m_Layer: 0
+  m_Name: __TestRunner__
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1805952836
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1805952835}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8e427c65ee82643f28b44e1cf64c0379, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::NBAHeadCoach.Tests.TestRunner
+  _runOnStart: 1
+--- !u!4 &1805952837
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1805952835}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1953281430
 GameObject:
   m_ObjectHideFlags: 0
@@ -566,3 +699,4 @@ SceneRoots:
   - {fileID: 1953281433}
   - {fileID: 437807852}
   - {fileID: 1017751758}
+  - {fileID: 1805952837}
