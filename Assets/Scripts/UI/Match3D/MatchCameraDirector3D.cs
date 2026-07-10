@@ -74,6 +74,12 @@ namespace NBAHeadCoach.UI.Match3D
 
         private bool _skip;
 
+        // Impulse shake (dunks / big moments): a decaying positional jitter layered on top of the
+        // rig, applied in Apply() so it rides whichever shot is live.
+        private float _shakeTime;
+        private float _shakeDuration;
+        private float _shakeIntensity;
+
         public void Configure(Camera cam)
         {
             _camera = cam;
@@ -295,6 +301,7 @@ namespace NBAHeadCoach.UI.Match3D
             float smooth = SmoothTimeFor(_activeShot);
             float dt = Time.deltaTime;
             _shotElapsed += dt;
+            if (_shakeTime > 0f) _shakeTime -= dt;
 
             _pos = Vector3.SmoothDamp(_pos, targetPos, ref _posVel, smooth);
             _look = Vector3.SmoothDamp(_look, targetLook, ref _lookVel, smooth);
@@ -307,12 +314,38 @@ namespace NBAHeadCoach.UI.Match3D
         public void TickBridge(Vector3 ballWorld)
         {
             if (_camera == null) return;
+            if (_shakeTime > 0f) _shakeTime -= Time.deltaTime;
             ComputeTarget(_activeShot, ballWorld, out Vector3 targetPos, out Vector3 targetLook, out float targetFov);
             float smooth = SmoothTimeFor(_activeShot);
             _pos = Vector3.SmoothDamp(_pos, targetPos, ref _posVel, smooth);
             _look = Vector3.SmoothDamp(_look, targetLook, ref _lookVel, smooth);
             _fov = Mathf.Lerp(_fov, targetFov, 3f * Time.deltaTime);
             Apply();
+        }
+
+        /// <summary>Fire a quick decaying camera shake (feet of jitter). Called by the view on a
+        /// dunk. Re-firing takes the stronger of the two so a fresh impulse never weakens an
+        /// in-flight one.</summary>
+        public void Shake(float intensity, float duration)
+        {
+            if (intensity <= 0f || duration <= 0f) return;
+            if (intensity >= _shakeIntensity || _shakeTime <= 0f)
+            {
+                _shakeIntensity = intensity;
+                _shakeDuration = duration;
+                _shakeTime = duration;
+            }
+        }
+
+        private Vector3 ShakeOffset()
+        {
+            if (_shakeTime <= 0f || _shakeDuration <= 0f) return Vector3.zero;
+            float k = _shakeTime / _shakeDuration;             // 1 → 0
+            float amp = _shakeIntensity * k * k;               // ease-out
+            return new Vector3(
+                (Mathf.PerlinNoise(Time.time * 37f, 0.5f) - 0.5f) * 2f * amp,
+                (Mathf.PerlinNoise(0.5f, Time.time * 41f) - 0.5f) * 2f * amp,
+                (Mathf.PerlinNoise(Time.time * 29f, Time.time * 31f) - 0.5f) * 2f * amp);
         }
 
         /// <summary>Fast-forward skip: force a wide Broadcast and freeze cut selection.</summary>
@@ -356,7 +389,7 @@ namespace NBAHeadCoach.UI.Match3D
 
         private void Apply()
         {
-            transform.localPosition = _pos;
+            transform.localPosition = _pos + ShakeOffset();
             var dir = _look - _pos;
             if (dir.sqrMagnitude > 0.0001f)
                 transform.rotation = Quaternion.LookRotation(dir.normalized, Vector3.up);

@@ -67,5 +67,22 @@ namespace NBAHeadCoach.UI.Match3D
             block.SetColor(BaseColorId, color);
             block.SetColor(ColorId, color);
         }
+
+        /// <summary>An unlit, alpha-blended decal material for floor logos and net stripes. Uses the
+        /// always-present built-in "Sprites/Default" shader (unlit + transparent + no surface-mode
+        /// wrangling) so it renders identically under URP or the built-in pipeline. Alpha lives in
+        /// the tint's a channel. Returns null only if no usable shader is found.</summary>
+        public static Material CreateUnlitDecal(Texture texture, Color tint)
+        {
+            var sh = Shader.Find("Sprites/Default") ?? Shader.Find("Unlit/Transparent")
+                     ?? Shader.Find("Universal Render Pipeline/Unlit");
+            if (sh == null) return null;
+
+            var mat = new Material(sh);
+            if (texture != null) ApplyTexture(mat, texture);
+            ApplyColor(mat, tint);
+            mat.renderQueue = 3000; // Transparent
+            return mat;
+        }
     }
 }

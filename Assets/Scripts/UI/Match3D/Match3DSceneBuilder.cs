@@ -1,5 +1,7 @@
 using UnityEngine;
+using NBAHeadCoach.Core.Data;
 using NBAHeadCoach.Core.Simulation.Choreography;
+using NBAHeadCoach.Core.Util;
 
 namespace NBAHeadCoach.UI.Match3D
 {
@@ -8,17 +10,26 @@ namespace NBAHeadCoach.UI.Match3D
     {
         public GameObject Root;
         public CameraDirector Camera;
+        public Hoop3D LeftHoop;    // basket at −X
+        public Hoop3D RightHoop;   // basket at +X
+        public Jumbotron3D Jumbotron;
 
         public void SetActive(bool active)
         {
             if (Root != null) Root.SetActive(active);
         }
 
+        /// <summary>Return the basket nearest a court X coordinate (for made-shot net FX).</summary>
+        public Hoop3D HoopNearestX(float courtX) => courtX >= 0f ? RightHoop : LeftHoop;
+
         public void Destroy()
         {
             if (Root != null) Object.Destroy(Root);
             Root = null;
             Camera = null;
+            LeftHoop = null;
+            RightHoop = null;
+            Jumbotron = null;
         }
     }
 
@@ -38,27 +49,49 @@ namespace NBAHeadCoach.UI.Match3D
         private static readonly Color WoodColor = new Color(0.74f, 0.58f, 0.38f);
         private static readonly Color LineColor = Color.white;
         private static readonly Color PaintColor = new Color(0.62f, 0.40f, 0.26f);
-        private static readonly Color ArenaColor = new Color(0.05f, 0.055f, 0.09f);
+        // Slightly lifted (was 0.05) so the stands outside the court still read against the void.
+        private static readonly Color ArenaColor = new Color(0.07f, 0.075f, 0.11f);
 
-        public static Match3DWorld Build()
+        public static Match3DWorld Build(Team homeTeam = null, Team awayTeam = null)
         {
             var world = new Match3DWorld();
 
             var root = new GameObject("Match3DWorld");
             world.Root = root;
 
-            BuildFloor(root.transform);
-            BuildHoop(root.transform, attacksRight: false);
-            BuildHoop(root.transform, attacksRight: true);
+            Color homeAccent = MutedTeamColor(homeTeam);
+
+            BuildFloor(root.transform, homeAccent);
+            BuildCenterLogo(root.transform, homeTeam);
+            world.LeftHoop = BuildHoop(root.transform, attacksRight: false);
+            world.RightHoop = BuildHoop(root.transform, attacksRight: true);
+            BuildStands(root.transform, homeTeam, awayTeam);
+            world.Jumbotron = Jumbotron3D.Build(root.transform,
+                homeTeam != null ? homeTeam.Abbreviation : null,
+                awayTeam != null ? awayTeam.Abbreviation : null);
             BuildLighting(root.transform);
             world.Camera = BuildCamera(root.transform);
+
+            Match3DPostFX.TryEnable(world.Camera != null ? world.Camera.GetComponent<Camera>() : null, root.transform);
 
             return world;
         }
 
+        /// <summary>Home team's primary color, muted toward the wood and desaturated so painted
+        /// court accents stay subtle and players still pop. Falls back to the default paint tint.</summary>
+        private static Color MutedTeamColor(Team team)
+        {
+            if (team == null) return PaintColor;
+            Color c = UITheme.ParseTeamColor(team.PrimaryColor, PaintColor);
+            Color.RGBToHSV(c, out float h, out float s, out float v);
+            // Keep the hue, cap saturation and value so it darkens onto the floor.
+            c = Color.HSVToRGB(h, Mathf.Min(s, 0.55f), Mathf.Min(v, 0.5f));
+            return Color.Lerp(PaintColor, c, 0.75f);
+        }
+
         // ── Floor ──
 
-        private static void BuildFloor(Transform parent)
+        private static void BuildFloor(Transform parent, Color homeAccent)
         {
             // Plane primitive is a flat 10×10 XZ quad facing up with 0..1 UVs — ideal for the court.
             var floor = GameObject.CreatePrimitive(PrimitiveType.Plane);
@@ -70,7 +103,7 @@ namespace NBAHeadCoach.UI.Match3D
             var col = floor.GetComponent<Collider>();
             if (col != null) Object.Destroy(col);
 
-            var tex = BuildCourtTexture();
+            var tex = BuildCourtTexture(homeAccent);
             var mat = Match3DMaterials.CreateLit(Color.white);
             Match3DMaterials.ApplyTexture(mat, tex);
             floor.GetComponent<MeshRenderer>().sharedMaterial = mat;
@@ -79,7 +112,7 @@ namespace NBAHeadCoach.UI.Match3D
         /// <summary>Draws the court markings into a Texture2D in code — boundary, half-court line +
         /// center circle, both lane/paint rectangles + free-throw circles, and both 3-point arcs
         /// with corner segments. Feet are mapped to pixels at a fixed resolution.</summary>
-        private static Texture2D BuildCourtTexture()
+        private static Texture2D BuildCourtTexture(Color homeAccent)
         {
             const int ppf = 8;                       // pixels per foot
             int w = Mathf.RoundToInt(Length * ppf);  // 752
@@ -91,13 +124,17 @@ namespace NBAHeadCoach.UI.Match3D
 
             var ctx = new TexCtx { Px = px, W = w, H = h, Ppf = ppf };
 
-            // Paint fill first (under the lines).
+            // Paint fill first (under the lines) — team-branded home accent so the keys read as the
+            // home floor. Muted upstream so players still pop against it.
             for (int s = -1; s <= 1; s += 2)
             {
                 float baselineX = s * CourtGeometry.HalfLength;
                 float ftX = s * CourtGeometry.FreeThrowLineX;
-                FillRectFeet(ctx, Mathf.Min(baselineX, ftX), Mathf.Max(baselineX, ftX), -8f, 8f, PaintColor);
+                FillRectFeet(ctx, Mathf.Min(baselineX, ftX), Mathf.Max(baselineX, ftX), -8f, 8f, homeAccent);
             }
+
+            // Center-circle disc filled with the same accent (under the lines / logo decal).
+            FillDiscFeet(ctx, 0f, 0f, 6f, homeAccent);
 
             float lineFt = 0.22f;
 
@@ -154,7 +191,7 @@ namespace NBAHeadCoach.UI.Match3D
 
         // ── Hoops ──
 
-        private static void BuildHoop(Transform parent, bool attacksRight)
+        private static Hoop3D BuildHoop(Transform parent, bool attacksRight)
         {
             float sign = attacksRight ? 1f : -1f;
             float rimX = CourtGeometry.RimXFor(attacksRight);
@@ -162,6 +199,7 @@ namespace NBAHeadCoach.UI.Match3D
 
             var group = new GameObject(attacksRight ? "HoopRight" : "HoopLeft");
             group.transform.SetParent(parent, false);
+            var hoop = group.AddComponent<Hoop3D>();
 
             var boardMat = Match3DMaterials.CreateLit(new Color(0.92f, 0.92f, 0.95f, 1f));
             var poleMat = Match3DMaterials.CreateLit(new Color(0.18f, 0.18f, 0.2f));
@@ -203,6 +241,230 @@ namespace NBAHeadCoach.UI.Match3D
             arm.transform.localPosition = new Vector3((poleX + boardX) * 0.5f, CourtGeometry.RimHeight + 0.75f, 0f);
             StripCollider(arm);
             arm.GetComponent<MeshRenderer>().sharedMaterial = poleMat;
+
+            // Net: a short tapered mesh hanging from the rim, striped + semi-transparent. Registered
+            // on the Hoop3D so a made shot can punch it.
+            var netGo = new GameObject("Net");
+            netGo.transform.SetParent(group.transform, false);
+            netGo.transform.localPosition = new Vector3(rimX, CourtGeometry.RimHeight - 0.75f, 0f);
+            var netMf = netGo.AddComponent<MeshFilter>();
+            var netMr = netGo.AddComponent<MeshRenderer>();
+            netMf.sharedMesh = BuildNetMesh(0.72f, 0.42f, 1.5f, 12);
+            var netMat = Match3DMaterials.CreateUnlitDecal(NetStripeTexture(), new Color(1f, 1f, 1f, 0.85f));
+            netMr.sharedMaterial = netMat != null ? netMat : Match3DMaterials.CreateLit(Color.white);
+
+            hoop.Configure(netGo.transform, rimX);
+            return hoop;
+        }
+
+        /// <summary>An open, double-sided frustum (top ring wider than bottom) approximating a net
+        /// hanging under the rim. Origin at the top ring; the mesh extends downward −Y by height.</summary>
+        private static Mesh BuildNetMesh(float topRadius, float bottomRadius, float height, int segments)
+        {
+            segments = Mathf.Max(6, segments);
+            var verts = new Vector3[(segments + 1) * 2];
+            var uv = new Vector2[verts.Length];
+
+            for (int i = 0; i <= segments; i++)
+            {
+                float ang = 2f * Mathf.PI * i / segments;
+                float cos = Mathf.Cos(ang), sin = Mathf.Sin(ang);
+                verts[i] = new Vector3(cos * topRadius, 0f, sin * topRadius);
+                verts[segments + 1 + i] = new Vector3(cos * bottomRadius, -height, sin * bottomRadius);
+                float u = i / (float)segments * 6f;  // tile the stripe several times around
+                uv[i] = new Vector2(u, 1f);
+                uv[segments + 1 + i] = new Vector2(u, 0f);
+            }
+
+            // Two triangles per segment, emitted twice (both windings) so the net reads from inside
+            // and out without a two-sided shader.
+            var tris = new int[segments * 12];
+            int t = 0;
+            for (int i = 0; i < segments; i++)
+            {
+                int a = i, b = i + 1, c = segments + 1 + i, d = segments + 2 + i;
+                // front
+                tris[t++] = a; tris[t++] = c; tris[t++] = b;
+                tris[t++] = b; tris[t++] = c; tris[t++] = d;
+                // back
+                tris[t++] = a; tris[t++] = b; tris[t++] = c;
+                tris[t++] = b; tris[t++] = d; tris[t++] = c;
+            }
+
+            var mesh = new Mesh { name = "NetMesh" };
+            mesh.vertices = verts;
+            mesh.uv = uv;
+            mesh.triangles = tris;
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
+        private static Texture2D _netStripeTex;
+        private static Texture2D NetStripeTexture()
+        {
+            if (_netStripeTex != null) return _netStripeTex;
+            const int n = 16;
+            var px = new Color32[n * n];
+            for (int y = 0; y < n; y++)
+                for (int x = 0; x < n; x++)
+                {
+                    // Vertical mesh strings: opaque white columns, transparent gaps.
+                    bool string_ = (x % 4) == 0;
+                    px[y * n + x] = string_ ? new Color32(255, 255, 255, 235) : new Color32(255, 255, 255, 0);
+                }
+            var tex = new Texture2D(n, n, TextureFormat.RGBA32, false);
+            tex.wrapMode = TextureWrapMode.Repeat;
+            tex.filterMode = FilterMode.Bilinear;
+            tex.SetPixels32(px);
+            tex.Apply();
+            _netStripeTex = tex;
+            return tex;
+        }
+
+        // ── Center-court logo ──
+
+        /// <summary>Lay the home team's logo flat at center court at low alpha. If the logo asset is
+        /// missing, silently skip (ArtManager already logs the miss once).</summary>
+        private static void BuildCenterLogo(Transform parent, Team homeTeam)
+        {
+            if (homeTeam == null) return;
+            var sprite = ArtManager.GetTeamLogo(homeTeam.TeamId);
+            if (sprite == null || sprite.texture == null) return;
+
+            var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            quad.name = "CenterLogo";
+            quad.transform.SetParent(parent, false);
+            // Quad faces +Z by default; rotate −90° about X so its face points up (+Y), just above wood.
+            quad.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);
+            quad.transform.localScale = new Vector3(11f, 11f, 1f);
+            quad.transform.localPosition = new Vector3(0f, 0.03f, 0f);
+            StripCollider(quad);
+
+            var mat = Match3DMaterials.CreateUnlitDecal(sprite.texture, new Color(1f, 1f, 1f, 0.16f));
+            if (mat == null) { Object.Destroy(quad); return; }
+            quad.GetComponent<MeshRenderer>().sharedMaterial = mat;
+        }
+
+        // ── Stands + crowd ──
+
+        /// <summary>Stepped-box bleachers on all four sides, outside the court apron, with a billboard
+        /// crowd texture. Static and cheap — no per-spectator objects. Each section is tinted with a
+        /// small ambient variance so the bowl doesn't read as one flat block. The courtside apron is
+        /// left clear (stands start ApronGap beyond the boundary) so the benches/scorer sideline and
+        /// any sideline actors have room.</summary>
+        private static void BuildStands(Transform parent, Team homeTeam, Team awayTeam)
+        {
+            var crowdTex = CrowdTexture();
+            const int tiers = 4;
+            const float apronGap = 8f;     // clear courtside strip
+            const float tierDepth = 9f;
+            const float tierRise = 4.5f;
+            const float baseHeight = 3f;
+
+            Color homeTint = homeTeam != null ? UITheme.ParseTeamColor(homeTeam.PrimaryColor, Color.gray) : Color.gray;
+            Color awayTint = awayTeam != null ? UITheme.ParseTeamColor(awayTeam.PrimaryColor, Color.gray) : Color.gray;
+
+            var stands = new GameObject("Stands");
+            stands.transform.SetParent(parent, false);
+
+            for (int tier = 0; tier < tiers; tier++)
+            {
+                float y = baseHeight + tier * tierRise;
+                float outward = tier * tierDepth;
+                float sideZ = CourtGeometry.HalfWidth + apronGap + outward + tierDepth * 0.5f;
+                float sideX = CourtGeometry.HalfLength + apronGap + outward + tierDepth * 0.5f;
+                float longLen = CourtGeometry.HalfLength * 2f + apronGap * 2f + outward * 2f + tierDepth * 2f;
+                float shortLen = CourtGeometry.HalfWidth * 2f + apronGap * 2f + outward * 2f;
+
+                // Two sidelines (long, run along X). Home behind +/− is arbitrary; tint by side.
+                BuildStandSection(stands.transform, $"SideZ+_{tier}",
+                    new Vector3(0f, y, sideZ), new Vector3(longLen, tierRise + 1f, tierDepth),
+                    crowdTex, SectionTint(homeTint, tier, 0));
+                BuildStandSection(stands.transform, $"SideZ-_{tier}",
+                    new Vector3(0f, y, -sideZ), new Vector3(longLen, tierRise + 1f, tierDepth),
+                    crowdTex, SectionTint(homeTint, tier, 1));
+
+                // Two baselines (short, run along Z).
+                BuildStandSection(stands.transform, $"SideX+_{tier}",
+                    new Vector3(sideX, y, 0f), new Vector3(tierDepth, tierRise + 1f, shortLen),
+                    crowdTex, SectionTint(awayTint, tier, 2));
+                BuildStandSection(stands.transform, $"SideX-_{tier}",
+                    new Vector3(-sideX, y, 0f), new Vector3(tierDepth, tierRise + 1f, shortLen),
+                    crowdTex, SectionTint(awayTint, tier, 3));
+            }
+        }
+
+        private static void BuildStandSection(Transform parent, string name, Vector3 pos, Vector3 scale,
+            Texture2D crowd, Color tint)
+        {
+            var box = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            box.name = name;
+            box.transform.SetParent(parent, false);
+            box.transform.localPosition = pos;
+            box.transform.localScale = scale;
+            StripCollider(box);
+
+            var mat = Match3DMaterials.CreateLit(tint);
+            if (crowd != null)
+            {
+                Match3DMaterials.ApplyTexture(mat, crowd);
+                // Tile the crowd densely along the long axis of the section.
+                float longest = Mathf.Max(scale.x, scale.z);
+                mat.mainTextureScale = new Vector2(longest / 6f, scale.y / 4f);
+            }
+            box.GetComponent<MeshRenderer>().sharedMaterial = mat;
+        }
+
+        /// <summary>Blend a base team tint toward a neutral dark, varied per tier/section so the bowl
+        /// has gentle ambient variance rather than one flat color.</summary>
+        private static Color SectionTint(Color teamColor, int tier, int section)
+        {
+            Color neutral = new Color(0.12f, 0.12f, 0.16f);
+            float mix = 0.6f + 0.08f * ((tier + section) % 3);   // 0.60 / 0.68 / 0.76
+            Color c = Color.Lerp(teamColor, neutral, mix);
+            float jitter = 0.94f + 0.06f * ((section * 7 + tier * 3) % 4) / 3f;
+            return new Color(c.r * jitter, c.g * jitter, c.b * jitter);
+        }
+
+        private static Texture2D _crowdTex;
+        /// <summary>A repeating field of colored blobs on a dark ground — reads as a distant crowd at
+        /// broadcast range. Generated once and shared across all sections.</summary>
+        private static Texture2D CrowdTexture()
+        {
+            if (_crowdTex != null) return _crowdTex;
+            const int n = 64;
+            var px = new Color32[n * n];
+            var dark = new Color32(18, 18, 26, 255);
+            for (int i = 0; i < px.Length; i++) px[i] = dark;
+
+            var rng = new System.Random(12345);
+            int blobs = 520;
+            for (int b = 0; b < blobs; b++)
+            {
+                int cx = rng.Next(n);
+                int cy = rng.Next(n);
+                // Muted clothing tones.
+                var col = new Color32(
+                    (byte)(90 + rng.Next(150)),
+                    (byte)(90 + rng.Next(150)),
+                    (byte)(90 + rng.Next(150)), 255);
+                int r = 1 + rng.Next(2);
+                for (int y = cy - r; y <= cy + r; y++)
+                    for (int x = cx - r; x <= cx + r; x++)
+                    {
+                        int xi = (x + n) % n, yi = (y + n) % n;
+                        px[yi * n + xi] = col;
+                    }
+            }
+
+            var tex = new Texture2D(n, n, TextureFormat.RGBA32, false);
+            tex.wrapMode = TextureWrapMode.Repeat;
+            tex.filterMode = FilterMode.Bilinear;
+            tex.SetPixels32(px);
+            tex.Apply();
+            _crowdTex = tex;
+            return tex;
         }
 
         // ── Lighting ──
@@ -218,9 +480,10 @@ namespace NBAHeadCoach.UI.Match3D
             light.shadows = LightShadows.Soft;
             lightGo.transform.rotation = Quaternion.Euler(55f, -25f, 0f);
 
-            // Arena ambient so the far side of capsules doesn't go pitch black.
+            // Arena ambient so the far side of capsules doesn't go pitch black, and the stands
+            // outside the court light rig still read (slightly lifted from the original 0.45).
             RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
-            RenderSettings.ambientLight = new Color(0.45f, 0.46f, 0.5f);
+            RenderSettings.ambientLight = new Color(0.5f, 0.51f, 0.56f);
         }
 
         // ── Camera ──
@@ -311,6 +574,24 @@ namespace NBAHeadCoach.UI.Match3D
             for (int y = y0; y <= y1; y++)
                 for (int x = x0; x <= x1; x++)
                     c.Px[y * c.W + x] = col32;
+        }
+
+        private static void FillDiscFeet(TexCtx c, float cxFeet, float cyFeet, float radiusFt, Color col)
+        {
+            var col32 = (Color32)col;
+            int cx = Fx(c, cxFeet), cy = Fy(c, cyFeet);
+            int radPx = Mathf.RoundToInt(radiusFt * c.Ppf);
+            int r2 = radPx * radPx;
+            for (int y = cy - radPx; y <= cy + radPx; y++)
+            {
+                if (y < 0 || y >= c.H) continue;
+                for (int x = cx - radPx; x <= cx + radPx; x++)
+                {
+                    if (x < 0 || x >= c.W) continue;
+                    int dx = x - cx, dy = y - cy;
+                    if (dx * dx + dy * dy <= r2) c.Px[y * c.W + x] = col32;
+                }
+            }
         }
 
         private static void RingFeet(TexCtx c, float cxFeet, float cyFeet, float radiusFt, float thickFt)

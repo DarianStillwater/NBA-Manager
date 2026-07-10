@@ -429,7 +429,7 @@ namespace NBAHeadCoach.UI.Match
         {
             if (_world3D != null) return;
 
-            _world3D = Match3DSceneBuilder.Build();
+            _world3D = Match3DSceneBuilder.Build(_homeTeam, _awayTeam);
             _court3D = _world3D.Root.AddComponent<Match3DView>();
 
             var home = _simController != null
@@ -576,6 +576,9 @@ namespace NBAHeadCoach.UI.Match
             _clockText.text = $"{mins}:{secs:D2}";
             if (_shotClockText != null)
                 _shotClockText.text = Mathf.CeilToInt(update.ShotClock).ToString();
+
+            // Mirror the same snapshot to the 3D jumbotron (no-op when 3D isn't built).
+            _court3D?.UpdateScoreboard(update);
         }
 
         /// <summary>Per-frame clock tick during played possessions — writes ONLY the two clock
@@ -590,6 +593,8 @@ namespace NBAHeadCoach.UI.Match
             }
             if (_shotClockText != null)
                 _shotClockText.text = Mathf.CeilToInt(shotClock).ToString();
+
+            _court3D?.UpdateClock(gameClock, shotClock);
         }
 
         private IEnumerator PulseText(Text text)

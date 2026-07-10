@@ -44,6 +44,8 @@ namespace NBAHeadCoach.UI.Match3D
         private Vector3 _labelFocus;      // ball position (local, XZ) for declutter distance
         private bool _hasFocus;
         private Color _labelBaseColor = Color.white;
+        private float _labelBaseHeight;   // resting label pivot height (feet)
+        private float _labelExtraHeight;  // anti-overlap vertical nudge (feet)
 
         public string PlayerId { get; private set; }
 
@@ -82,7 +84,8 @@ namespace NBAHeadCoach.UI.Match3D
             // Jersey label: world-space TextMeshPro above the head, billboarded each frame.
             var labelPivot = new GameObject("LabelPivot");
             labelPivot.transform.SetParent(root.transform, false);
-            labelPivot.transform.localPosition = new Vector3(0f, visualHeight + LabelClearanceFeet, 0f);
+            actor._labelBaseHeight = visualHeight + LabelClearanceFeet;
+            labelPivot.transform.localPosition = new Vector3(0f, actor._labelBaseHeight, 0f);
 
             var labelGo = new GameObject("Jersey");
             labelGo.transform.SetParent(labelPivot.transform, false);
@@ -136,6 +139,16 @@ namespace NBAHeadCoach.UI.Match3D
             _hasFocus = true;
         }
 
+        /// <summary>Raise this actor's number label by <paramref name="feet"/> so it doesn't stack on
+        /// top of an overlapping neighbor's label. Set by Match3DView after positioning.</summary>
+        public void SetLabelExtraHeight(float feet)
+        {
+            _labelExtraHeight = feet;
+        }
+
+        /// <summary>World XZ of this actor (feet) for neighbor-overlap tests.</summary>
+        public Vector2 PlanarPosition => new Vector2(transform.localPosition.x, transform.localPosition.z);
+
         private void Update()
         {
             float dt = Time.deltaTime;
@@ -153,6 +166,9 @@ namespace NBAHeadCoach.UI.Match3D
             if (_label == null || _labelPivot == null) return;
             var cam = _camera != null ? _camera : Camera.main;
             if (cam == null) return;
+
+            // Apply the anti-overlap vertical nudge before billboarding.
+            _labelPivot.localPosition = new Vector3(0f, _labelBaseHeight + _labelExtraHeight, 0f);
 
             // Declutter: hide the number unless this actor holds the ball or is within the show
             // radius of the ball. Keeps a scrum of overlapping numbers from becoming noise.

@@ -346,12 +346,69 @@ namespace NBAHeadCoach.UI.Match3D
             var ballXZ = new Vector3(_lastBall.x, 0f, _lastBall.z);
             foreach (var kvp in _actors)
                 if (kvp.Value != null) kvp.Value.SetLabelFocus(ballXZ);
+
+            NudgeOverlappingLabels();
         }
 
-        /// <summary>TODO(P3+): 3D shot markers / hoop FX. No-op for the P1 capsule milestone —
-        /// the ball's arc through the rim already reads the make/miss.</summary>
+        // Anti-overlap: when actors cluster within ~1.5 ft, stack their number labels vertically so
+        // the text doesn't pile onto one another. O(n^2) over ≤10 actors — trivial.
+        private const float LabelOverlapFeet = 1.5f;
+        private const float LabelStackStepFeet = 1.3f;
+        private readonly List<PlayerActor3D> _nudgeScratch = new List<PlayerActor3D>();
+
+        private void NudgeOverlappingLabels()
+        {
+            _nudgeScratch.Clear();
+            foreach (var kvp in _actors)
+            {
+                if (kvp.Value == null) continue;
+                kvp.Value.SetLabelExtraHeight(0f);
+                _nudgeScratch.Add(kvp.Value);
+            }
+
+            float sqr = LabelOverlapFeet * LabelOverlapFeet;
+            for (int i = 0; i < _nudgeScratch.Count; i++)
+            {
+                int stack = 0;
+                var pi = _nudgeScratch[i].PlanarPosition;
+                for (int j = 0; j < i; j++)
+                {
+                    if ((pi - _nudgeScratch[j].PlanarPosition).sqrMagnitude <= sqr) stack++;
+                }
+                if (stack > 0) _nudgeScratch[i].SetLabelExtraHeight(stack * LabelStackStepFeet);
+            }
+        }
+
+        /// <summary>Made-shot hoop FX: punch the net at whichever basket the shot went to, and add a
+        /// short camera shake on a dunk. Degrades to nothing if the world/hoops aren't present.</summary>
         public void ResolveShot(ShotMarkerData data, bool made)
         {
+            if (!made || _world == null) return;
+
+            var hoop = _world.HoopNearestX(data.Position.X);
+            hoop?.Punch();
+
+            // ShotType is ambiguous here (Core.Data vs Core.Simulation both imported) — qualify.
+            if (data.ShotType == NBAHeadCoach.Core.Data.ShotType.Dunk)
+                _director?.Shake(1.3f, 0.4f);
+        }
+
+        // ── Jumbotron relay (driven by MatchSceneSetup from the same director scoreboard/clock
+        //    events the 2D HUD consumes — no independent sim polling). ──
+
+        /// <summary>Push a scoreboard snapshot to the 3D jumbotron. Mirrors the 2D HUD update.</summary>
+        public void UpdateScoreboard(ScoreboardUpdate update)
+        {
+            if (update == null || _world == null || _world.Jumbotron == null) return;
+            _world.Jumbotron.SetScore(update.HomeScore, update.AwayScore);
+            _world.Jumbotron.SetClock(update.Quarter, update.Clock);
+        }
+
+        /// <summary>Push a per-frame clock tick to the jumbotron (score untouched, as with the HUD).</summary>
+        public void UpdateClock(float gameClock, float shotClock)
+        {
+            if (_world == null || _world.Jumbotron == null) return;
+            _world.Jumbotron.SetClock(0, gameClock);
         }
 
         /// <summary>Dim the arena while fast-forwarding so a skipped stretch reads as backgrounded.</summary>
