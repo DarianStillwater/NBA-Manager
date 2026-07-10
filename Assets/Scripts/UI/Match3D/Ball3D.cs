@@ -12,8 +12,12 @@ namespace NBAHeadCoach.UI.Match3D
     public class Ball3D : MonoBehaviour
     {
         private const float DiameterFeet = 1.0f;
+        private const float HeldDiameterFeet = 1.18f; // slightly larger while carried so it reads
         private const float HandHeightFeet = 3.3f;   // hip/hand carry height for a held ball
         private const float HandForwardFeet = 1.1f;  // offset ahead of the handler along facing
+        // Push the carried ball toward the broadcast sideline (−Z, the default camera side) so an
+        // elevated sideline view never sees it fully occluded behind the holder's body.
+        private const float HeldCameraSideOffset = -0.7f;
 
         public static Ball3D Create(Transform parent)
         {
@@ -44,13 +48,21 @@ namespace NBAHeadCoach.UI.Match3D
         /// <summary>Place the ball from a court-space BallState. Height (feet) → world Y.</summary>
         public void Render(BallState state)
         {
+            SetLooseScale();
             transform.localPosition = new Vector3(state.X, Mathf.Max(state.Height, 0.1f), state.Y);
         }
 
         /// <summary>Place the ball at explicit interpolated court coordinates.</summary>
         public void Render(float courtX, float courtY, float heightFeet)
         {
+            SetLooseScale();
             transform.localPosition = new Vector3(courtX, Mathf.Max(heightFeet, 0.1f), courtY);
+        }
+
+        private void SetLooseScale()
+        {
+            if (transform.localScale.x != DiameterFeet)
+                transform.localScale = Vector3.one * DiameterFeet;
         }
 
         /// <summary>Carry the ball at the handler's hands: at hand height, offset slightly ahead
@@ -59,8 +71,10 @@ namespace NBAHeadCoach.UI.Match3D
         public void RenderHeld(float handlerX, float handlerY, float facingRad)
         {
             float fx = handlerX + Mathf.Cos(facingRad) * HandForwardFeet;
-            float fy = handlerY + Mathf.Sin(facingRad) * HandForwardFeet;
+            float fy = handlerY + Mathf.Sin(facingRad) * HandForwardFeet + HeldCameraSideOffset;
             transform.localPosition = new Vector3(fx, HandHeightFeet, fy);
+            if (transform.localScale.x != HeldDiameterFeet)
+                transform.localScale = Vector3.one * HeldDiameterFeet;
         }
 
         public Vector3 WorldFocusPoint => transform.localPosition;

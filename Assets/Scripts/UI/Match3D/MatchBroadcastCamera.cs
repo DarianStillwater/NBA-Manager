@@ -3,6 +3,11 @@ using UnityEngine;
 namespace NBAHeadCoach.UI.Match3D
 {
     /// <summary>
+    /// SUPERSEDED (P4): the match world now uses <see cref="CameraDirector"/>, which pre-plans
+    /// multi-camera cuts and folds this rig's follow math into its Broadcast shot. Kept as the
+    /// reference single-rig implementation (and no-asset fallback); it is no longer attached by
+    /// <see cref="Match3DSceneBuilder"/>.
+    ///
     /// Elevated sideline broadcast camera. Sits above the near sideline looking across the
     /// court, SmoothDamps its horizontal position to follow the ball's X (clamped so the court
     /// edges stay framed), and eases its FOV in slightly when the play works under either

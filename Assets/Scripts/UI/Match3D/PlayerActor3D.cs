@@ -21,6 +21,13 @@ namespace NBAHeadCoach.UI.Match3D
         private const float RadiusFeet = 0.95f;
         private const float LabelClearanceFeet = 1.4f;
 
+        // Label declutter/fade: only the ball-handler and players within this radius of the ball
+        // keep their jersey number, and labels dim with camera distance so a far crowd of numbers
+        // doesn't overlap into noise.
+        private const float LabelShowRadiusFeet = 18f;
+        private const float LabelNearFade = 40f;   // full opacity within this camera distance
+        private const float LabelFarFade = 95f;     // fully faded past this camera distance
+
         private IActorBody _body;
         private Transform _labelPivot;
         private TextMeshPro _label;
@@ -34,6 +41,9 @@ namespace NBAHeadCoach.UI.Match3D
         private Renderer _highlight;
 
         private ActorFrame _frame;
+        private Vector3 _labelFocus;      // ball position (local, XZ) for declutter distance
+        private bool _hasFocus;
+        private Color _labelBaseColor = Color.white;
 
         public string PlayerId { get; private set; }
 
@@ -87,6 +97,7 @@ namespace NBAHeadCoach.UI.Match3D
             label.rectTransform.sizeDelta = new Vector2(6f, 3f);
             actor._labelPivot = labelPivot.transform;
             actor._label = label;
+            actor._labelBaseColor = label.color;
 
             return actor;
         }
@@ -117,6 +128,14 @@ namespace NBAHeadCoach.UI.Match3D
             if (_highlight != null) _highlight.gameObject.SetActive(hasBall);
         }
 
+        /// <summary>Feed the current ball position (local space, XZ) so the label can declutter:
+        /// only the ball-handler and players near the ball keep their number visible.</summary>
+        public void SetLabelFocus(Vector3 ballLocal)
+        {
+            _labelFocus = ballLocal;
+            _hasFocus = true;
+        }
+
         private void Update()
         {
             float dt = Time.deltaTime;
@@ -134,6 +153,31 @@ namespace NBAHeadCoach.UI.Match3D
             if (_label == null || _labelPivot == null) return;
             var cam = _camera != null ? _camera : Camera.main;
             if (cam == null) return;
+
+            // Declutter: hide the number unless this actor holds the ball or is within the show
+            // radius of the ball. Keeps a scrum of overlapping numbers from becoming noise.
+            bool relevant = _hasBall || !_hasFocus;
+            if (!relevant)
+            {
+                Vector3 d = transform.localPosition - _labelFocus;
+                d.y = 0f;
+                relevant = d.sqrMagnitude <= LabelShowRadiusFeet * LabelShowRadiusFeet;
+            }
+
+            if (!relevant)
+            {
+                if (_label.enabled) _label.enabled = false;
+                return;
+            }
+            if (!_label.enabled) _label.enabled = true;
+
+            // Fade the number with camera distance so far labels recede.
+            float camDist = Vector3.Distance(_labelPivot.position, cam.transform.position);
+            float alpha = 1f - Mathf.Clamp01((camDist - LabelNearFade) / (LabelFarFade - LabelNearFade));
+            var c = _labelBaseColor;
+            c.a = alpha;
+            _label.color = c;
+
             // Billboard the number toward the camera.
             _labelPivot.rotation = Quaternion.LookRotation(
                 _labelPivot.position - cam.transform.position, Vector3.up);

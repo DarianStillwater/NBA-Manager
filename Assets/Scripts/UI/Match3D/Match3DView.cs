@@ -24,7 +24,7 @@ namespace NBAHeadCoach.UI.Match3D
         private Match3DWorld _world;
         private Transform _actorParent;
         private Camera _camera;
-        private MatchBroadcastCamera _broadcast;
+        private CameraDirector _director;
         private Light _keyLight;
         private float _baseLightIntensity = 1.15f;
 
@@ -54,8 +54,8 @@ namespace NBAHeadCoach.UI.Match3D
         {
             _world = world;
             _actorParent = world != null && world.Root != null ? world.Root.transform : transform;
-            _broadcast = world != null ? world.Camera : null;
-            _camera = _broadcast != null ? _broadcast.GetComponent<Camera>() : null;
+            _director = world != null ? world.Camera : null;
+            _camera = _director != null ? _director.GetComponent<Camera>() : null;
             _keyLight = _actorParent != null ? _actorParent.GetComponentInChildren<Light>() : null;
             if (_keyLight != null) _baseLightIntensity = _keyLight.intensity;
 
@@ -198,6 +198,10 @@ namespace NBAHeadCoach.UI.Match3D
 
         public void BeginPossession(PossessionPlaybackPacket packet)
         {
+            // Pre-plan the camera cuts for this possession from its known timeline (logs the plan).
+            // Doesn't change the live rig — the bridge keeps the previous shot until the first Tick.
+            _director?.BeginPossession(packet);
+
             _timeline = packet?.Timeline;
             _cursor = 0;
 
@@ -262,7 +266,7 @@ namespace NBAHeadCoach.UI.Match3D
                 var pos = Vector3.Lerp(_bridgeBallFrom, _bridgeBallTo, u);
                 _ball.Render(pos.x, pos.z, pos.y);
                 _lastBall = pos;
-                _broadcast?.Focus(pos);
+                _director?.TickBridge(pos);
             }
         }
 
@@ -335,8 +339,13 @@ namespace NBAHeadCoach.UI.Match3D
                 }
 
                 _lastBall = _ball.WorldFocusPoint;
-                _broadcast?.Focus(_lastBall);
+                _director?.Tick(t, _lastBall);
             }
+
+            // Declutter jersey labels: only the ball-handler and players near the ball keep theirs.
+            var ballXZ = new Vector3(_lastBall.x, 0f, _lastBall.z);
+            foreach (var kvp in _actors)
+                if (kvp.Value != null) kvp.Value.SetLabelFocus(ballXZ);
         }
 
         /// <summary>TODO(P3+): 3D shot markers / hoop FX. No-op for the P1 capsule milestone —
@@ -349,6 +358,7 @@ namespace NBAHeadCoach.UI.Match3D
         public void SetFastForward(bool on)
         {
             if (_keyLight != null) _keyLight.intensity = on ? _baseLightIntensity * 0.45f : _baseLightIntensity;
+            _director?.SetSkip(on);
         }
 
         /// <summary>TODO(P5): coach on the 3D sideline. No sideline actors exist yet.</summary>

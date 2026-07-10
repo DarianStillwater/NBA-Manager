@@ -7,7 +7,7 @@ namespace NBAHeadCoach.UI.Match3D
     public class Match3DWorld
     {
         public GameObject Root;
-        public MatchBroadcastCamera Camera;
+        public CameraDirector Camera;
 
         public void SetActive(bool active)
         {
@@ -225,9 +225,9 @@ namespace NBAHeadCoach.UI.Match3D
 
         // ── Camera ──
 
-        private static MatchBroadcastCamera BuildCamera(Transform parent)
+        private static CameraDirector BuildCamera(Transform parent)
         {
-            var camGo = new GameObject("MatchBroadcastCamera");
+            var camGo = new GameObject("MatchCameraDirector");
             camGo.transform.SetParent(parent, false);
             var cam = camGo.AddComponent<Camera>();
             cam.clearFlags = CameraClearFlags.SolidColor;
@@ -239,9 +239,11 @@ namespace NBAHeadCoach.UI.Match3D
             // stray default scene camera is present.
             cam.depth = 10f;
 
-            var broadcast = camGo.AddComponent<MatchBroadcastCamera>();
-            broadcast.Configure(cam);
-            return broadcast;
+            // The CameraDirector pre-plans cuts per possession and moves this single camera between
+            // virtual shot rigs (broadcast, baseline-low, under-rim, free-throw, buzzer-beater).
+            var director = camGo.AddComponent<CameraDirector>();
+            director.Configure(cam);
+            return director;
         }
 
         // ── Primitive + texture helpers ──
