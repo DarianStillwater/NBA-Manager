@@ -348,11 +348,14 @@ namespace NBAHeadCoach.UI.Components
             }
 
             float start = packet.StartGameClock;
+            // Legacy timelines (predating PresentationTime) never set it past 0; fall back to the
+            // old GameClock reconstruction for those so old saves/tests keep working.
+            bool legacy = _timeline.Count <= 1 || _timeline[_timeline.Count - 1].PresentationTime <= 0f;
             _relTimes = new float[_timeline.Count];
             float prev = 0f;
             for (int i = 0; i < _timeline.Count; i++)
             {
-                float rel = start - _timeline[i].GameClock;
+                float rel = legacy ? start - _timeline[i].GameClock : _timeline[i].PresentationTime;
                 // keep strictly non-decreasing even at clamped clock boundaries
                 if (rel < prev) rel = prev;
                 _relTimes[i] = rel;
@@ -372,14 +375,23 @@ namespace NBAHeadCoach.UI.Components
             if (_timeline == null || _timeline.Count == 0) return;
 
             var first = _timeline[0];
+            float maxDispUi = 0f;
             for (int i = 0; i < first.Players.Length; i++)
             {
                 var ps = first.Players[i];
                 if (string.IsNullOrEmpty(ps.PlayerId)) continue;
                 if (!_playerDots.TryGetValue(ps.PlayerId, out var dot) || dot == null) continue;
-                _bridgeFrom[ps.PlayerId] = dot.RectTransform.anchoredPosition;
-                _bridgeTo[ps.PlayerId] = CourtToUI(ps.X, ps.Y);
+                var from = dot.RectTransform.anchoredPosition;
+                var to = CourtToUI(ps.X, ps.Y);
+                _bridgeFrom[ps.PlayerId] = from;
+                _bridgeTo[ps.PlayerId] = to;
+                maxDispUi = Mathf.Max(maxDispUi, Vector2.Distance(from, to));
             }
+
+            // Twin of the 3D threshold: continuous-flow timelines start where the last ended, so the
+            // slide is imperceptible — skip it. Convert the UI displacement back to feet to compare.
+            float maxDispFeet = PixelsPerFoot > 0.01f ? maxDispUi / PixelsPerFoot : maxDispUi;
+            if (!NBAHeadCoach.UI.Match3D.ActorMotion.ShouldBridge(maxDispFeet)) return;
 
             _bridgeBallTarget = first.Ball;
             _bridgeBallTo = CourtToUI(first.Ball.X, first.Ball.Y);

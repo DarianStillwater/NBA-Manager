@@ -67,6 +67,12 @@ namespace NBAHeadCoach.Core
         // Dead ball state
         private bool _isDeadBall = false;
         private bool _liveBallForNext = false; // next possession starts off a live board/steal
+
+        // Continuous-flow: how the NEXT possession's timeline opens, derived from this possession's
+        // final frame + outcome. Null → legacy backcourt reset (the renderer's bridge covers it).
+        // Cleared at quarter ends, timeouts, and any lineup change (see ReplaceInLineup). Purely
+        // presentational — never influences outcomes.
+        private Simulation.Choreography.PossessionStartContext _pendingStartContext;
         private int _homeUnansweredPoints = 0;
         private int _awayUnansweredPoints = 0;
         private bool _lastPossessionScored = false;
@@ -256,6 +262,7 @@ namespace NBAHeadCoach.Core
                 EndGameClock = result.EndGameClock,
                 PresentationSeconds = result.PresentationSeconds,
                 LiveSeconds = result.LiveSeconds,
+                ClockStartOffset = result.ClockStartOffset,
                 Quarter = result.Quarter,
                 OffenseIsHome = offenseIsHome
             };
@@ -265,8 +272,10 @@ namespace NBAHeadCoach.Core
         private void CaptureOffsetForEvent(float eventGameClock)
         {
             if (_captureSink == null) return;
-            float offset = _captureSink.StartGameClock - eventGameClock;
-            float max = _captureSink.DurationGameSeconds;
+            // Game-clock second X plays at presentation time X + ClockStartOffset when a
+            // dead-ball lead-in (inbound walk) precedes the live window.
+            float offset = _captureSink.ClockStartOffset + (_captureSink.StartGameClock - eventGameClock);
+            float max = _captureSink.ClockStartOffset + _captureSink.DurationGameSeconds;
             _captureCurrentOffset = Mathf.Clamp(offset, 0f, max);
         }
 
@@ -339,6 +348,7 @@ namespace NBAHeadCoach.Core
             _isRunning = false;
             _isDeadBall = false;
             _liveBallForNext = false;
+            _pendingStartContext = null;
             _homeUnansweredPoints = 0;
             _awayUnansweredPoints = 0;
             _lastPossessionScored = false;
@@ -602,7 +612,8 @@ namespace NBAHeadCoach.Core
                 defenseTeam.TeamId,
                 scoreDifferential,
                 _liveBallForNext,
-                calledAction
+                calledAction,
+                _pendingStartContext
             );
 
             // Transition logic: the next possession starts live off a defensive
@@ -611,6 +622,11 @@ namespace NBAHeadCoach.Core
                                result.Outcome == PossessionOutcome.Block ||
                                (result.Outcome == PossessionOutcome.Turnover &&
                                 result.Events.Any(e => e.Type == EventType.Steal));
+
+            // Continuous flow: derive how the NEXT possession's timeline opens from this one's final
+            // frame + outcome, so possessions chain (rebound→outlet→bring-up, made-basket inbound,
+            // steal flows live). Only when a choreographed timeline exists (interactive/Full detail).
+            _pendingStartContext = DeriveNextStartContext(result);
 
             // In packet mode, presentation side-effects are captured instead of fired live
             if (HasPresentationConsumer)
@@ -712,6 +728,85 @@ namespace NBAHeadCoach.Core
                     });
                 }
             }
+        }
+
+        /// <summary>
+        /// Derive how the NEXT possession's timeline should OPEN from this possession's final
+        /// spatial frame and outcome — the seed for continuous game flow (rebound→outlet→bring-up,
+        /// made-basket / FT inbound, live steal, dead-ball OOB inbound). Returns null when there's
+        /// no choreographed timeline (headless) → the next possession falls back to a backcourt
+        /// reset. Purely presentational; reads only decided facts, never influences outcomes.
+        /// </summary>
+        private Simulation.Choreography.PossessionStartContext DeriveNextStartContext(PossessionResult result)
+        {
+            var states = result.SpatialStates;
+            if (states == null || states.Count == 0) return null;
+
+            var last = states[states.Count - 1];
+            if (last.Players == null || last.Players.Length == 0) return null;
+
+            // All ten final positions by PlayerId (team-agnostic; the choreographer maps its own
+            // lineups back out by id, so the flip to the new offense/defense is automatic).
+            var prior = new (string playerId, CourtPosition pos)[last.Players.Length];
+            for (int i = 0; i < last.Players.Length; i++)
+                prior[i] = (last.Players[i].PlayerId, new CourtPosition(last.Players[i].X, last.Players[i].Y));
+
+            var ballSpot = new CourtPosition(last.Ball.X, last.Ball.Y);
+
+            Simulation.Choreography.PossessionStartKind kind;
+            string carrier = null;
+
+            bool stole = result.Events.Any(e => e.Type == EventType.Steal);
+            bool madeFg = result.Events.Any(e => e.Type == EventType.Shot && e.Outcome == EventOutcome.Success);
+
+            switch (result.Outcome)
+            {
+                case PossessionOutcome.Score:
+                    kind = madeFg
+                        ? Simulation.Choreography.PossessionStartKind.MadeBasketInbound
+                        : Simulation.Choreography.PossessionStartKind.FreeThrowInbound;
+                    break;
+
+                case PossessionOutcome.Miss:
+                case PossessionOutcome.Block:
+                    kind = Simulation.Choreography.PossessionStartKind.LiveRebound;
+                    carrier = result.Events.LastOrDefault(e => e.Type == EventType.Rebound)?.ActorPlayerId
+                              ?? last.Ball.HeldByPlayerId;
+                    break;
+
+                case PossessionOutcome.Turnover:
+                    if (stole)
+                    {
+                        kind = Simulation.Choreography.PossessionStartKind.LiveSteal;
+                        carrier = result.Events.FirstOrDefault(e => e.Type == EventType.Steal)?.ActorPlayerId
+                                  ?? last.Ball.HeldByPlayerId;
+                    }
+                    else
+                    {
+                        var tk = result.Events.FirstOrDefault(e => e.Type == EventType.Turnover)?.Turnover;
+                        // A lost handle usually sails toward a sideline, not the baseline.
+                        kind = (tk == TurnoverKind.OutOfBounds)
+                            ? Simulation.Choreography.PossessionStartKind.BaselineOob
+                            : Simulation.Choreography.PossessionStartKind.SidelineOob;
+                    }
+                    break;
+
+                case PossessionOutcome.Foul:
+                    // Whistle (incl. retained-possession flagrant/tech): the floor sets for an inbound.
+                    kind = Simulation.Choreography.PossessionStartKind.SidelineOob;
+                    break;
+
+                default:
+                    return null;   // EndOfQuarter etc. — the next quarter resets anyway
+            }
+
+            return new Simulation.Choreography.PossessionStartContext
+            {
+                Kind = kind,
+                PriorPositions = prior,
+                BallSpot = ballSpot,
+                BallCarrierId = carrier
+            };
         }
 
         /// <summary>
@@ -1440,6 +1535,7 @@ namespace NBAHeadCoach.Core
             _gameClock = _currentQuarter <= 4 ? 720f : 300f;
             _homeHasPossession = _currentQuarter % 2 == 1; // Alternate
             _liveBallForNext = false; // quarters open with a dead-ball inbound
+            _pendingStartContext = null; // new quarter → backcourt reset, no carried continuity
 
             // Reset team fouls for new quarter
             _foulSystem.ResetQuarterFouls();
@@ -1573,6 +1669,8 @@ namespace NBAHeadCoach.Core
 
             _homeUnansweredPoints = 0;
             _awayUnansweredPoints = 0;
+            // A timeout resets the floor: the huddle breaks into a fresh inbound, not a chained flow.
+            _pendingStartContext = null;
 
             var opposingCoach = calledByPlayerTeam ? _aiCoach : _playerCoach;
             opposingCoach?.OnOpponentTimeout();
@@ -1615,6 +1713,9 @@ namespace NBAHeadCoach.Core
             int idx = lineup.IndexOf(playerOut);
             if (idx < 0) return;
             lineup[idx] = playerIn;
+            // A five changed: the carried start context references stale on-court ids — drop it so
+            // the next possession opens from a clean backcourt reset (bridge handles the gap).
+            _pendingStartContext = null;
             OnLineupChanged?.Invoke(teamId, playerOut, playerIn);
         }
 

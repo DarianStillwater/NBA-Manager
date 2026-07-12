@@ -47,6 +47,16 @@ namespace NBAHeadCoach.UI.Match3D
         private bool _bridgeReady;
         private Vector3 _lastBall;
 
+        // Per-frame scratch for the compute → soft-separation → commit passes in RenderAt.
+        // Pre-allocated (max 10 actors) so RenderAt never allocates.
+        private readonly Vector2[] _sepPositions = new Vector2[10];
+        private readonly PlayerSnapshot[] _sepSnaps = new PlayerSnapshot[10];
+        private readonly Vector2[] _sepOffsets = new Vector2[10];
+        private readonly ActorFrame[] _sepFrames = new ActorFrame[10];
+        private readonly PlayerActor3D[] _sepActors = new PlayerActor3D[10];
+        private readonly float[] _sepFacing = new float[10];
+        private readonly Vector3[] _actorWorld = new Vector3[10];
+
         #region Setup
 
         public void Initialize(Match3DWorld world, Team homeTeam, Team awayTeam,
@@ -212,11 +222,14 @@ namespace NBAHeadCoach.UI.Match3D
             }
 
             float start = packet.StartGameClock;
+            // Legacy timelines (predating PresentationTime) never set it past 0; fall back to the
+            // old GameClock reconstruction for those so old saves/tests keep working.
+            bool legacy = _timeline.Count <= 1 || _timeline[_timeline.Count - 1].PresentationTime <= 0f;
             _relTimes = new float[_timeline.Count];
             float prev = 0f;
             for (int i = 0; i < _timeline.Count; i++)
             {
-                float rel = start - _timeline[i].GameClock;
+                float rel = legacy ? start - _timeline[i].GameClock : _timeline[i].PresentationTime;
                 if (rel < prev) rel = prev;   // keep strictly non-decreasing at clamped boundaries
                 _relTimes[i] = rel;
                 prev = rel;
@@ -233,15 +246,23 @@ namespace NBAHeadCoach.UI.Match3D
             if (_timeline == null || _timeline.Count == 0) return;
 
             var first = _timeline[0];
+            float maxDisp = 0f;
             for (int i = 0; i < first.Players.Length; i++)
             {
                 var ps = first.Players[i];
                 if (string.IsNullOrEmpty(ps.PlayerId)) continue;
                 if (!_actors.TryGetValue(ps.PlayerId, out var actor) || actor == null) continue;
                 var cur = actor.transform.localPosition;
-                _bridgeFrom[ps.PlayerId] = new Vector2(cur.x, cur.z);
-                _bridgeTo[ps.PlayerId] = new Vector2(ps.X, ps.Y);
+                var from = new Vector2(cur.x, cur.z);
+                var to = new Vector2(ps.X, ps.Y);
+                _bridgeFrom[ps.PlayerId] = from;
+                _bridgeTo[ps.PlayerId] = to;
+                maxDisp = Mathf.Max(maxDisp, Vector2.Distance(from, to));
             }
+
+            // Continuous-flow timelines start where the last ended, so the slide is imperceptible —
+            // skip it. The bridge stays the fallback for subs / quarter starts / skips (big moves).
+            if (!ActorMotion.ShouldBridge(maxDisp)) return;
 
             _bridgeBallTo = new Vector3(first.Ball.X, Mathf.Max(first.Ball.Height, 0.1f), first.Ball.Y);
             _bridgeBallFrom = _lastBall == Vector3.zero ? _bridgeBallTo : _lastBall;
@@ -286,8 +307,13 @@ namespace NBAHeadCoach.UI.Match3D
             // possibly-stale BallState coordinate (the sim leaves it near center while held).
             bool handlerFound = false;
             float handlerX = 0f, handlerY = 0f, handlerFacing = 0f;
+            PlayerActor3D handlerActor = null;
             string heldBy = b.Ball.HeldByPlayerId;
 
+            // ── Compute pass: gather each live actor's authored (lerped) position + frame into the
+            //    scratch arrays. Scripted state (action/stance) reads the target frame so an
+            //    edge-triggered clip (shot/dunk/leap) fires promptly; physical fields lerp. ──
+            int n = 0;
             for (int i = 0; i < 10 && i < a.Players.Length; i++)
             {
                 var pa = a.Players[i];
@@ -295,12 +321,12 @@ namespace NBAHeadCoach.UI.Match3D
                 if (!_actors.TryGetValue(pa.PlayerId, out var actor) || actor == null) continue;
 
                 var pb = i < b.Players.Length && b.Players[i].PlayerId == pa.PlayerId ? b.Players[i] : pa;
-                float x = Mathf.Lerp(pa.X, pb.X, u);
-                float y = Mathf.Lerp(pa.Y, pb.Y, u);
 
-                // Physical fields lerp for smoothness; scripted state (action/stance) reads the
-                // target frame so an edge-triggered clip (shot/dunk/leap) fires promptly.
-                var frame = new ActorFrame
+                _sepActors[n] = actor;
+                _sepSnaps[n] = pb;
+                _sepFacing[n] = pb.FacingAngle;
+                _sepPositions[n] = new Vector2(Mathf.Lerp(pa.X, pb.X, u), Mathf.Lerp(pa.Y, pb.Y, u));
+                _sepFrames[n] = new ActorFrame
                 {
                     SpeedFeetPerSec = Mathf.Lerp(pa.SpeedFeetPerSec, pb.SpeedFeetPerSec, u),
                     VerticalOffset = Mathf.Lerp(pa.VerticalOffset, pb.VerticalOffset, u),
@@ -309,25 +335,87 @@ namespace NBAHeadCoach.UI.Match3D
                     DefensiveStance = pb.DefensiveStance,
                     HasBall = pb.HasBall,
                 };
-                actor.SetFrame(x, y, pb.FacingAngle, in frame);
+                n++;
+            }
 
-                // Prefer the explicit HeldByPlayerId; fall back to the HasBall flag.
-                if (!handlerFound && (pb.HasBall || (!string.IsNullOrEmpty(heldBy) && pb.PlayerId == heldBy)))
+            // Resolve the ball-handler id (explicit HeldByPlayerId, else the HasBall flag) so the
+            // separation pass pins him and never displaces the carry point.
+            string ballHandlerId = heldBy;
+            if (string.IsNullOrEmpty(ballHandlerId))
+                for (int i = 0; i < n; i++)
+                    if (_sepSnaps[i].HasBall) { ballHandlerId = _sepSnaps[i].PlayerId; break; }
+
+            // ── Separation pass: fresh per-frame XY nudges so bodies never interpenetrate. ──
+            SoftSeparation.Resolve(_sepPositions, _sepSnaps, n, ballHandlerId, _sepOffsets);
+
+            // ── Commit pass: apply offset positions + resolve choreographed contact lean, then
+            //    hand each actor its frame. Contact direction points into the TargetPlayerId partner. ──
+            for (int i = 0; i < n; i++)
+            {
+                var s = _sepSnaps[i];
+                Vector2 fp = _sepPositions[i] + _sepOffsets[i];
+
+                _sepFrames[i].HasContact = false;
+                if (SoftSeparation.IsContactAction(s.CurrentAction) && !string.IsNullOrEmpty(s.TargetPlayerId))
+                {
+                    for (int j = 0; j < n; j++)
+                    {
+                        if (j == i || _sepSnaps[j].PlayerId != s.TargetPlayerId) continue;
+                        Vector2 d = (_sepPositions[j] + _sepOffsets[j]) - fp;
+                        if (d.sqrMagnitude > 1e-4f)
+                        {
+                            d.Normalize();
+                            _sepFrames[i].HasContact = true;
+                            _sepFrames[i].ContactDir = d;
+                        }
+                        break;
+                    }
+                }
+
+                var actor = _sepActors[i];
+                actor.SetFrame(fp.x, fp.y, _sepFacing[i], in _sepFrames[i]);
+                _actorWorld[i] = new Vector3(fp.x, 0f, fp.y);
+
+                if (!handlerFound &&
+                    (s.HasBall || (!string.IsNullOrEmpty(heldBy) && s.PlayerId == heldBy)))
                 {
                     handlerFound = true;
-                    handlerX = x; handlerY = y; handlerFacing = pb.FacingAngle;
+                    handlerX = fp.x; handlerY = fp.y; handlerFacing = _sepFacing[i];
+                    handlerActor = actor;
                 }
             }
 
             if (_ball != null)
             {
                 var status = b.Ball.Status;
+                bool dribbled = status == BallStatus.Dribbled;
                 bool carried = handlerFound &&
-                    (status == BallStatus.Held || status == BallStatus.Dribbled || status == BallStatus.DeadBall);
+                    (status == BallStatus.Held || dribbled || status == BallStatus.DeadBall);
 
                 if (carried)
                 {
-                    _ball.RenderHeld(handlerX, handlerY, handlerFacing);
+                    // Ride the actual hand bone when the character rig exposes one, so the ball
+                    // follows the retargeted pose; fall back to the fixed-offset carry otherwise.
+                    // Dribbling always uses the AUTHORED floor-to-hand bounce height (|sin| cusp =
+                    // floor hit) — held/deadball uses the hand's natural height.
+                    float authoredHeight = Mathf.Lerp(a.Ball.Height, b.Ball.Height, u);
+                    Transform hand = handlerActor != null ? handlerActor.HandBone : null;
+
+                    if (hand != null && _actorParent != null)
+                    {
+                        Vector3 lp = _actorParent.InverseTransformPoint(hand.position);
+                        float h = dribbled ? authoredHeight : lp.y;
+                        _ball.RenderHand(lp.x, lp.z, h, handlerFacing);
+                    }
+                    else if (dribbled)
+                    {
+                        // No hand bone: bounce at the handler's planar spot with the authored height.
+                        _ball.RenderHand(handlerX, handlerY, authoredHeight, handlerFacing);
+                    }
+                    else
+                    {
+                        _ball.RenderHeld(handlerX, handlerY, handlerFacing);
+                    }
                 }
                 else
                 {
@@ -339,7 +427,7 @@ namespace NBAHeadCoach.UI.Match3D
                 }
 
                 _lastBall = _ball.WorldFocusPoint;
-                _director?.Tick(t, _lastBall);
+                _director?.Tick(t, _lastBall, _actorWorld, n);
             }
 
             // Declutter jersey labels: only the ball-handler and players near the ball keep theirs.

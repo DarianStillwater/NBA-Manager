@@ -90,8 +90,10 @@ namespace NBAHeadCoach.Core.Simulation
             string defenseTeamId = null,
             int scoreDifferential = 0,
             bool liveBallStart = false,
-            HalfCourtAction? calledAction = null)
+            HalfCourtAction? calledAction = null,
+            Choreography.PossessionStartContext startContext = null)
         {
+            _startContext = startContext;
             _offensePlayers = offensePlayers;
             _defensePlayers = defensePlayers;
             _offenseStrategy = offenseStrategy;
@@ -193,7 +195,8 @@ namespace NBAHeadCoach.Core.Simulation
                 DefenseStrategy = _defenseStrategy,
                 InitialBallHandlerIndex = _ballHandlerIndex,
                 IsFastBreak = _isFastBreak,
-                Events = result.Events
+                Events = result.Events,
+                StartContext = _startContext
             };
 
             // Player execution: does the defense blow an assignment this trip?
@@ -434,6 +437,7 @@ namespace NBAHeadCoach.Core.Simulation
                 result.SpatialStates = _choreographer.Choreograph(_script);
                 result.PresentationSeconds = _choreographer.TotalSeconds;
                 result.LiveSeconds = _choreographer.LiveSeconds;
+                result.ClockStartOffset = _choreographer.ClockStartOffset;
                 result.NarrationBeats = _choreographer.Beats;
             }
 
@@ -511,6 +515,7 @@ namespace NBAHeadCoach.Core.Simulation
                 InitialBallHandlerIndex = _ballHandlerIndex,
                 IsFastBreak = false,
                 Events = result.Events,
+                StartContext = _startContext,
                 ShooterIndex = targetIdx,
                 ShotType = ShotType.Layup,
                 ShotPosition = _offensePositions[targetIdx],
@@ -551,6 +556,7 @@ namespace NBAHeadCoach.Core.Simulation
                 result.SpatialStates = _choreographer.Choreograph(_script);
                 result.PresentationSeconds = _choreographer.TotalSeconds;
                 result.LiveSeconds = _choreographer.LiveSeconds;
+                result.ClockStartOffset = _choreographer.ClockStartOffset;
                 result.NarrationBeats = _choreographer.Beats;
             }
 
@@ -626,6 +632,10 @@ namespace NBAHeadCoach.Core.Simulation
         }
 
         private PossessionChoreographer _choreographer;
+
+        // How this possession's timeline opens (rebound/inbound/steal/…). Null → legacy backcourt.
+        // Presentational only — the choreographer reads it, no outcome logic touches it.
+        private Choreography.PossessionStartContext _startContext;
 
         /// <summary>
         /// Determines the outcome type of the possession (shot, turnover, violation, or foul).
@@ -1675,6 +1685,11 @@ namespace NBAHeadCoach.Core.Simulation
         /// <summary>End of the live action window before the shot-resolution tail.
         /// 0 when no choreography ran (headless).</summary>
         public float LiveSeconds;
+
+        /// <summary>Presentation seconds at the FRONT of the timeline before the game/shot clock
+        /// starts ticking — the dead-ball inbound lead-in (front-tail mirror of LiveSeconds). 0 for
+        /// live starts and legacy possessions. Purely presentational.</summary>
+        public float ClockStartOffset;
 
         /// <summary>Timed narration moments from the choreographer (radio bar + ticker re-timing).
         /// Null when no choreography ran (headless). Purely presentational.</summary>

@@ -44,6 +44,9 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
         // Filled while laying waypoints (defense timing):
         public float ScreenStartT, ScreenEndT, RollStartT;
 
+        // PostUp back-down contact window (stamped by BuildPostUp; -1 = no post-up).
+        public float PostStartT = -1f, PostEndT = -1f;
+
         // DribbleHandoff: when/where the exchange happens (stamped by BuildHandoff so the
         // shot sequence can fire the actual ball transfer AT the hand-off moment).
         public float HandoffT = -1f;

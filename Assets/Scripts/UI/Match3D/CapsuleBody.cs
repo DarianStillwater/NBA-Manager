@@ -52,6 +52,9 @@ namespace NBAHeadCoach.UI.Match3D
                 _body.localPosition = new Vector3(p.x, y, p.z);
         }
 
+        // No skeleton → no hand bone; the ball falls back to fixed-offset carry math.
+        public Transform GetHandBone() => null;
+
         // One shared, tinted-per-instance material for every capsule body.
         private static Material _sharedBody;
         private static Material SharedBodyMaterial()

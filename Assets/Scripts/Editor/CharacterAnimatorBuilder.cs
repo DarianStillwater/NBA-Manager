@@ -112,14 +112,25 @@ namespace NBAHeadCoach.EditorTools
             controller.AddParameter("Stance", AnimatorControllerParameterType.Bool);
             controller.AddParameter("Jump", AnimatorControllerParameterType.Trigger);
             controller.AddParameter("Throw", AnimatorControllerParameterType.Trigger);
+            // Drives the locomotion clip playback rate so foot cadence matches the measured body
+            // speed (anti-skate); CharacterBody sets it, defaulting to 1 if this param is absent.
+            controller.AddParameter(new AnimatorControllerParameter
+            {
+                name = "MotionRate",
+                type = AnimatorControllerParameterType.Float,
+                defaultFloat = 1f
+            });
 
             var sm = controller.layers[0].stateMachine;
 
-            // Locomotion: 1D Speed blend (normalized 0..1).
+            // Locomotion: 1D Speed blend (normalized 0..1), played back at MotionRate so the feet
+            // keep pace with the real rendered motion instead of ice-skating.
             var locomotion = controller.CreateBlendTreeInController("Locomotion", out var tree, 0);
             tree.blendType = BlendTreeType.Simple1D;
             tree.blendParameter = "Speed";
             tree.useAutomaticThresholds = false;
+            locomotion.speedParameterActive = true;
+            locomotion.speedParameter = "MotionRate";
             if (idle != null) tree.AddChild(idle, 0f);
             if (walk != null) tree.AddChild(walk, 0.35f);
             if (run != null) tree.AddChild(run, 1f);

@@ -52,6 +52,8 @@ namespace NBAHeadCoach.Tests
             RunTest<PersonnelCareerTest>("Personnel & Career");
             RunTest<TimeoutIntelligenceTest>("Timeout Intelligence");
             RunTest<PlaybackDeciderTest>("Playback Decider");
+            RunTest<ActorMotionTest>("Actor Motion (3D weight/bridge)");
+            RunTest<SoftSeparationTest>("Soft Separation (3D contact)");
             RunTest<BenchCoachRenderTest>("Bench & Coach Render");
             RunTest<SubstitutionWalkTest>("Substitution Walk");
             RunTest<CoachBehaviorTest>("Coach Behavior & Ejection");
@@ -60,6 +62,7 @@ namespace NBAHeadCoach.Tests
             RunTest<HighlightSelectionTest>("Highlight Selection");
             RunTest<ChoreographyTest>("Possession Choreography");
             RunTest<ChoreographyEnrichmentTest>("Choreography Enrichment (P2)");
+            RunTest<PossessionChainTest>("Possession Chain (continuous flow)");
             RunTest<RegistryOrderTest>("System Registry Order");
             RunTest<GameCompletionParityTest>("Game Completion Parity");
             RunTest<EnergyCarryoverTest>("Energy Carryover");

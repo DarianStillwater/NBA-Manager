@@ -77,6 +77,22 @@ namespace NBAHeadCoach.UI.Match3D
                 transform.localScale = Vector3.one * HeldDiameterFeet;
         }
 
+        // Nudge the ball just clear of the palm so it doesn't clip the hand mesh when riding the bone.
+        private const float HandBoneNudgeFeet = 0.35f;
+
+        /// <summary>Carry the ball at an explicit planar spot + height, held scale. Used when the ball
+        /// rides the actual hand bone (height = bone height) or dribbles at the handler's hand XZ with
+        /// the choreographed floor-to-hand bounce height. A small forward nudge along facing keeps it
+        /// off the palm and toward the broadcast sideline so the holder never fully occludes it.</summary>
+        public void RenderHand(float x, float z, float heightFeet, float facingRad)
+        {
+            float fx = x + Mathf.Cos(facingRad) * HandBoneNudgeFeet;
+            float fz = z + Mathf.Sin(facingRad) * HandBoneNudgeFeet + HeldCameraSideOffset;
+            transform.localPosition = new Vector3(fx, Mathf.Max(heightFeet, 0.1f), fz);
+            if (transform.localScale.x != HeldDiameterFeet)
+                transform.localScale = Vector3.one * HeldDiameterFeet;
+        }
+
         public Vector3 WorldFocusPoint => transform.localPosition;
     }
 }

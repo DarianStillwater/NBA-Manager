@@ -18,6 +18,11 @@ namespace NBAHeadCoach.Core.Simulation
         /// <summary>Presentational phase hint set by the choreographer (additive; default Advance).</summary>
         public Choreography.PossessionPhase Phase;
 
+        /// <summary>Seconds since possession playback start (additive; default 0). Unlike
+        /// GameClock — which holds constant through a dead-ball lead-in — this always advances,
+        /// so views/cameras can reconstruct true elapsed playback time even when the clock is held.</summary>
+        public float PresentationTime;
+
         public PlayerSnapshot[] Players = new PlayerSnapshot[10];
         public BallState Ball;
 
@@ -35,6 +40,7 @@ namespace NBAHeadCoach.Core.Simulation
         {
             var clone = new SpatialState(GameClock, Quarter, PossessionClock);
             clone.Ball = Ball;
+            clone.PresentationTime = PresentationTime;
             for (int i = 0; i < 10; i++)
             {
                 clone.Players[i] = Players[i];
@@ -144,7 +150,8 @@ namespace NBAHeadCoach.Core.Simulation
         Rebounding,
         BoxingOut,
         Celebrating,
-        Fouled
+        Fouled,
+        Inbounding    // holding the ball behind the line to inbound (continuous-flow lead-in)
     }
 
     public enum BallStatus

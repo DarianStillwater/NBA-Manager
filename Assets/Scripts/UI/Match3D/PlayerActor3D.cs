@@ -16,8 +16,10 @@ namespace NBAHeadCoach.UI.Match3D
     /// </summary>
     public class PlayerActor3D : MonoBehaviour
     {
-        private const float PositionLerpSpeed = 8f;
-        private const float YawLerpSpeed = 8f;
+        // Raised from 8 so authored plant-and-cut decelerations survive the smoothing instead of
+        // being rounded into a glide (the timeline is the source of truth for position).
+        private const float PositionLerpSpeed = 12f;
+        private const float YawLerpSpeed = 12f;
         private const float RadiusFeet = 0.95f;
         private const float LabelClearanceFeet = 1.4f;
 
@@ -27,6 +29,10 @@ namespace NBAHeadCoach.UI.Match3D
         private const float LabelShowRadiusFeet = 18f;
         private const float LabelNearFade = 40f;   // full opacity within this camera distance
         private const float LabelFarFade = 95f;     // fully faded past this camera distance
+        // Close-up guard: on a low/rim camera the label can fill the screen with giant text — fade it
+        // out when the camera is very close and ramp it back in over this band.
+        private const float LabelCloseHide = 12f;   // fully hidden closer than this
+        private const float LabelCloseFull = 20f;    // fully shown past this (until LabelNearFade)
 
         private IActorBody _body;
         private Transform _labelPivot;
@@ -47,7 +53,17 @@ namespace NBAHeadCoach.UI.Match3D
         private float _labelBaseHeight;   // resting label pivot height (feet)
         private float _labelExtraHeight;  // anti-overlap vertical nudge (feet)
 
+        // Measured-motion state, derived from actual rendered displacement each Update and fed to the
+        // body so animation matches what the eye sees (see ActorFrame.MeasuredSpeedFeetPerSec).
+        private float _measuredSpeed;
+        private float _planarAccel;
+        private float _yawRate;
+
         public string PlayerId { get; private set; }
+
+        /// <summary>The body's right-hand bone (null for a capsule), so the view can ride the ball on
+        /// the actual retargeted hand while carried/dribbling.</summary>
+        public Transform HandBone => _body?.GetHandBone();
 
         public static PlayerActor3D Create(Transform parent, Camera camera, string playerId,
             PlayerAppearance appearance)
@@ -152,11 +168,33 @@ namespace NBAHeadCoach.UI.Match3D
         private void Update()
         {
             float dt = Time.deltaTime;
+
+            Vector3 prevPos = _currentPos;
+            float prevYaw = _currentYaw;
+
             _currentPos = Vector3.Lerp(_currentPos, _targetPos, PositionLerpSpeed * dt);
             transform.localPosition = _currentPos;
 
             _currentYaw = Mathf.LerpAngle(_currentYaw, _targetYaw, YawLerpSpeed * dt);
             transform.localRotation = Quaternion.Euler(0f, _currentYaw, 0f);
+
+            // Measured motion from what actually rendered this frame (planar; Y stays 0 on the root).
+            if (dt > 0.0001f)
+            {
+                var d = _currentPos - prevPos;
+                d.y = 0f;
+                float speed = d.magnitude / dt;
+                // Light smoothing keeps accel/yaw usable for lean without frame-to-frame jitter.
+                float newAccel = (speed - _measuredSpeed) / dt;
+                float newYawRate = Mathf.DeltaAngle(prevYaw, _currentYaw) / dt;
+                _measuredSpeed = speed;
+                _planarAccel = Mathf.Lerp(_planarAccel, newAccel, 8f * dt);
+                _yawRate = Mathf.Lerp(_yawRate, newYawRate, 8f * dt);
+            }
+
+            _frame.MeasuredSpeedFeetPerSec = _measuredSpeed;
+            _frame.PlanarAccelFeetPerSec2 = _planarAccel;
+            _frame.YawRateDegPerSec = _yawRate;
 
             _body?.Animate(in _frame, dt);
         }
@@ -187,9 +225,12 @@ namespace NBAHeadCoach.UI.Match3D
             }
             if (!_label.enabled) _label.enabled = true;
 
-            // Fade the number with camera distance so far labels recede.
+            // Fade the number with camera distance: far labels recede, and very-close labels fade so
+            // a low/rim close-up never shows giant jersey text.
             float camDist = Vector3.Distance(_labelPivot.position, cam.transform.position);
-            float alpha = 1f - Mathf.Clamp01((camDist - LabelNearFade) / (LabelFarFade - LabelNearFade));
+            float farAlpha = 1f - Mathf.Clamp01((camDist - LabelNearFade) / (LabelFarFade - LabelNearFade));
+            float nearAlpha = Mathf.Clamp01((camDist - LabelCloseHide) / (LabelCloseFull - LabelCloseHide));
+            float alpha = Mathf.Min(farAlpha, nearAlpha);
             var c = _labelBaseColor;
             c.a = alpha;
             _label.color = c;

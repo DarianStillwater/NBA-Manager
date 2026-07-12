@@ -39,7 +39,60 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
         Action,
         Shot,
         Resolution,
-        FreeThrow
+        FreeThrow,
+        // ── Continuous-flow additions (Phase 1; additive, default Advance is unchanged) ──
+        Inbound,        // dead-ball inbound lead-in (clock held until the catch)
+        Transition,     // live rebound/steal push before the half-court set
+        ReboundBattle   // bodies crashing the glass (Phase 3 detail; reserved)
+    }
+
+    /// <summary>
+    /// How the NEXT possession's timeline BEGINS — derived from the prior possession's outcome
+    /// and its final spatial frame so possessions chain into continuous game flow instead of
+    /// teleporting everyone to backcourt formation spots. Backcourt (the default) reproduces the
+    /// legacy behavior exactly. Purely presentational — never influences outcomes.
+    /// </summary>
+    public enum PossessionStartKind
+    {
+        Backcourt,           // legacy fallback: everyone resets to backcourt spread
+        MadeBasketInbound,   // opponent scored: big steps behind baseline, inbounds
+        FreeThrowInbound,    // opponent's final FT: baseline inbound
+        BaselineOob,         // dead-ball turnover under the basket: baseline inbound
+        SidelineOob,         // dead-ball turnover / whistle: sideline inbound
+        LiveRebound,         // defensive board: rebounder outlets, push in transition
+        LiveSteal,           // steal: stealer flows live up the floor
+        LiveLooseBall        // loose ball recovered live
+    }
+
+    /// <summary>
+    /// The seed for a possession's opening segment: where all ten players and the ball sat at the
+    /// end of the previous possession, plus how the ball changes hands to start this one. Carried
+    /// by MatchSimulationController from the prior possession's last SpatialState frame. Null →
+    /// legacy backcourt behavior. All fields presentational.
+    /// </summary>
+    public class PossessionStartContext
+    {
+        public PossessionStartKind Kind;
+
+        /// <summary>All ten players' final positions from the prior frame, keyed by PlayerId
+        /// (team-agnostic — the choreographer looks each of its own players up by id).</summary>
+        public (string playerId, CourtPosition pos)[] PriorPositions;
+
+        /// <summary>Where the ball sat at the prior frame's end (rebound spot / steal spot / sail-out
+        /// point / made-basket rim). The lead-in starts the ball here.</summary>
+        public CourtPosition BallSpot;
+
+        /// <summary>Who holds/recovers the ball to start (rebounder/stealer). Null for dead balls.</summary>
+        public string BallCarrierId;
+
+        /// <summary>Prior position for a player id, or null if not present.</summary>
+        public CourtPosition? PositionOf(string playerId)
+        {
+            if (PriorPositions == null || string.IsNullOrEmpty(playerId)) return null;
+            for (int i = 0; i < PriorPositions.Length; i++)
+                if (PriorPositions[i].playerId == playerId) return PriorPositions[i].pos;
+            return null;
+        }
     }
 
     /// <summary>
@@ -98,6 +151,10 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
 
         // Presentation hints
         public bool IsFastBreak;             // short possession → faster advance phase
+
+        /// <summary>How this possession's opening segment begins (rebound/inbound/steal/…).
+        /// Null → legacy backcourt reset. Purely presentational.</summary>
+        public PossessionStartContext StartContext;
 
         // The already-built event list (Screen/Cut/PostUp/Pass beats are read from here)
         public List<PossessionEvent> Events;

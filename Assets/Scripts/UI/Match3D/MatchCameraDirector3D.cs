@@ -53,6 +53,11 @@ namespace NBAHeadCoach.UI.Match3D
         private const float PostShotHold = 0.8f;      // hold on a rim cam after the shot resolves
         private const float BuzzerClockThreshold = 3f;
 
+        // Anti-clip: the low/rim/FT rigs can compute a position inside a player body (giant jersey
+        // fills the screen). Keep the camera at least this far (3D feet) from any actor's torso.
+        private const float MinCamDistFeet = 4f;
+        private const float TorsoHeightFeet = 3.5f;
+
         private Camera _camera;
 
         // Plan for the current possession + a cursor into it.
@@ -62,6 +67,16 @@ namespace NBAHeadCoach.UI.Match3D
         // Possession geometry resolved once at plan time.
         private float _attackSign = 1f;               // +1 = offense attacks +X rim, −1 = −X
         private Vector3 _rimWorld = new Vector3(CourtGeometry.RimX, CourtGeometry.RimHeight, 0f);
+        // Playback time the ball crosses half-court on a transition/inbound start; 0 for half-court
+        // sets. No fixed rig cuts in before this — the wide Broadcast tracks the full-court advance.
+        private float _transitionUntil;
+
+        // True when this possession's timeline predates PresentationTime (never set past 0) —
+        // falls back to the old GameClock reconstruction for those. Computed once per BeginPossession.
+        private bool _legacyTimeline;
+
+        // A backcourt/transition start has the ball this far behind half-court toward the own rim.
+        private const float BackcourtStartX = 12f;
 
         // Live rig state (smoothed within a shot; snapped on a cut).
         private CameraShot _activeShot = CameraShot.Broadcast;
@@ -101,6 +116,7 @@ namespace NBAHeadCoach.UI.Match3D
         {
             _plan.Clear();
             _planCursor = 0;
+            _transitionUntil = 0f;
             // Do NOT touch _activeShot here — the inter-possession bridge keeps the previous rig
             // until the first Tick(t=0) selects this possession's opening (Broadcast) cut.
 
@@ -114,14 +130,22 @@ namespace NBAHeadCoach.UI.Match3D
             }
 
             float start = packet.StartGameClock;
+            // Legacy timelines (predating PresentationTime) never set it past 0; fall back to the
+            // old GameClock reconstruction for those so old saves/tests keep working.
+            _legacyTimeline = timeline.Count <= 1 || timeline[timeline.Count - 1].PresentationTime <= 0f;
 
             // Resolve the attacking rim from the shot (falls back to the last ball position).
             _attackSign = ResolveAttackSign(packet, out int shotFrame, out bool isDunk, out bool isLayup);
             _rimWorld = new Vector3(_attackSign * CourtGeometry.RimX, CourtGeometry.RimHeight, 0f);
 
+            // Transition/inbound: if the possession opens deep in the backcourt, hold the wide
+            // Broadcast (which tracks the ball) until the ball crosses half-court, then plan as usual.
+            _transitionUntil = TransitionCrossTime(packet, _attackSign, _legacyTimeline);
+
             float PlaybackTimeOf(int frameIdx)
             {
-                float rel = start - timeline[Mathf.Clamp(frameIdx, 0, timeline.Count - 1)].GameClock;
+                var frame = timeline[Mathf.Clamp(frameIdx, 0, timeline.Count - 1)];
+                float rel = _legacyTimeline ? start - frame.GameClock : frame.PresentationTime;
                 return Mathf.Max(rel, 0f);
             }
 
@@ -133,11 +157,11 @@ namespace NBAHeadCoach.UI.Match3D
             {
                 // Dramatic elevated-corner hold on the final shot; no return to Broadcast — the
                 // possession ends on the held frame.
-                _plan.Add(new PlannedCut { StartTime = PlaybackTimeOf(shotFrame), Shot = CameraShot.BuzzerBeater });
+                _plan.Add(new PlannedCut { StartTime = Mathf.Max(PlaybackTimeOf(shotFrame), _transitionUntil), Shot = CameraShot.BuzzerBeater });
             }
             else if (shotFrame >= 0 && (isDunk || isLayup))
             {
-                float cutIn = PlaybackTimeOf(shotFrame);
+                float cutIn = Mathf.Max(PlaybackTimeOf(shotFrame), _transitionUntil);
                 _plan.Add(new PlannedCut
                 {
                     StartTime = cutIn,
@@ -154,7 +178,7 @@ namespace NBAHeadCoach.UI.Match3D
             if (packet.TailSeconds > 0.1f)
             {
                 float ftStart = packet.LiveSeconds > 0.01f ? packet.LiveSeconds : packet.DurationGameSeconds;
-                _plan.Add(new PlannedCut { StartTime = ftStart, Shot = CameraShot.FreeThrow });
+                _plan.Add(new PlannedCut { StartTime = Mathf.Max(ftStart, _transitionUntil), Shot = CameraShot.FreeThrow });
             }
 
             EnforceMinDuration(packet.PlaybackSeconds);
@@ -234,6 +258,29 @@ namespace NBAHeadCoach.UI.Match3D
             return best;
         }
 
+        /// <summary>Playback time the ball first crosses half-court into the attacking front court
+        /// (X·attackSign > 0), for a possession that opens deep in the backcourt (transition/inbound).
+        /// Returns 0 for half-court sets or if it never crosses — no wide hold needed then.</summary>
+        private static float TransitionCrossTime(PossessionPlaybackPacket packet, float attackSign, bool legacyTimeline)
+        {
+            var timeline = packet.Timeline;
+            if (timeline == null || timeline.Count == 0) return 0f;
+
+            // Not a backcourt start (ball already at/over half-court toward the attacking rim).
+            if (timeline[0].Ball.X * attackSign > -BackcourtStartX) return 0f;
+
+            float start = packet.StartGameClock;
+            for (int i = 0; i < timeline.Count; i++)
+            {
+                if (timeline[i].Ball.X * attackSign > 0f)
+                {
+                    float rel = legacyTimeline ? start - timeline[i].GameClock : timeline[i].PresentationTime;
+                    return Mathf.Max(rel, 0f);
+                }
+            }
+            return 0f;
+        }
+
         /// <summary>Sort the plan and push any cut that lands within MinShotDuration of its
         /// predecessor forward, then drop cuts pushed past the end of playback.</summary>
         private void EnforceMinDuration(float totalSeconds)
@@ -273,6 +320,11 @@ namespace NBAHeadCoach.UI.Match3D
                 sb.Append("->");
                 sb.Append(packet.EndGameClock.ToString("0.0"));
             }
+            if (_transitionUntil > 0.01f)
+            {
+                sb.Append(" transition-until@");
+                sb.Append(_transitionUntil.ToString("0.0"));
+            }
             sb.Append(" cuts:");
             for (int i = 0; i < _plan.Count; i++)
             {
@@ -289,7 +341,7 @@ namespace NBAHeadCoach.UI.Match3D
 
         /// <summary>Drive the rig at playback time t (seconds from possession start), following the
         /// ball's world position. Hard-cuts when the planned shot changes, SmoothDamps otherwise.</summary>
-        public void Tick(float t, Vector3 ballWorld)
+        public void Tick(float t, Vector3 ballWorld, Vector3[] actorPositions = null, int actorCount = 0)
         {
             if (_camera == null) return;
 
@@ -306,7 +358,34 @@ namespace NBAHeadCoach.UI.Match3D
             _pos = Vector3.SmoothDamp(_pos, targetPos, ref _posVel, smooth);
             _look = Vector3.SmoothDamp(_look, targetLook, ref _lookVel, smooth);
             _fov = Mathf.Lerp(_fov, targetFov, 3f * dt);
+            PushClearOfActors(actorPositions, actorCount);
             Apply();
+        }
+
+        /// <summary>Keep the rig from ending up inside a player body: if the smoothed position sits
+        /// within MinCamDistFeet of any actor's torso, back it off along the look axis until clear.
+        /// A few iterations converge because backing away from the look target (where the action is)
+        /// increases the distance to the crowded actors near it.</summary>
+        private void PushClearOfActors(Vector3[] actors, int count)
+        {
+            if (actors == null || count == 0) return;
+            Vector3 back = _pos - _look;
+            if (back.sqrMagnitude < 0.0001f) return;
+            back.Normalize();
+
+            for (int iter = 0; iter < 4; iter++)
+            {
+                float worst = 0f;
+                for (int i = 0; i < count; i++)
+                {
+                    Vector3 a = actors[i];
+                    a.y += TorsoHeightFeet;
+                    float d = Vector3.Distance(_pos, a);
+                    if (d < MinCamDistFeet) worst = Mathf.Max(worst, MinCamDistFeet - d);
+                }
+                if (worst <= 0.001f) break;
+                _pos += back * (worst + 0.05f);
+            }
         }
 
         /// <summary>Inter-possession bridge: keep the current rig, just track the sliding ball so the
@@ -449,7 +528,12 @@ namespace NBAHeadCoach.UI.Match3D
                     float lookX = Mathf.Clamp(ballWorld.x, -MaxLookX, MaxLookX);
                     pos = new Vector3(camX, BroadcastHeight, BroadcastDepth);
                     look = new Vector3(lookX, BroadcastLookHeight, 0f);
-                    fov = Mathf.Abs(ballWorld.x) > NearBasketX ? TightFov : WideFov;
+                    // Tighten only when the ball is deep toward the ATTACKING rim (a developing
+                    // finish). A full-court advance sits deep in the backcourt too, but must stay
+                    // wide — so key the zoom on the attack side, not raw |X|.
+                    bool nearAttackRim = Mathf.Abs(ballWorld.x) > NearBasketX &&
+                                         Mathf.Sign(ballWorld.x) == Mathf.Sign(_attackSign);
+                    fov = nearAttackRim ? TightFov : WideFov;
                     return;
             }
         }

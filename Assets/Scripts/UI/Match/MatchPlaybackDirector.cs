@@ -155,7 +155,10 @@ namespace NBAHeadCoach.UI.Match
                     t += Time.deltaTime * speed;
                     _court.RenderAt(Mathf.Min(t, total));
 
-                    float frac = Mathf.Clamp01(t / live);
+                    // The displayed clock HOLDS during a dead-ball inbound lead-in (ClockStartOffset),
+                    // then ticks Start→End proportionally over the remaining live window.
+                    float offset = Mathf.Min(packet.ClockStartOffset, live - 0.01f);
+                    float frac = Mathf.Clamp01((t - offset) / Mathf.Max(live - offset, 0.01f));
                     float gameClock = Mathf.Lerp(packet.StartGameClock, packet.EndGameClock, frac);
                     float shotClock = Mathf.Max(24f - frac * packet.DurationGameSeconds, 0f);
                     OnClockTick?.Invoke(gameClock, shotClock);

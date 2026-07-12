@@ -43,6 +43,11 @@ namespace NBAHeadCoach.Core
         /// (director falls back to DurationGameSeconds).</summary>
         public float LiveSeconds;
 
+        /// <summary>Presentation seconds at the FRONT of the timeline during which the displayed
+        /// game/shot clock HOLDS — the dead-ball inbound lead-in before the clock starts. 0 for
+        /// live starts and legacy possessions.</summary>
+        public float ClockStartOffset;
+
         public float DurationGameSeconds => StartGameClock - EndGameClock;
         public float TotalPlaybackSeconds => DurationGameSeconds + TailSeconds;
 

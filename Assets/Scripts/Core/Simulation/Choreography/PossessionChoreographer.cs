@@ -32,6 +32,15 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
         private const float DefenseSpeed = 15f;   // base man-tracking, just under a cutting man
         private const float DefenseSprint = 24f;  // contest/hedge/rebound bursts (4.8 ft/tick)
 
+        // Choreographed body-contact distances (P2). Authored just above the render-side
+        // SoftSeparation contact minimum (1.05 ft) so the separation pass preserves the pair
+        // rather than fighting it. Hip-ride sits above the 1.6 ft crowd minimum but well inside
+        // the "DefensiveStance defender within 3 ft of the handler" contact-pair trigger.
+        private const float ScreenContactDist = 1.1f;   // screener ↔ screened defender
+        private const float PostContactDist = 1.1f;      // post ↔ his defender (rim side)
+        private const float HipRideDist = 1.35f;         // on-ball defender arm's-length ride
+        private const int TransitionPaintCap = 3;        // max defenders sinking into the lane in transition
+
         private readonly System.Random _rng;
 
         /// <summary>Defending team's scheme for the CURRENT possession — set by the
@@ -47,10 +56,17 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
         private float _shotStartT;               // when the shot leaves the hand (-1 = no shot)
         private float _liveEndT;                 // end of live action (= Duration)
         private float _totalT;                   // includes resolution/FT tail
+        private float _clockStartT;              // presentation time before the clock starts (inbound lead-in; 0 = live/legacy)
+        private float _transitionEndT;           // live rebound/steal push window end (0 when not a live push)
         private CourtPosition _reboundSpot;
         private List<(float t, PossessionPhase phase)> _phaseMarks;
         private ActionPlan _action;              // the synthesized offensive action for this possession
         private DefenderAssignment[] _defPlan;   // per-defender assignment (sag/nav/help), decided once
+
+        // Authored-contact pairs (P2), resolved once after _defPlan is built.
+        private int _screenDefIdx = -1;          // defender caught on the screen (guards the beneficiary)
+        private int _screenBeneIdx = -1;         // offensive player the screen frees (handler or cutter)
+        private int _postDefIdx = -1;            // defender holding ground against the backing-down post
         private List<NarrationBeat> _beats;      // timed narration moments for the radio bar
 
         // Free-throw window state: while t >= _ftStartT the defense holds authored lane/arc
@@ -87,6 +103,11 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
         /// over which the game clock should tick during playback. Valid after <see cref="Choreograph"/>.</summary>
         public float LiveSeconds => _liveEndT;
 
+        /// <summary>Presentation seconds at the FRONT of the timeline during which the clock HOLDS —
+        /// the dead-ball inbound lead-in before the game/shot clock starts ticking. 0 for live starts
+        /// and legacy backcourt possessions. Valid after <see cref="Choreograph"/>.</summary>
+        public float ClockStartOffset => _clockStartT;
+
         /// <summary>Timed narration moments for the last choreographed possession (radio bar +
         /// ticker re-timing). Sorted ascending by T. Valid immediately after <see cref="Choreograph"/>.</summary>
         public List<NarrationBeat> Beats => _beats;
@@ -100,6 +121,8 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
             _phaseMarks = new List<(float, PossessionPhase)>();
             _beats = new List<NarrationBeat>();
             _shotStartT = -1f;
+            _clockStartT = 0f;
+            _transitionEndT = 0f;
             _heldBy = -1;
             _ftStartT = -1f;
             _ftCrashT = -1f;
@@ -112,10 +135,14 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
             _shotRimT = -1f;
             _reboundArriveT = -1f;
             _sharpCutTimes = new List<float>();
+            _screenDefIdx = -1;
+            _screenBeneIdx = -1;
+            _postDefIdx = -1;
             _action = ActionLibrary.Choose(script, _rng);
 
             BuildOffenseAndBall();
             _defPlan = DefenseChoreographer.BuildPlan(_action, script, _rng, DefensiveScheme);
+            ResolveContactPairs();
             EmitExecutionBeats();
 
             // Builders don't run in strict time order — sort and clamp for consumers.
@@ -187,7 +214,10 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
             float windup = hasShot ? BallFlight.WindupFor(_s.ShotType) : 0f;
 
             // ── Phase A/B spots (needed early: the advance window is distance-derived) ──
-            var startSpots = FormationLibrary.GetBackcourtSpots(_s.OffenseAttacksRight, false, _rng);
+            // Continuous flow: begin where the previous possession left every player (by PlayerId),
+            // so possessions chain instead of teleporting to backcourt. Backcourt/null is the legacy
+            // reset (safety net; MatchSimulationController also resets on subs/quarters/timeouts).
+            var startSpots = StartSpots();
             var formation = FormationLibrary.GetHalfCourtSpots(_s.OffenseStrategy, _s.OffenseAttacksRight, _rng);
 
             // Cap the bring-up at a real sprint: arrival is derived from the actual distance, and
@@ -209,7 +239,14 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
             _shotRimT = hasShot ? shotReleaseT + shotFlight : -1f;
             float actionEnd = hasShot ? Math.Max(advanceEnd + 0.5f, shotReleaseT - windup) : duration;
 
-            _phaseMarks.Add((0f, PossessionPhase.Advance));
+            // Opening phase: a live rebound/steal is a Transition push; a dead ball is an Inbound
+            // lead-in (BuildStartBall hands back to Advance once the ball is caught). Otherwise the
+            // legacy Advance. Marks are sorted by time at the end of this method for PhaseAt.
+            var startKind = _s.StartContext?.Kind ?? PossessionStartKind.Backcourt;
+            var openPhase = startKind == PossessionStartKind.LiveRebound ? PossessionPhase.Transition
+                          : IsInboundKind(startKind) ? PossessionPhase.Inbound
+                          : PossessionPhase.Advance;
+            _phaseMarks.Add((0f, openPhase));
             _phaseMarks.Add((advanceEnd, PossessionPhase.SetOffense));
             _phaseMarks.Add((Math.Min(advanceEnd + 1f, actionEnd), PossessionPhase.Action));
             if (hasShot) _phaseMarks.Add((shotReleaseT - windup, PossessionPhase.Shot));
@@ -228,12 +265,12 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
             float actionStart = advanceEnd + 0.6f;
             float cursor = actionStart;
 
-            // Ball: dribbled up by the initial handler, held continuously until the action starts
-            // (no gap, so the ball tracks the handler smoothly into the first pass/shot).
+            // Ball lead-in: how the ball gets into the initial handler's hands to start the set.
+            // Legacy backcourt dribbles it up; a live rebound/steal outlets and pushes; a dead ball
+            // walks an inbounder behind the line and passes in (clock held until the catch). Every
+            // branch ends with the initial handler dribbling into the action at actionStart.
             int holder = _s.InitialBallHandlerIndex;
-            float ballCursor = 0f;
-            AddHeld(ref ballCursor, actionStart, holder, dribbled: true);
-            Beat(advanceEnd * 0.5f, NarrationBeatKind.BringUp, holder);
+            BuildStartBall(holder, advanceEnd, actionStart, startSpots);
 
             // Off-ball movement of the action (screens, rolls/pops, cuts, post-ups). Records
             // beat times on _action for the defense to react to.
@@ -266,6 +303,149 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
             for (int i = 0; i < 5; i++)
                 _offense[i].CollectSharpTurns(_sharpCutTimes, minLegDist: 6f, minAngleDeg: 95f);
             _sharpCutTimes.Sort();
+
+            // BuildStartBall may append a lead-in phase mark (inbound → Advance hand-off) out of
+            // time order; PhaseAt takes the last mark in list order, so keep them time-sorted.
+            _phaseMarks.Sort((a, b) => a.Item1.CompareTo(b.Item1));
+        }
+
+        // ════════════════════════════════════════════════════════════════
+        //  Continuous-flow openings (Phase 1): where players/ball start each possession
+        // ════════════════════════════════════════════════════════════════
+
+        private static bool IsInboundKind(PossessionStartKind k) =>
+            k == PossessionStartKind.MadeBasketInbound || k == PossessionStartKind.FreeThrowInbound ||
+            k == PossessionStartKind.BaselineOob || k == PossessionStartKind.SidelineOob;
+
+        /// <summary>Index of an offensive player by id, or -1.</summary>
+        private int IndexOfOffense(string playerId)
+        {
+            if (string.IsNullOrEmpty(playerId)) return -1;
+            for (int i = 0; i < 5; i++)
+                if (_s.Offense[i].PlayerId == playerId) return i;
+            return -1;
+        }
+
+        /// <summary>Phase-A start spots. Backcourt/null → legacy backcourt spread. Every other kind
+        /// seeds from the prior possession's final frame by PlayerId (continuity); missing ids fall
+        /// back to the backcourt spot.</summary>
+        private CourtPosition[] StartSpots()
+        {
+            var backcourt = FormationLibrary.GetBackcourtSpots(_s.OffenseAttacksRight, false, _rng);
+            var ctx = _s.StartContext;
+            if (ctx == null || ctx.Kind == PossessionStartKind.Backcourt) return backcourt;
+
+            var spots = new CourtPosition[5];
+            for (int i = 0; i < 5; i++)
+                spots[i] = ctx.PositionOf(_s.Offense[i].PlayerId) ?? backcourt[i];
+            return spots;
+        }
+
+        /// <summary>Author the ball's opening lead-in (t=0 → actionStart) per StartContext.Kind and
+        /// set _clockStartT. Ends with the initial handler dribbling into the set at actionStart.
+        /// Presentational only — never touches decided geometry.</summary>
+        private void BuildStartBall(int holder, float advanceEnd, float actionStart, CourtPosition[] startSpots)
+        {
+            var ctx = _s.StartContext;
+
+            if (ctx == null || ctx.Kind == PossessionStartKind.Backcourt)
+            {
+                float ballCursor = 0f;
+                AddHeld(ref ballCursor, actionStart, holder, dribbled: true);
+                Beat(advanceEnd * 0.5f, NarrationBeatKind.BringUp, holder);
+                return;
+            }
+
+            int carrier = IndexOfOffense(ctx.BallCarrierId);
+
+            if (!IsInboundKind(ctx.Kind))
+            {
+                // Live start (rebound / steal / loose ball): clock runs immediately.
+                _clockStartT = 0f;
+                _transitionEndT = ctx.Kind == PossessionStartKind.LiveRebound ? advanceEnd : 0f;
+
+                if (carrier < 0 || carrier == holder)
+                {
+                    // Recovering player pushes it up himself: quick secure, then dribble.
+                    float secure = Math.Min(0.5f, actionStart * 0.3f);
+                    AddHeldFromTo(0f, secure, holder, dribbled: false);
+                    AddHeldFromTo(secure, actionStart, holder, dribbled: true);
+                    Beat(advanceEnd * 0.5f, NarrationBeatKind.BringUp, holder);
+                }
+                else
+                {
+                    // Rebounder/stealer secures, pivots, and outlets up-court to the handler.
+                    float pivot = Math.Min(0.4f + 0.4f * (float)_rng.NextDouble(), actionStart * 0.4f);
+                    AddHeldFromTo(0f, pivot, carrier, dribbled: false);
+                    float catchT = LeadPass(carrier, holder, pivot, PassStyle.Chest, NarrationBeatKind.BringUp);
+                    AddHeldFromTo(catchT, actionStart, holder, dribbled: true);
+                }
+                return;
+            }
+
+            // ── Dead-ball inbound (made basket / final FT / OOB turnover) ──
+            int inbounder = InbounderIndex(holder, ctx.BallSpot, startSpots);
+            var oob = ctx.Kind == PossessionStartKind.SidelineOob
+                ? SidelineInbound(ctx.BallSpot)
+                : NearestOutOfBounds(ctx.BallSpot);
+
+            // Inbounder steps behind the line and holds the ball there until the pass. The lead-in
+            // fits inside the advance window so the walk→hold→inbound keys stay ahead of the
+            // formation-arrival key (ponytail: cosmetic jitter only if advanceEnd < ~0.8s, which an
+            // inbound — always some bring-up — never hits).
+            float lead = Math.Max(0.5f, Math.Min(advanceEnd - 0.4f, 1.6f));
+            float walk = lead * 0.4f;
+            float release = lead * 0.75f;
+            _offense[inbounder].Add(walk, oob, PlayerAction.Inbounding);
+            _offense[inbounder].Add(release, oob, PlayerAction.Inbounding);
+            AddHeldFromTo(0f, release, inbounder, dribbled: false);
+
+            // Inbound pass, led to where the handler is at the catch; clock starts on the catch.
+            float catchIn = LeadPass(inbounder, holder, release, PassStyle.Chest, NarrationBeatKind.BringUp);
+            _clockStartT = catchIn;
+            _phaseMarks.Add((catchIn, PossessionPhase.Advance));
+            AddHeldFromTo(catchIn, actionStart, holder, dribbled: true);
+        }
+
+        /// <summary>Author a led pass fromIdx→toIdx starting at startT (two-round lead-the-receiver
+        /// fixed point, matching PassTo). Stamps Passing/Catching, pins the catch point on the
+        /// receiver's track, records a beat. Returns the catch time.</summary>
+        private float LeadPass(int fromIdx, int toIdx, float startT, PassStyle style, NarrationBeatKind beatKind)
+        {
+            var fromPos = _offense[fromIdx].PositionAt(startT);
+            var to = _offense[toIdx].PositionAt(startT);
+            float flight = BallFlight.PassDuration(fromPos, to);
+            to = _offense[toIdx].PositionAt(startT + flight);
+            flight = BallFlight.PassDuration(fromPos, to);
+            to = _offense[toIdx].PositionAt(startT + flight);
+
+            Beat(startT, beatKind, toIdx);
+            _offense[fromIdx].Stamp(startT, PlayerAction.Passing, _s.Offense[toIdx].PlayerId);
+            _ball.Add(new PassSegment(startT, startT + flight, fromPos, to, style));
+            _offense[toIdx].Add(startT + flight, to, PlayerAction.Catching);
+            return startT + flight;
+        }
+
+        /// <summary>Pick the inbounder: the offensive player (not the handler) whose start spot is
+        /// nearest the ball's dead spot — i.e. the man already closest to the baseline.</summary>
+        private int InbounderIndex(int holder, CourtPosition ballSpot, CourtPosition[] startSpots)
+        {
+            int best = -1; float bestD = float.MaxValue;
+            for (int i = 0; i < 5; i++)
+            {
+                if (i == holder) continue;
+                float d = startSpots[i].DistanceTo(ballSpot);
+                if (d < bestD) { bestD = d; best = i; }
+            }
+            return best < 0 ? (holder == 0 ? 1 : 0) : best;
+        }
+
+        /// <summary>Nearest sideline inbound point to a dead-ball spot (just past the sideline).</summary>
+        private static CourtPosition SidelineInbound(CourtPosition from)
+        {
+            float y = from.Y >= 0f ? CourtGeometry.HalfWidth + 1.5f : -(CourtGeometry.HalfWidth + 1.5f);
+            float x = Math.Min(Math.Max(from.X, -CourtGeometry.HalfLength + 3f), CourtGeometry.HalfLength - 3f);
+            return new CourtPosition(x, y);
         }
 
         /// <summary>
@@ -407,7 +587,7 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
             Glide(handler, actionStart + 0.2f,
                 _action.ScreenSpot.MoveTowards(new CourtPosition(_rimX, 0f), 3f), PlayerAction.Dribbling);
 
-            float holdEnd = _action.ScreenStartT + 0.5f;
+            float holdEnd = _action.ScreenStartT + 0.7f;   // 0.7s of genuine body contact
             _action.ScreenEndT = holdEnd;
             _offense[scr].Stamp(holdEnd, PlayerAction.Screening);
 
@@ -430,7 +610,8 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
             {
                 var screenPos = FormationLibrary.Clamp(new CourtPosition((CourtGeometry.RimX - 8f) * M, _action.SideY * 7f));
                 _action.ScreenStartT = Glide(scr, actionStart, screenPos, PlayerAction.Screening);
-                _action.ScreenEndT = _action.ScreenStartT + 0.5f;
+                _action.ScreenEndT = _action.ScreenStartT + 0.7f;   // 0.7s of genuine body contact
+                _offense[scr].Stamp(_action.ScreenEndT, PlayerAction.Screening);   // hold through contact
                 Beat(_action.ScreenStartT, NarrationBeatKind.ScreenSet, scr, cut);
             }
 
@@ -457,8 +638,21 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
             if (post < 0) return;
             var block = FormationLibrary.Clamp(new CourtPosition((CourtGeometry.RimX - 6f) * M, _action.SideY * 6f));
             float t1 = Glide(post, actionStart, block, PlayerAction.PostingUp);
-            _offense[post].Stamp(t1 + 0.8f, PlayerAction.PostingUp);
             Beat(t1 + 0.4f, NarrationBeatKind.PostMove, post);
+
+            // Back down: 3 small rhythmic push-in steps toward the rim (~0.4 ft each over ~1.5s).
+            // The defender holds ground at body-contact distance (IntegrateDefense post branch).
+            _action.PostStartT = t1;
+            var p = block;
+            float pt = t1;
+            var rimLine = new CourtPosition(_rimX, block.Y);
+            for (int k = 0; k < 3; k++)
+            {
+                p = p.MoveTowards(rimLine, 0.4f);
+                pt += 0.5f;
+                _offense[post].Add(pt, FormationLibrary.Clamp(p), PlayerAction.PostingUp);
+            }
+            _action.PostEndT = pt;
         }
 
         private void BuildHandoff(int handler, float actionStart)
@@ -1127,8 +1321,16 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
         {
             var states = new List<SpatialState>(160);
 
-            // Defense starts in transition retreat
-            _defPos = FormationLibrary.GetBackcourtSpots(_s.OffenseAttacksRight, true, _rng);
+            // Defense starts where it ended the prior possession (this defense = the previous
+            // possession's offense), so it's already back at this end — seeded by PlayerId from the
+            // StartContext. Backcourt retreat is the legacy fallback for missing ids / null context.
+            var defBackcourt = FormationLibrary.GetBackcourtSpots(_s.OffenseAttacksRight, true, _rng);
+            _defPos = new CourtPosition[5];
+            var startCtx = _s.StartContext;
+            for (int i = 0; i < 5; i++)
+                _defPos[i] = startCtx != null && startCtx.Kind != PossessionStartKind.Backcourt
+                    ? (startCtx.PositionOf(_s.Defense[i].PlayerId) ?? defBackcourt[i])
+                    : defBackcourt[i];
 
             var times = new List<float>(states.Capacity);
             float t = 0f;
@@ -1175,8 +1377,11 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
                 bool inFlight = seg is PassSegment || seg is ShotSegment || seg is BankSegment ||
                                 seg is CaromSegment || seg is BlockSegment;
                 // Densify (0.1s) during the shot windup, the rebound leap, and sharp cuts too,
-                // so P3 characters have enough frames to animate those beats convincingly.
-                t += (inFlight || InDenseActionWindow(t)) ? FlightTick : Tick;
+                // so P3 characters have enough frames to animate those beats convincingly. Also
+                // densify while dribbled so the authored ~2.2Hz floor-to-hand bounce (|sin|) is
+                // sampled cleanly instead of aliasing at the coarse tick.
+                bool dribbling = state.Ball.Status == BallStatus.Dribbled;
+                t += (inFlight || dribbling || InDenseActionWindow(t)) ? FlightTick : Tick;
             }
 
             // Speed post-pass: difference each player's FINAL (post-cap) position against the
@@ -1235,11 +1440,14 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
 
         private SpatialState Sample(float t)
         {
-            float gameClock = Math.Max(_s.StartGameClock - t, 0f);
-            float possClock = Math.Max(24f - t, 0f);
+            // Clock holds through the dead-ball inbound lead-in (t < _clockStartT), then ticks.
+            float ticking = Math.Max(0f, t - _clockStartT);
+            float gameClock = Math.Max(_s.StartGameClock - ticking, 0f);
+            float possClock = Math.Max(24f - ticking, 0f);
             var state = new SpatialState(gameClock, _s.Quarter, possClock)
             {
-                Phase = PhaseAt(t)
+                Phase = PhaseAt(t),
+                PresentationTime = t
             };
 
             var ball = SampleBall(t);
@@ -1255,7 +1463,7 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
                 {
                     HasBall = hasBall,
                     CurrentAction = action,
-                    TargetPlayerId = target,
+                    TargetPlayerId = ContactPartnerId(false, i, t) ?? target,
                     FacingAngle = OffenseFacing(i, t, pos, hasBall, action, ballPos),
                     VerticalOffset = offVert,
                     ActionPhase = offPhase
@@ -1266,6 +1474,7 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
                 state.Players[i + 5] = new PlayerSnapshot(_s.Defense[i].PlayerId, _defPos[i].X, _defPos[i].Y)
                 {
                     CurrentAction = defAction,
+                    TargetPlayerId = ContactPartnerId(true, i, t),
                     FacingAngle = DefenseFacing(i, t, _defPos[i], defAction, ball, ballPos),
                     DefensiveStance = defAction == PlayerAction.Defending || defAction == PlayerAction.Contesting,
                     VerticalOffset = defVert,
@@ -1287,8 +1496,14 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
             PlayerAction action, CourtPosition ballPos)
         {
             var rim = new CourtPosition(_rimX, 0f);
+            // Post backing down: back to the basket (face away from the rim).
+            if (action == PlayerAction.PostingUp)
+                return AngleTo(rim, pos);
+            // Screener: back/side to the defender he's screening.
+            if (action == PlayerAction.Screening && _screenDefIdx >= 0 && InScreenContact(t))
+                return AngleTo(_defPos[_screenDefIdx], pos);
             bool shooting = action == PlayerAction.Shooting || action == PlayerAction.Dunking ||
-                            action == PlayerAction.Layup || action == PlayerAction.PostingUp;
+                            action == PlayerAction.Layup;
             if (hasBall || shooting)
                 return AngleTo(pos, rim);
 
@@ -1472,6 +1687,88 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
 
         // ── Defense: integrate toward shadow targets each tick ──
 
+        // ════════════════════════════════════════════════════════════════
+        //  Authored-contact pairing (P2): who meets whom, at what distance
+        // ════════════════════════════════════════════════════════════════
+
+        /// <summary>Resolve the screen and post-up defender indices once _defPlan exists, so the
+        /// integrator and the snapshot pass know which defender each contact pairs with.</summary>
+        private void ResolveContactPairs()
+        {
+            _screenDefIdx = -1;
+            _screenBeneIdx = -1;
+            _postDefIdx = -1;
+            if (_defPlan == null) return;
+
+            if (_action.Screener >= 0 && _action.ScreenEndT > 0f)
+            {
+                _screenBeneIdx = IsOnBallAction(_action.Action) ? _action.Handler : _action.Cutter;
+                if (_screenBeneIdx >= 0) _screenDefIdx = DefenderGuarding(_screenBeneIdx);
+            }
+            if (_action.Action == OffensiveAction.PostUp && _action.PostIndex >= 0)
+                _postDefIdx = DefenderGuarding(_action.PostIndex);
+        }
+
+        /// <summary>Defender index currently assigned to an offensive player (follows Switches), or
+        /// the identity fallback.</summary>
+        private int DefenderGuarding(int offIdx)
+        {
+            for (int d = 0; d < 5; d++)
+                if (_defPlan[d].ManIndex == offIdx) return d;
+            return (offIdx >= 0 && offIdx < 5) ? offIdx : -1;
+        }
+
+        /// <summary>True during the frames the screen is being held (body contact window).</summary>
+        private bool InScreenContact(float t) =>
+            _action.ScreenEndT > 0f && t >= _action.ScreenStartT && t <= _action.ScreenEndT;
+
+        /// <summary>The contact partner's PlayerId for a screen or post-up pair (both directions), or
+        /// null. Consumed by the render-side SoftSeparation pass to hold the pair at contact distance
+        /// rather than the crowd minimum.</summary>
+        private string ContactPartnerId(bool isDefense, int idx, float t)
+        {
+            if (_screenDefIdx >= 0 && InScreenContact(t))
+            {
+                if (isDefense && idx == _screenDefIdx) return _s.Offense[_action.Screener].PlayerId;
+                if (!isDefense && idx == _action.Screener) return _s.Defense[_screenDefIdx].PlayerId;
+            }
+            if (_postDefIdx >= 0 && _action.PostStartT >= 0f &&
+                t >= _action.PostStartT && t <= _action.PostEndT)
+            {
+                if (isDefense && idx == _postDefIdx) return _s.Offense[_action.PostIndex].PlayerId;
+                if (!isDefense && idx == _action.PostIndex) return _s.Defense[_postDefIdx].PlayerId;
+            }
+            return null;
+        }
+
+        /// <summary>Whether a court point sits inside the attacking paint (lane box).</summary>
+        private bool InLaneBox(CourtPosition p)
+        {
+            float d = (_rimX - p.X) * M;   // ft from the rim toward midcourt
+            return Math.Abs(p.Y) <= 8f && d >= -3f && d <= 14f;
+        }
+
+        /// <summary>During a transition retreat, flag the defenders (beyond the paint cap) whose men
+        /// sit in the lane so they hold at the elbow instead of collapsing the paint. Keeps the
+        /// defenders whose men are nearest the rim.</summary>
+        private bool[] ComputeTransitionPaintHolds(float t)
+        {
+            var holds = new bool[5];
+            var laneDefs = new List<int>();
+            for (int i = 0; i < 5; i++)
+                if (InLaneBox(_offense[_defPlan[i].ManIndex].PositionAt(t))) laneDefs.Add(i);
+
+            if (laneDefs.Count <= TransitionPaintCap) return holds;
+            laneDefs.Sort((a, b) =>
+            {
+                float da = (_rimX - _offense[_defPlan[a].ManIndex].PositionAt(t).X) * M;
+                float db = (_rimX - _offense[_defPlan[b].ManIndex].PositionAt(t).X) * M;
+                return da.CompareTo(db);
+            });
+            for (int k = TransitionPaintCap; k < laneDefs.Count; k++) holds[laneDefs[k]] = true;
+            return holds;
+        }
+
         private void IntegrateDefense(float t, float dt)
         {
             if (dt <= 0f) return;
@@ -1484,6 +1781,10 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
             // Only on-ball screens (PnR/PnP) drive the ball-defender nav / hedge / roller-help logic.
             bool screenAction = _action.ScreenEndT > 0f &&
                 (_action.Action == OffensiveAction.PickAndRoll || _action.Action == OffensiveAction.PickAndPop);
+
+            // Transition paint relief: cap how many defenders sink into the lane at once — extras
+            // hold at the elbow so the paint doesn't collapse into one crashing scrum.
+            bool[] transitionHolds = t < _transitionEndT ? ComputeTransitionPaintHolds(t) : null;
 
             for (int i = 0; i < 5; i++)
             {
@@ -1514,6 +1815,31 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
                 int man = _defPlan[i].ManIndex;   // follows a Switch
                 CourtPosition target;
                 float speed = DefenseSpeed;
+
+                // Transition retreat: on a live rebound the defense is scrambling back. While still
+                // beaten downcourt (behind the ball) a defender sprints goalside; once he's goalside
+                // of the ball — or the ball has crossed half-court — he blends back to normal
+                // man-marking instead of continuing to collapse toward the rim.
+                if (t < _transitionEndT)
+                {
+                    var manPos = _offense[man].PositionAt(t);
+                    var ballPos = new CourtPosition(ball.X, ball.Y);
+                    bool recovered = (_defPos[i].X - ballPos.X) * M >= 0f || ballPos.X * M > 0f;
+                    CourtPosition backTarget;
+                    if (!recovered)
+                    {
+                        backTarget = Blend(manPos, rim, 0.5f);   // get back first, pick up late
+                    }
+                    else
+                    {
+                        backTarget = Blend(manPos, rim, SagFor(i, ball));   // normal man-marking spot
+                        if (transitionHolds != null && transitionHolds[i])
+                            backTarget = new CourtPosition(CourtGeometry.FreeThrowLineX * M,
+                                manPos.Y >= 0f ? 8f : -8f);   // paint capped: hold at the elbow
+                    }
+                    _defPos[i] = _defPos[i].MoveTowards(backTarget, DefenseSprint * dt);
+                    continue;
+                }
 
                 if (_looseBallT >= 0f && t >= _looseBallT && i == _looseBallDefIdx)
                 {
@@ -1547,6 +1873,25 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
                     var shooterPos = _offense[_s.ShooterIndex].PositionAt(t);
                     target = shooterPos.MoveTowards(rim, contestDist);
                     speed = DefenseSprint;
+                }
+                else if (i == _screenDefIdx && _screenBeneIdx >= 0 && InScreenContact(t))
+                {
+                    // Caught on the screen: ride the screener's hip at body-contact distance,
+                    // on the side the beneficiary is using it. Authored just above the render
+                    // separation contact minimum so the pair meets instead of overlapping.
+                    var screenerPos = _offense[_action.Screener].PositionAt(t);
+                    var benePos = _offense[_screenBeneIdx].PositionAt(t);
+                    target = screenerPos.MoveTowards(benePos, ScreenContactDist);
+                    speed = DefenseSprint;
+                }
+                else if (i == _postDefIdx && _action.PostStartT >= 0f &&
+                         t >= _action.PostStartT && t <= _action.PostEndT)
+                {
+                    // Hold ground against the backing-down post at body-contact distance (rim side),
+                    // giving ground slowly as he bumps in.
+                    var postPos = _offense[_action.PostIndex].PositionAt(t);
+                    target = postPos.MoveTowards(rim, PostContactDist);
+                    speed = DefenseSpeed * 0.6f;
                 }
                 else if (screenAction && _defPlan[i].Nav == ScreenNavigation.Hedge &&
                          man == _action.Screener &&
@@ -1600,8 +1945,19 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
                 else
                 {
                     var manPos = _offense[man].PositionAt(t);
-                    float sag = SagFor(i, ball);
-                    target = Blend(manPos, rim, sag);
+                    bool guardsBall = ball.HeldByPlayerId != null &&
+                                      _s.Offense[man].PlayerId == ball.HeldByPlayerId;
+                    if (guardsBall && !resolution)
+                    {
+                        // On-ball hip-ride: arm's-length, goalside on the handler's driving line.
+                        target = manPos.MoveTowards(rim, HipRideDist);
+                        speed = DefenseSprint;
+                    }
+                    else
+                    {
+                        float sag = SagFor(i, ball);
+                        target = Blend(manPos, rim, sag);
+                    }
 
                     // Ball defender navigating the screen (over/under) — a subtle, stable offset.
                     if (screenAction && man == _action.Handler &&

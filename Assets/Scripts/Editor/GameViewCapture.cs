@@ -16,8 +16,22 @@ namespace NBAHeadCoach.EditorTools
             string dir = Path.Combine(Directory.GetParent(Application.dataPath).FullName, "Screenshots");
             Directory.CreateDirectory(dir);
             string path = Path.Combine(dir, "gameview.png");
-            ScreenCapture.CaptureScreenshot(path);
-            Debug.Log($"[GameViewCapture] Capturing to {path}");
+
+            // An unfocused editor skips Game-view repaints, so CaptureScreenshot would return a
+            // stale backbuffer (sim advances, picture doesn't). Force a fresh repaint first, then
+            // capture on the next editor tick so the repaint has actually rendered.
+            var gvType = System.Type.GetType("UnityEditor.GameView,UnityEditor");
+            if (gvType != null)
+            {
+                var gv = EditorWindow.GetWindow(gvType, false, null, false);
+                if (gv != null) gv.Repaint();
+            }
+            EditorApplication.QueuePlayerLoopUpdate();
+            EditorApplication.delayCall += () =>
+            {
+                ScreenCapture.CaptureScreenshot(path);
+                Debug.Log($"[GameViewCapture] Capturing to {path}");
+            };
         }
     }
 }

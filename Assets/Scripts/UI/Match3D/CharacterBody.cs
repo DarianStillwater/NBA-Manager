@@ -28,24 +28,34 @@ namespace NBAHeadCoach.UI.Match3D
         private static readonly int StanceHash = Animator.StringToHash("Stance");
         private static readonly int JumpHash = Animator.StringToHash("Jump");
         private static readonly int ThrowHash = Animator.StringToHash("Throw");
+        private static readonly int MotionRateHash = Animator.StringToHash("MotionRate");
 
         // Feet/sec that maps to a full-sprint blend of 1.0.
         private const float SprintFeetPerSec = 24f;
         // The character model's native forward may not be +Z; adjust if it imports facing away.
         private const float ModelForwardYawOffset = 0f;
+        // Lean: subtle broadcast range + how fast the model settles toward the target tilt.
+        private const float MaxLeanDeg = 8f;
+        private const float LeanLerpSpeed = 8f;
+        // Extra body tilt braced INTO a choreographed contact partner (Phase 2), on top of the
+        // accel/turn lean. Broadcast-subtle; composed absolutely per frame, never accumulated.
+        private const float ContactLeanDeg = 6f;
 
         private static GameObject _prefab;
         private static bool _prefabResolved;
 
         private Transform _model;
         private Animator _animator;
-        private bool _hasSpeed, _hasStance, _hasJump, _hasThrow;
+        private Transform _handBone;
+        private bool _hasSpeed, _hasStance, _hasJump, _hasThrow, _hasMotionRate;
 
         private float _heightFeet = 6.5f;
         private PlayerAction _lastAction = PlayerAction.Idle;
         private bool _lastStance;
 
         public float VisualHeightFeet => _heightFeet;
+
+        public Transform GetHandBone() => _handBone;
 
         public bool Build(Transform root, PlayerAppearance appearance)
         {
@@ -71,6 +81,12 @@ namespace NBAHeadCoach.UI.Match3D
                 _hasStance = HasParam(_animator, StanceHash, AnimatorControllerParameterType.Bool);
                 _hasJump = HasParam(_animator, JumpHash, AnimatorControllerParameterType.Trigger);
                 _hasThrow = HasParam(_animator, ThrowHash, AnimatorControllerParameterType.Trigger);
+                _hasMotionRate = HasParam(_animator, MotionRateHash, AnimatorControllerParameterType.Float);
+
+                // GetBoneTransform is only valid for a Humanoid rig with a valid avatar; guard so an
+                // old/generic controller returns null (ball then uses fixed-offset carry math).
+                if (_animator.isHuman)
+                    _handBone = _animator.GetBoneTransform(HumanBodyBones.RightHand);
             }
             return true;
         }
@@ -85,10 +101,33 @@ namespace NBAHeadCoach.UI.Match3D
             if (!Mathf.Approximately(p.y, y))
                 _model.localPosition = new Vector3(p.x, y, p.z);
 
+            // Accel/decel pitch + turn bank, applied on the model's LOCAL rotation (the actor root
+            // owns yaw), slerped so plant-and-cut reads without snapping.
+            float pitch = ActorMotion.LeanPitchDegrees(frame.PlanarAccelFeetPerSec2, MaxLeanDeg);
+            float roll = ActorMotion.BankRollDegrees(frame.YawRateDegPerSec, MaxLeanDeg);
+
+            // Contact brace: lean into the partner. ContactDir is a world court-plane vector; convert
+            // to the actor root's local frame (which carries yaw) so forward→pitch, sideways→roll.
+            if (frame.HasContact && _model.parent != null)
+            {
+                Vector3 local = _model.parent.InverseTransformDirection(
+                    new Vector3(frame.ContactDir.x, 0f, frame.ContactDir.y));
+                pitch += Mathf.Clamp(local.z, -1f, 1f) * ContactLeanDeg;
+                roll += Mathf.Clamp(-local.x, -1f, 1f) * ContactLeanDeg;
+            }
+
+            Quaternion leanTarget = Quaternion.Euler(pitch, ModelForwardYawOffset, roll);
+            _model.localRotation = Quaternion.Slerp(_model.localRotation, leanTarget, LeanLerpSpeed * dt);
+
             if (_animator == null || _animator.runtimeAnimatorController == null) return;
 
+            // Blend + clip cadence come from the MEASURED body speed so feet match real motion.
+            float measured = frame.MeasuredSpeedFeetPerSec;
+            float blend = Mathf.Clamp01(measured / SprintFeetPerSec);
             if (_hasSpeed)
-                _animator.SetFloat(SpeedHash, Mathf.Clamp01(frame.SpeedFeetPerSec / SprintFeetPerSec));
+                _animator.SetFloat(SpeedHash, blend);
+            if (_hasMotionRate)
+                _animator.SetFloat(MotionRateHash, ActorMotion.MotionRate(measured, blend));
 
             if (_hasStance && frame.DefensiveStance != _lastStance)
             {

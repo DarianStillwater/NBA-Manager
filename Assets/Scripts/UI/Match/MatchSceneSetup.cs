@@ -114,6 +114,9 @@ namespace NBAHeadCoach.UI.Match
             // Create MatchSimulationController
             var simGo = new GameObject("MatchSimController");
             _simController = simGo.AddComponent<MatchSimulationController>();
+            // BuildLayout ran before the controller existed, so its SetSpeed(Slow) no-opped —
+            // apply the broadcast-real 1× default now that there's a controller to receive it.
+            _simController.SetSpeed(SimulationSpeed.Slow);
 
             // Wait for singleton to set
             yield return null;
@@ -334,7 +337,11 @@ namespace NBAHeadCoach.UI.Match
                     UpdateSpeedHighlight(idx);
                 });
             }
-            UpdateSpeedHighlight(1); // default Normal/2x
+            // Interactive "Play" defaults to broadcast-real 1× (Slow) so the live view reads like a
+            // real telecast; the speed buttons still bump it up. SetSpeed overrides the controller's
+            // serialized default without the user having to click.
+            _simController?.SetSpeed(speeds[0]);
+            UpdateSpeedHighlight(0); // default 1x / broadcast-real
 
             // Spacer
             CreateRT(parent, "SpModes").gameObject.AddComponent<LayoutElement>().preferredWidth = 14;
@@ -369,7 +376,7 @@ namespace NBAHeadCoach.UI.Match
             MkCtrlBtn(parent, "STRATEGY", 80, ShowStrategyOverlay);
             MkCtrlBtn(parent, "BOX SCORE", 88, ShowBoxScoreOverlay);
             MkCtrlBtn(parent, "SIM REST", 80, ShowExitConfirmOverlay);
-            _speedLabel = MkText(CreateRT(parent, "SpLbl"), "2x", 11, FontStyle.Normal, UITheme.TextSecondary, TextAnchor.MiddleCenter);
+            _speedLabel = MkText(CreateRT(parent, "SpLbl"), "1x", 11, FontStyle.Normal, UITheme.TextSecondary, TextAnchor.MiddleCenter);
             _speedLabel.gameObject.AddComponent<LayoutElement>().preferredWidth = 40;
         }
 

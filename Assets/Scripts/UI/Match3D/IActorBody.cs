@@ -10,12 +10,26 @@ namespace NBAHeadCoach.UI.Match3D
     /// </summary>
     public struct ActorFrame
     {
-        public float SpeedFeetPerSec;   // ground speed; drives the idle→walk→run blend
+        public float SpeedFeetPerSec;   // timeline (pre-lerp) ground speed; kept for reference
         public float VerticalOffset;    // jump height in feet above the floor (data drives height)
         public PlayerAction Action;     // scripted action (shot/dunk/rebound/…) → trigger clips
         public float ActionPhase;       // 0..1 progress through the current scripted action
         public bool DefensiveStance;    // crouched guarding pose
         public bool HasBall;
+
+        // Measured from the actual rendered body motion (PlayerActor3D fills these each Update), so
+        // the feet match what the eye sees rather than the pre-smoothing timeline speed. Default 0
+        // is harmless (idle blend, no lean).
+        public float MeasuredSpeedFeetPerSec;   // planar |Δposition|/dt — drives blend + MotionRate
+        public float PlanarAccelFeetPerSec2;     // signed change in foot speed → accel/decel lean
+        public float YawRateDegPerSec;           // turn rate → bank roll
+
+        // Choreographed contact (Phase 2): set when this actor is making authored body contact
+        // (screen brace / box-out / post-up) with a partner. ContactDir is a court-plane unit vector
+        // (X→world X, Y→world Z) pointing INTO the partner, so the body leans against them. Default
+        // false/zero → no contact tilt. CharacterBody honors it; CapsuleBody ignores it.
+        public bool HasContact;
+        public Vector2 ContactDir;
     }
 
     /// <summary>
@@ -37,5 +51,9 @@ namespace NBAHeadCoach.UI.Match3D
 
         /// <summary>Standing height in feet of the built visual, for label/ball placement.</summary>
         float VisualHeightFeet { get; }
+
+        /// <summary>The right-hand bone the ball rides while held/dribbled, or null when this body
+        /// has no skeleton (CapsuleBody) — callers fall back to fixed-offset carry math.</summary>
+        Transform GetHandBone();
     }
 }
