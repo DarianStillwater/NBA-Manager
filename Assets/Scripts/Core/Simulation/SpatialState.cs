@@ -86,6 +86,11 @@ namespace NBAHeadCoach.Core.Simulation
         /// 0 when the player isn't mid-action.</summary>
         public float ActionPhase;
 
+        /// <summary>Presentational: the shot type this player is taking, stamped on the SHOOTER
+        /// only from windup start through the ball reaching the rim (null otherwise). The renderer
+        /// pairs it with CurrentAction to pick a distinct shot animation (fadeaway/pull-up/etc.).</summary>
+        public ShotType? ShotStyle;
+
         public PlayerSnapshot(string playerId, float x, float y)
         {
             PlayerId = playerId;
@@ -99,6 +104,7 @@ namespace NBAHeadCoach.Core.Simulation
             DefensiveStance = false;
             VerticalOffset = 0f;
             ActionPhase = 0f;
+            ShotStyle = null;
         }
 
         public Data.CourtPosition GetPosition() => new Data.CourtPosition(X, Y);
@@ -151,7 +157,8 @@ namespace NBAHeadCoach.Core.Simulation
         BoxingOut,
         Celebrating,
         Fouled,
-        Inbounding    // holding the ball behind the line to inbound (continuous-flow lead-in)
+        Inbounding,   // holding the ball behind the line to inbound (continuous-flow lead-in)
+        LayupAcrobatic // reverse/off-hand finish — a Layup shot flagged acrobatic (renderer picks the fancy clip)
     }
 
     public enum BallStatus

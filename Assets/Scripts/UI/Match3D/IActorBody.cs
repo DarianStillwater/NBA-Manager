@@ -13,6 +13,10 @@ namespace NBAHeadCoach.UI.Match3D
         public float SpeedFeetPerSec;   // timeline (pre-lerp) ground speed; kept for reference
         public float VerticalOffset;    // jump height in feet above the floor (data drives height)
         public PlayerAction Action;     // scripted action (shot/dunk/rebound/…) → trigger clips
+        // Shot variant that resolves WHICH shot state plays (Fadeaway vs Floater vs JumpShot…).
+        // Populated only on the shooter across the windup→land window; null everywhere else, and
+        // an unknown value falls through to the generic JumpShot state (see CharacterBody map).
+        public ShotType? ShotStyle;
         public float ActionPhase;       // 0..1 progress through the current scripted action
         public bool DefensiveStance;    // crouched guarding pose
         public bool HasBall;
@@ -48,6 +52,12 @@ namespace NBAHeadCoach.UI.Match3D
 
         /// <summary>Per-frame pose/animation update.</summary>
         void Animate(in ActorFrame frame, float dt);
+
+        /// <summary>Post-animator bone posing, called from PlayerActor3D.LateUpdate — after the
+        /// Animator has evaluated (Unity runs it between Update and LateUpdate), so bone writes here
+        /// survive into the render. CapsuleBody has no skeleton and ignores it; CharacterBody layers
+        /// procedural shot/dunk/pass poses over the generic base clips.</summary>
+        void PoseLate(in ActorFrame frame);
 
         /// <summary>Standing height in feet of the built visual, for label/ball placement.</summary>
         float VisualHeightFeet { get; }

@@ -63,6 +63,9 @@ namespace NBAHeadCoach.Tests
             RunTest<ChoreographyTest>("Possession Choreography");
             RunTest<ChoreographyEnrichmentTest>("Choreography Enrichment (P2)");
             RunTest<PossessionChainTest>("Possession Chain (continuous flow)");
+            RunTest<Phase3ChoreographyTest>("Phase 3 Choreography (rebound battle + heave)");
+            RunTest<Phase4ShotStyleTest>("Phase 4 Shot Style (fadeaway drift + catch-and-shoot)");
+            RunTest<ProceduralPoseTest>("Procedural Pose (bone-level shot/dunk/pass posing)");
             RunTest<RegistryOrderTest>("System Registry Order");
             RunTest<GameCompletionParityTest>("Game Completion Parity");
             RunTest<EnergyCarryoverTest>("Energy Carryover");

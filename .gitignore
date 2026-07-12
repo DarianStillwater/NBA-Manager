@@ -49,3 +49,6 @@ debug_shots.txt
 
 # Dev capture artifacts
 /Screenshots/
+
+# Mixamo clips are royalty-free to USE but not redistributable — keep them out of the public repo
+Assets/ThirdParty/Animations/*.fbx

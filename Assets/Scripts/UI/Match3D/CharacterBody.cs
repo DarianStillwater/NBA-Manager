@@ -13,9 +13,11 @@ namespace NBAHeadCoach.UI.Match3D
     ///
     /// Animator contract (see CharacterAnimatorBuilder):
     ///   Speed (float, 0..1 normalized) → idle/walk/run blend
-    ///   Stance (bool)                  → crouched defensive idle
-    ///   Jump  (trigger)                → leap (layup/rebound)
-    ///   Throw (trigger)                → shot/dunk release
+    ///   MotionRate (float)             → locomotion playback rate (anti-skate)
+    ///   Stance (bool)                  → crouched defensive idle / defensive slide (by Speed)
+    ///   Dribbling (bool)               → DribbleMove blend tree (idle/walk/run with ball)
+    ///   flat action states             → (Action, ShotStyle) crossfaded via DriveActionState
+    ///   Jump / Throw (triggers)        → legacy fallback when an action state is absent
     ///
     /// Build returns false when the prefab isn't present so the actor falls back to a capsule —
     /// which is the normal state until the one-time editor build steps have been run.
@@ -29,6 +31,28 @@ namespace NBAHeadCoach.UI.Match3D
         private static readonly int JumpHash = Animator.StringToHash("Jump");
         private static readonly int ThrowHash = Animator.StringToHash("Throw");
         private static readonly int MotionRateHash = Animator.StringToHash("MotionRate");
+        private static readonly int DribblingHash = Animator.StringToHash("Dribbling");
+
+        // Action-clip state hashes (built by CharacterAnimatorBuilder). A state may be absent (its
+        // clip wasn't dropped in yet) — HasStateCached guards that and CharacterBody falls back to
+        // the legacy Jump/Throw triggers so the current controller keeps working.
+        private static readonly int LocomotionHash = Animator.StringToHash("Locomotion");
+        private static readonly int JumpShotHash = Animator.StringToHash("JumpShot");
+        private static readonly int FadeawayHash = Animator.StringToHash("Fadeaway");
+        private static readonly int FloaterHash = Animator.StringToHash("Floater");
+        private static readonly int LayupHash = Animator.StringToHash("Layup");
+        private static readonly int LayupAcrobaticHash = Animator.StringToHash("LayupAcrobatic");
+        private static readonly int DunkHash = Animator.StringToHash("Dunk");
+        private static readonly int HeaveHash = Animator.StringToHash("Heave");
+        private static readonly int ChestPassHash = Animator.StringToHash("ChestPass");
+        private static readonly int BouncePassHash = Animator.StringToHash("BouncePass");
+        private static readonly int CatchHash = Animator.StringToHash("Catch");
+        private static readonly int StealHash = Animator.StringToHash("Steal");
+        private static readonly int BlockHash = Animator.StringToHash("Block");
+        private static readonly int ReboundHash = Animator.StringToHash("Rebound");
+        private static readonly int BoxOutHash = Animator.StringToHash("BoxOut");
+        private static readonly int ScreenHash = Animator.StringToHash("Screen");
+        private static readonly int CelebrateHash = Animator.StringToHash("Celebrate");
 
         // Feet/sec that maps to a full-sprint blend of 1.0.
         private const float SprintFeetPerSec = 24f;
@@ -47,11 +71,25 @@ namespace NBAHeadCoach.UI.Match3D
         private Transform _model;
         private Animator _animator;
         private Transform _handBone;
-        private bool _hasSpeed, _hasStance, _hasJump, _hasThrow, _hasMotionRate;
+
+        // Procedural-pose bones (resolved once). Any may be null on a generic rig → Apply skips it.
+        private Transform _poseLUp, _poseLLo, _poseRUp, _poseRLo, _poseSpine, _poseHead;
+        private bool _poseBonesResolved;
+        // Procedural yields to a real ThirdParty clip when one actually drives the action (arms keep
+        // this much flavor over the aliased base clip); full weight on the legacy fallback path.
+        // ponytail: one global yield weight — swap for per-clip weights when real clips land and some
+        // states want more procedural help than others.
+        private const float ProceduralYieldWeight = 0.35f;
+        private bool _hasSpeed, _hasStance, _hasJump, _hasThrow, _hasMotionRate, _hasDribbling;
 
         private float _heightFeet = 6.5f;
-        private PlayerAction _lastAction = PlayerAction.Idle;
         private bool _lastStance;
+        private bool _lastDribbling;
+        // Hash of the action-state currently driven (0 = locomotion family). Edge-triggers the
+        // crossfade and tells us when a loop state needs a crossfade back to locomotion.
+        private int _lastActionHash;
+        // HasState is a per-controller query; cache results so we hit the Animator once per state.
+        private readonly Dictionary<int, bool> _hasState = new Dictionary<int, bool>();
 
         public float VisualHeightFeet => _heightFeet;
 
@@ -82,6 +120,7 @@ namespace NBAHeadCoach.UI.Match3D
                 _hasJump = HasParam(_animator, JumpHash, AnimatorControllerParameterType.Trigger);
                 _hasThrow = HasParam(_animator, ThrowHash, AnimatorControllerParameterType.Trigger);
                 _hasMotionRate = HasParam(_animator, MotionRateHash, AnimatorControllerParameterType.Float);
+                _hasDribbling = HasParam(_animator, DribblingHash, AnimatorControllerParameterType.Bool);
 
                 // GetBoneTransform is only valid for a Humanoid rig with a valid avatar; guard so an
                 // old/generic controller returns null (ball then uses fixed-offset carry math).
@@ -135,20 +174,142 @@ namespace NBAHeadCoach.UI.Match3D
                 _lastStance = frame.DefensiveStance;
             }
 
-            // Edge-triggered action clips: fire once when the scripted action starts.
-            if (frame.Action != _lastAction)
+            // Carrying the ball routes locomotion through the DribbleMove blend tree (idle/walk/run
+            // with the ball). The controller handles the Locomotion↔DribbleMove transition.
+            bool dribbling = frame.HasBall;
+            if (_hasDribbling && dribbling != _lastDribbling)
             {
-                if (_hasThrow && IsShot(frame.Action)) _animator.SetTrigger(ThrowHash);
-                else if (_hasJump && IsLeap(frame.Action)) _animator.SetTrigger(JumpHash);
-                _lastAction = frame.Action;
+                _animator.SetBool(DribblingHash, dribbling);
+                _lastDribbling = dribbling;
             }
+
+            DriveActionState(frame.Action, frame.ShotStyle);
         }
 
-        private static bool IsShot(PlayerAction a) =>
-            a == PlayerAction.Shooting || a == PlayerAction.Dunking;
+        // ── Procedural posing (LateUpdate, after the animator) ──
+        // Layers arm/spine/head shapes over the generic base clips so shots/dunks/passes read even
+        // when no dedicated basketball clip exists. Rotations only, composed absolutely each frame
+        // (target = animator pose * offset), so nothing accumulates.
+        public void PoseLate(in ActorFrame frame)
+        {
+            // GetBoneTransform is only valid on a Humanoid rig; a generic controller poses nothing.
+            if (_animator == null || !_animator.isHuman) return;
 
-        private static bool IsLeap(PlayerAction a) =>
-            a == PlayerAction.Layup || a == PlayerAction.Rebounding;
+            ResolvePoseBones();
+
+            var t = ProceduralPose.Evaluate(frame.Action, frame.ShotStyle, frame.ActionPhase,
+                frame.DefensiveStance, frame.HasBall, frame.VerticalOffset);
+            if (t.Weight <= 0f) return;   // no pose for this action → zero cost
+
+            // Yield if a real clip is actually driving this action. Today no basketball states exist
+            // in the controller, so HasStateCached is false and procedural runs at full weight.
+            int state = ResolveStateHash(frame.Action, frame.ShotStyle);
+            float w = t.Weight * (state != 0 && HasStateCached(state) ? ProceduralYieldWeight : 1f);
+            if (w <= 0f) return;
+
+            ApplyPose(_poseRUp, t.RUpperArm, w);
+            ApplyPose(_poseRLo, t.RLowerArm, w);
+            ApplyPose(_poseLUp, t.LUpperArm, w);
+            ApplyPose(_poseLLo, t.LLowerArm, w);
+            ApplyPose(_poseSpine, t.Spine, w);
+            ApplyPose(_poseHead, t.Head, w);
+        }
+
+        private static void ApplyPose(Transform bone, Quaternion offset, float weight)
+        {
+            if (bone == null) return;
+            bone.localRotation = Quaternion.Slerp(bone.localRotation, bone.localRotation * offset, weight);
+        }
+
+        private void ResolvePoseBones()
+        {
+            if (_poseBonesResolved) return;
+            _poseBonesResolved = true;
+            _poseLUp = _animator.GetBoneTransform(HumanBodyBones.LeftUpperArm);
+            _poseLLo = _animator.GetBoneTransform(HumanBodyBones.LeftLowerArm);
+            _poseRUp = _animator.GetBoneTransform(HumanBodyBones.RightUpperArm);
+            _poseRLo = _animator.GetBoneTransform(HumanBodyBones.RightLowerArm);
+            _poseSpine = _animator.GetBoneTransform(HumanBodyBones.Spine);
+            _poseHead = _animator.GetBoneTransform(HumanBodyBones.Head);
+        }
+
+        // ── Action → state map ──
+        // Edge-triggered: crossfade once when the resolved target state changes. One-shots exit
+        // themselves via exit-time; loops (BoxOut/Screen) are crossfaded back to locomotion here
+        // when their action ends. When a state is absent (clip not dropped in), fall back to the
+        // legacy Jump/Throw triggers so the pre-Phase-4 controller still animates.
+        private void DriveActionState(PlayerAction action, ShotType? shot)
+        {
+            int target = ResolveStateHash(action, shot);
+            if (target == _lastActionHash) return;
+
+            if (target != 0)
+            {
+                if (HasStateCached(target))
+                    _animator.CrossFadeInFixedTime(target, 0.12f);
+                else
+                    FireLegacyTrigger(action);   // state missing → old trigger web
+            }
+            else
+            {
+                // Returning to the locomotion family. One-shots already exited on their own; a loop
+                // (BoxOut/Screen) has no exit transition, so crossfade it out explicitly.
+                if (IsLoopState(_lastActionHash) && HasStateCached(LocomotionHash))
+                    _animator.CrossFadeInFixedTime(LocomotionHash, 0.15f);
+            }
+            _lastActionHash = target;
+        }
+
+        /// <summary>Resolve the animator state for (action, shot variant). 0 = no dedicated state
+        /// (idle/run/dribble/defend handled by the locomotion + stance machinery). An unknown or
+        /// null ShotStyle on a Shooting action falls through to the generic JumpShot.</summary>
+        private static int ResolveStateHash(PlayerAction action, ShotType? shot)
+        {
+            switch (action)
+            {
+                case PlayerAction.Shooting:
+                    switch (shot)
+                    {
+                        case ShotType.Fadeaway:
+                        case ShotType.StepBack: return FadeawayHash;
+                        case ShotType.Floater:
+                        case ShotType.Hookshot: return FloaterHash;
+                        case ShotType.Heave:    return HeaveHash;
+                        default:                return JumpShotHash; // Jumper/CatchAndShoot/PullUp/TipIn/null
+                    }
+                case PlayerAction.Dunking:        return DunkHash;
+                case PlayerAction.Layup:          return LayupHash;
+                case PlayerAction.LayupAcrobatic: return LayupAcrobaticHash;
+                case PlayerAction.Passing:     return ChestPassHash;  // BouncePass indistinguishable on ActorFrame — always chest for now
+                case PlayerAction.Catching:    return CatchHash;
+                case PlayerAction.Rebounding:  return ReboundHash;
+                case PlayerAction.BoxingOut:   return BoxOutHash;     // loop
+                case PlayerAction.Screening:   return ScreenHash;     // loop
+                case PlayerAction.Celebrating: return CelebrateHash;
+                default:                       return 0;
+            }
+            // Steal/Block states exist in the controller but have no source action in PlayerAction
+            // yet (no Stealing/Blocking). They light up automatically once those actions arrive.
+        }
+
+        private static bool IsLoopState(int hash) => hash == BoxOutHash || hash == ScreenHash;
+
+        private void FireLegacyTrigger(PlayerAction action)
+        {
+            if (_hasThrow && (action == PlayerAction.Shooting || action == PlayerAction.Dunking))
+                _animator.SetTrigger(ThrowHash);
+            else if (_hasJump && (action == PlayerAction.Layup || action == PlayerAction.Rebounding))
+                _animator.SetTrigger(JumpHash);
+        }
+
+        private bool HasStateCached(int hash)
+        {
+            if (hash == 0) return false;
+            if (_hasState.TryGetValue(hash, out var has)) return has;
+            has = _animator.HasState(0, hash);
+            _hasState[hash] = has;
+            return has;
+        }
 
         // ── Prefab loading (cached; resolved once per session) ──
 

@@ -59,6 +59,7 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
                 case ShotType.TipIn: return 0.1f;
                 case ShotType.Layup: return 0.3f;
                 case ShotType.CatchAndShoot: return 0.25f;
+                case ShotType.Floater: return 0.3f;   // quick teardrop pop, distinct from a set jumper
                 default: return 0.4f;
             }
         }

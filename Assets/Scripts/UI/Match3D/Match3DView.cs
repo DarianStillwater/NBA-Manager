@@ -331,6 +331,10 @@ namespace NBAHeadCoach.UI.Match3D
                     SpeedFeetPerSec = Mathf.Lerp(pa.SpeedFeetPerSec, pb.SpeedFeetPerSec, u),
                     VerticalOffset = Mathf.Lerp(pa.VerticalOffset, pb.VerticalOffset, u),
                     Action = pb.CurrentAction,
+                    // Shooter's shot variant (choreographer stamps it windup→land). COMPILE
+                    // DEPENDENCY: PlayerSnapshot.ShotStyle is added by the Core-side agent; this
+                    // line and that field land together.
+                    ShotStyle = pb.ShotStyle,
                     ActionPhase = pb.ActionPhase,
                     DefensiveStance = pb.DefensiveStance,
                     HasBall = pb.HasBall,

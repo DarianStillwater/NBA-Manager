@@ -201,6 +201,11 @@ namespace NBAHeadCoach.UI.Match3D
 
         private void LateUpdate()
         {
+            // Post-animator posing: the Animator evaluated between Update and now, so bone writes
+            // here stick for rendering. Uses the frame cached in Update (already augmented with
+            // measured motion). Runs before the label early-return so posing never depends on it.
+            _body?.PoseLate(in _frame);
+
             if (_label == null || _labelPivot == null) return;
             var cam = _camera != null ? _camera : Camera.main;
             if (cam == null) return;

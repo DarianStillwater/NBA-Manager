@@ -43,7 +43,8 @@ namespace NBAHeadCoach.Core.Simulation.Choreography
         // ── Continuous-flow additions (Phase 1; additive, default Advance is unchanged) ──
         Inbound,        // dead-ball inbound lead-in (clock held until the catch)
         Transition,     // live rebound/steal push before the half-court set
-        ReboundBattle   // bodies crashing the glass (Phase 3 detail; reserved)
+        ReboundBattle,  // bodies crashing the glass (Phase 3 detail; reserved)
+        DeadBall        // post-whistle freeze (violation/foul/OOB turnover) before the next inbound
     }
 
     /// <summary>
