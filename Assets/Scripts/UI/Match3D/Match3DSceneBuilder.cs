@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using NBAHeadCoach.Core.Data;
 using NBAHeadCoach.Core.Simulation.Choreography;
@@ -13,6 +14,10 @@ namespace NBAHeadCoach.UI.Match3D
         public Hoop3D LeftHoop;    // basket at −X
         public Hoop3D RightHoop;   // basket at +X
         public Jumbotron3D Jumbotron;
+
+        /// <summary>Per-section stand materials (one instance each, so they can be tinted
+        /// independently). CrowdReaction bobs/brightens these on a big play.</summary>
+        public readonly List<Material> CrowdSections = new List<Material>();
 
         public void SetActive(bool active)
         {
@@ -30,6 +35,7 @@ namespace NBAHeadCoach.UI.Match3D
             LeftHoop = null;
             RightHoop = null;
             Jumbotron = null;
+            CrowdSections.Clear();
         }
     }
 
@@ -65,7 +71,7 @@ namespace NBAHeadCoach.UI.Match3D
             BuildCenterLogo(root.transform, homeTeam);
             world.LeftHoop = BuildHoop(root.transform, attacksRight: false);
             world.RightHoop = BuildHoop(root.transform, attacksRight: true);
-            BuildStands(root.transform, homeTeam, awayTeam);
+            BuildStands(root.transform, homeTeam, awayTeam, world.CrowdSections);
             world.Jumbotron = Jumbotron3D.Build(root.transform,
                 homeTeam != null ? homeTeam.Abbreviation : null,
                 awayTeam != null ? awayTeam.Abbreviation : null);
@@ -353,7 +359,8 @@ namespace NBAHeadCoach.UI.Match3D
         /// small ambient variance so the bowl doesn't read as one flat block. The courtside apron is
         /// left clear (stands start ApronGap beyond the boundary) so the benches/scorer sideline and
         /// any sideline actors have room.</summary>
-        private static void BuildStands(Transform parent, Team homeTeam, Team awayTeam)
+        private static void BuildStands(Transform parent, Team homeTeam, Team awayTeam,
+            List<Material> sectionSink)
         {
             var crowdTex = CrowdTexture();
             const int tiers = 4;
@@ -378,24 +385,26 @@ namespace NBAHeadCoach.UI.Match3D
                 float shortLen = CourtGeometry.HalfWidth * 2f + apronGap * 2f + outward * 2f;
 
                 // Two sidelines (long, run along X). Home behind +/− is arbitrary; tint by side.
-                BuildStandSection(stands.transform, $"SideZ+_{tier}",
+                sectionSink.Add(BuildStandSection(stands.transform, $"SideZ+_{tier}",
                     new Vector3(0f, y, sideZ), new Vector3(longLen, tierRise + 1f, tierDepth),
-                    crowdTex, SectionTint(homeTint, tier, 0));
-                BuildStandSection(stands.transform, $"SideZ-_{tier}",
+                    crowdTex, SectionTint(homeTint, tier, 0)));
+                sectionSink.Add(BuildStandSection(stands.transform, $"SideZ-_{tier}",
                     new Vector3(0f, y, -sideZ), new Vector3(longLen, tierRise + 1f, tierDepth),
-                    crowdTex, SectionTint(homeTint, tier, 1));
+                    crowdTex, SectionTint(homeTint, tier, 1)));
 
                 // Two baselines (short, run along Z).
-                BuildStandSection(stands.transform, $"SideX+_{tier}",
+                sectionSink.Add(BuildStandSection(stands.transform, $"SideX+_{tier}",
                     new Vector3(sideX, y, 0f), new Vector3(tierDepth, tierRise + 1f, shortLen),
-                    crowdTex, SectionTint(awayTint, tier, 2));
-                BuildStandSection(stands.transform, $"SideX-_{tier}",
+                    crowdTex, SectionTint(awayTint, tier, 2)));
+                sectionSink.Add(BuildStandSection(stands.transform, $"SideX-_{tier}",
                     new Vector3(-sideX, y, 0f), new Vector3(tierDepth, tierRise + 1f, shortLen),
-                    crowdTex, SectionTint(awayTint, tier, 3));
+                    crowdTex, SectionTint(awayTint, tier, 3)));
             }
         }
 
-        private static void BuildStandSection(Transform parent, string name, Vector3 pos, Vector3 scale,
+        /// <summary>Build one bleacher section; returns its (own instance) material so a caller can
+        /// tint/animate that section independently.</summary>
+        private static Material BuildStandSection(Transform parent, string name, Vector3 pos, Vector3 scale,
             Texture2D crowd, Color tint)
         {
             var box = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -414,6 +423,7 @@ namespace NBAHeadCoach.UI.Match3D
                 mat.mainTextureScale = new Vector2(longest / 6f, scale.y / 4f);
             }
             box.GetComponent<MeshRenderer>().sharedMaterial = mat;
+            return mat;
         }
 
         /// <summary>Blend a base team tint toward a neutral dark, varied per tier/section so the bowl

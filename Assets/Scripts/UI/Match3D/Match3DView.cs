@@ -16,8 +16,8 @@ namespace NBAHeadCoach.UI.Match3D
     /// 1:1 to world units (X→X, Y→Z, ball Height→Y), so no projection math is needed.
     ///
     /// Implements IMatchView so the playback director drives it identically to the 2D court.
-    /// Coach reactions and shot markers are 3D-TODO no-ops for now (P1 scope is capsules on a
-    /// court); position, ball, fast-forward, and lineup handling are fully live.
+    /// Position, ball, fast-forward, lineup handling, made-shot FX, and the sideline extras
+    /// (referees / benches / coaches / crowd, see <see cref="SidelineActors"/>) are all live.
     /// </summary>
     public class Match3DView : MonoBehaviour, IMatchView
     {
@@ -34,6 +34,7 @@ namespace NBAHeadCoach.UI.Match3D
         private Color _homeColor = new Color(0.2f, 0.4f, 0.8f);
         private Color _awayColor = new Color(0.8f, 0.2f, 0.2f);
         private Ball3D _ball;
+        private SidelineActors _sideline;
 
         // Active possession timeline (identical bookkeeping to MatchCourtView).
         private List<SpatialState> _timeline;
@@ -79,6 +80,11 @@ namespace NBAHeadCoach.UI.Match3D
             foreach (var id in Take5(awayLineup)) CreateActor(id, false);
 
             _ball = Ball3D.Create(_actorParent);
+
+            // Referees / benches / coaches / crowd reaction. Built once; ticks itself off the ball
+            // position RenderAt feeds it. Null when there's no world (headless tests).
+            if (_sideline != null) Destroy(_sideline.gameObject);
+            _sideline = SidelineActors.Create(_world, _homeColor, _awayColor);
         }
 
         private static IEnumerable<string> Take5(List<string> ids)
@@ -432,6 +438,7 @@ namespace NBAHeadCoach.UI.Match3D
 
                 _lastBall = _ball.WorldFocusPoint;
                 _director?.Tick(t, _lastBall, _actorWorld, n);
+                if (_sideline != null) _sideline.SetBall(_lastBall);
             }
 
             // Declutter jersey labels: only the ball-handler and players near the ball keep theirs.
@@ -471,8 +478,9 @@ namespace NBAHeadCoach.UI.Match3D
             }
         }
 
-        /// <summary>Made-shot hoop FX: punch the net at whichever basket the shot went to, and add a
-        /// short camera shake on a dunk. Degrades to nothing if the world/hoops aren't present.</summary>
+        /// <summary>Made-shot hoop FX: punch the net at whichever basket the shot went to, add a short
+        /// camera shake on a dunk, have the nearest referee signal, and swell the crowd on a big play.
+        /// Degrades to nothing if the world/hoops/sideline aren't present.</summary>
         public void ResolveShot(ShotMarkerData data, bool made)
         {
             if (!made || _world == null) return;
@@ -481,8 +489,15 @@ namespace NBAHeadCoach.UI.Match3D
             hoop?.Punch();
 
             // ShotType is ambiguous here (Core.Data vs Core.Simulation both imported) — qualify.
-            if (data.ShotType == NBAHeadCoach.Core.Data.ShotType.Dunk)
+            bool dunk = data.ShotType == NBAHeadCoach.Core.Data.ShotType.Dunk;
+            if (dunk)
                 _director?.Shake(1.3f, 0.4f);
+
+            if (_sideline != null)
+            {
+                _sideline.SignalMadeShot(data.Position.X);
+                if (dunk || data.Points >= 3) _sideline.ReactCrowd();
+            }
         }
 
         // ── Jumbotron relay (driven by MatchSceneSetup from the same director scoreboard/clock
@@ -510,9 +525,10 @@ namespace NBAHeadCoach.UI.Match3D
             _director?.SetSkip(on);
         }
 
-        /// <summary>TODO(P5): coach on the 3D sideline. No sideline actors exist yet.</summary>
+        /// <summary>That team's sideline coach celebrates for ~2s, then resumes pacing.</summary>
         public void SetCoachExcited(bool isHome)
         {
+            if (_sideline != null) _sideline.SetCoachExcited(isHome);
         }
 
         #endregion
