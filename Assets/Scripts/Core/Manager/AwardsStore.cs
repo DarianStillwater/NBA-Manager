@@ -14,6 +14,10 @@ namespace NBAHeadCoach.Core.Manager
     {
         public static AwardsStore Instance { get; private set; }
 
+        /// <summary>Test-only hook to restore the previous Instance after a test
+        /// swaps in a scratch store (see CBAContractsSuiteTest).</summary>
+        public static void SetInstanceForTests(AwardsStore s) => Instance = s;
+
         public string SystemId => "Awards";
 
         private readonly List<SeasonAwards> _history = new List<SeasonAwards>();

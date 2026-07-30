@@ -38,6 +38,7 @@ namespace NBAHeadCoach.Tests
             RunTest<PossessionOutcomeTest>("Possession Outcomes");
             RunTest<FreeThrowScoringTest>("Free Throw Scoring");
             RunTest<LeagueCBATest>("League CBA Constants");
+            RunTest<CBAContractsTest>("CBA Contracts (QO/RFA, two-way, exceptions, supermax)");
             RunTest<RosterLimitsTest>("Roster Limits");
             RunTest<TradeValidatorTest>("Trade Validator");
             RunTest<EnergyRotationTest>("Energy & Rotation");

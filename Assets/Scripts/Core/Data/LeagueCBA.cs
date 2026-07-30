@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using UnityEngine;
 
 namespace NBAHeadCoach.Core.Data
@@ -210,14 +211,54 @@ namespace NBAHeadCoach.Core.Data
         /// <summary>
         /// Checks if a player meets the criteria for a Supermax extension.
         /// </summary>
-        public static bool IsSuperMaxEligible(Player p)
+        /// <param name="seasonJustEnded">Season whose awards count as "last season".
+        /// 0 = use the newest season in the awards store.</param>
+        public static bool IsSuperMaxEligible(Player p, int seasonJustEnded = 0)
         {
             if (p == null) return false;
-            if (p.YearsPro < 7 || p.YearsPro > 9) return false;
-            
-            // Check for awards (logic pending integration with AwardHistory)
-            // For now, return false or check basic counts if available
-            return false;
+
+            var store = Manager.AwardsStore.Instance;
+            if (store == null) return false;
+
+            // AllStarManager records All-Stars for the in-progress season mid-February,
+            // so store.Latest can be an unfinished season from Feb onward. Fall back to
+            // the most recent row with postseason awards actually recorded.
+            int lastSeason = seasonJustEnded > 0 ? seasonJustEnded
+                : (store.History.LastOrDefault(a => !string.IsNullOrEmpty(a?.MvpId))?.Season
+                   ?? store.Latest?.Season ?? 0);
+            if (lastSeason <= 0) return false;
+
+            // Service requirement: 7-9 years only with the team that drafted him,
+            // 10+ years with anyone. YearsPro starts at 0 for shipped rosters (it only
+            // increments at rollover), so derive service from DraftYear when available.
+            int service = p.DraftYear > 0 ? lastSeason - p.DraftYear : p.YearsPro;
+            bool serviceOk = service >= 10 ||
+                             (service >= 7 && service <= 9 &&
+                              !string.IsNullOrEmpty(p.TeamId) && p.TeamId == p.DraftedByTeamId);
+            if (!serviceOk) return false;
+
+            int mvpOrDpoy = 0, allNba = 0;
+            bool allNbaLastSeason = false;
+            for (int s = lastSeason; s > lastSeason - 3; s--)
+            {
+                var a = store.GetForSeason(s);
+                if (a == null) continue;
+
+                if (a.MvpId == p.PlayerId || a.DpoyId == p.PlayerId) mvpOrDpoy++;
+
+                bool onAllNba = (a.AllNbaFirst?.Contains(p.PlayerId) ?? false)
+                                || (a.AllNbaSecond?.Contains(p.PlayerId) ?? false)
+                                || (a.AllNbaThird?.Contains(p.PlayerId) ?? false);
+                if (onAllNba)
+                {
+                    allNba++;
+                    if (s == lastSeason) allNbaLastSeason = true;
+                }
+            }
+
+            // MVP/DPOY in any of the last 3 seasons, All-NBA last season,
+            // or All-NBA in 2 of the last 3.
+            return mvpOrDpoy > 0 || allNbaLastSeason || allNba >= 2;
         }
 
         // ==================== ROOKIE EXTENSIONS (2023 CBA) ====================

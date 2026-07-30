@@ -810,7 +810,13 @@ namespace NBAHeadCoach.Core.Data
     {
         public string PlayerId;
         public string PreviousTeamId;
+        /// <summary>Consecutive seasons with the previous team — drives Bird rights.</summary>
         public int ConsecutiveSeasons;
+        /// <summary>0 = unrestricted, 1 = restricted (JsonUtility can't do string enums).
+        /// Missing in pre-O1 saves, which default to unrestricted.</summary>
+        public int TypeInt;
+        public bool HasQualifyingOffer;
+        public long QualifyingOfferAmount;
     }
 
     /// <summary>

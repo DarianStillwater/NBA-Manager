@@ -15,6 +15,7 @@ namespace NBAHeadCoach.Core.Manager
         private PlayerDatabase _playerDatabase;
         
         // Track exception usage per season
+        // ponytail: not persisted to save data yet — O2 folds this into market persistence.
         private Dictionary<string, ExceptionUsage> _teamExceptions = new Dictionary<string, ExceptionUsage>();
         
         // Free agent market
@@ -45,19 +46,46 @@ namespace NBAHeadCoach.Core.Manager
         /// <summary>
         /// Adds a player to the free agent market.
         /// </summary>
-        public void AddFreeAgent(string playerId, FreeAgentType type, string previousTeamId = null, int consecutiveSeasons = 0)
+        public void AddFreeAgent(string playerId, FreeAgentType type, string previousTeamId = null,
+            int consecutiveSeasons = 0, bool hasQualifyingOffer = false, long qualifyingOfferAmount = 0)
         {
             var player = _playerDatabase?.GetPlayer(playerId);
             if (player == null) return;
-            
+
             _freeAgents.Add(new FreeAgent
             {
                 PlayerId = playerId,
                 Type = type,
                 PreviousTeamId = previousTeamId,
+                ConsecutiveSeasons = consecutiveSeasons,
                 BirdRights = LeagueCBA.GetBirdRights(consecutiveSeasons),
-                EstimatedValue = EstimatePlayerValue(player)
+                EstimatedValue = EstimatePlayerValue(player),
+                HasQualifyingOffer = hasQualifyingOffer,
+                QualifyingOfferAmount = qualifyingOfferAmount
             });
+        }
+
+        /// <summary>
+        /// Amount of the qualifying offer that turns an expiring player into a
+        /// restricted free agent.
+        /// ponytail: approximates the CBA's rookie-scale QO table as
+        /// max(125% of prior salary, minimum for years-of-service + 1). The real
+        /// table is per-draft-slot; swap in the slot table if QO precision starts
+        /// driving decisions.
+        /// </summary>
+        public long ComputeQualifyingOfferAmount(Player player, long priorSalary = 0)
+        {
+            if (player == null) return 0;
+
+            if (priorSalary <= 0)
+                priorSalary = _capManager?.GetContract(player.PlayerId)?.CurrentYearSalary ?? 0;
+
+            long scaleBased = (long)(priorSalary * 1.25f);
+            int seasonYear = GameManager.Instance != null ? GameManager.Instance.CurrentDate.Year : 0;
+            int service = (player.DraftYear > 0 && seasonYear > 0)
+                ? seasonYear - player.DraftYear : player.YearsPro;
+            long minBased = LeagueCBA.GetMinimumSalary(Math.Min(service + 1, 10));
+            return Math.Max(minBased, scaleBased);
         }
 
         // ==================== SIGNING VALIDATION ====================
@@ -77,8 +105,15 @@ namespace NBAHeadCoach.Core.Manager
                 return result;
             }
             
-            var status = _capManager.GetCapStatus(teamId);
-            
+            // Roster limits: 15 standard spots, two-ways checked in their own path
+            if (offer.Method != SigningMethod.TwoWayContract &&
+                _capManager.GetStandardContractCount(teamId) >= RosterManager.STANDARD_ROSTER_MAX)
+            {
+                result.IsValid = false;
+                result.Reason = $"Standard roster full ({RosterManager.STANDARD_ROSTER_MAX} players)";
+                return result;
+            }
+
             // Check based on signing method
             switch (offer.Method)
             {
@@ -101,7 +136,8 @@ namespace NBAHeadCoach.Core.Manager
                     return ValidateTwoWaySigning(teamId, offer);
                     
                 case SigningMethod.TenDayContract:
-                    return ValidateTenDaySigning(teamId, playerId, offer, DateTime.Now);
+                    DateTime gameDate = GameManager.Instance != null ? GameManager.Instance.CurrentDate : DateTime.Now;
+                    return ValidateTenDaySigning(teamId, playerId, offer, gameDate);
                     
                 default:
                     result.IsValid = false;
@@ -115,10 +151,10 @@ namespace NBAHeadCoach.Core.Manager
         private SigningValidationResult ValidateTwoWaySigning(string teamId, SigningOffer offer)
         {
             var result = new SigningValidationResult { IsValid = true };
-            var usage = GetExceptionUsage(teamId);
-            
-            // Max 3 two-way contracts per team
-            if (usage.TwoWayCount >= LeagueCBA.MAX_TWO_WAY_CONTRACTS)
+
+            // Max 3 two-way contracts per team (counted from live contracts so the
+            // limit survives a save/load, unlike the per-season usage tally)
+            if (_capManager.GetTwoWayContractCount(teamId) >= LeagueCBA.MAX_TWO_WAY_CONTRACTS)
             {
                 result.IsValid = false;
                 result.Reason = $"Already have {LeagueCBA.MAX_TWO_WAY_CONTRACTS} two-way players";
@@ -304,7 +340,8 @@ namespace NBAHeadCoach.Core.Manager
                 return result;
             }
             
-            if (!_capManager.CanUseBiAnnualException(teamId, DateTime.Now.Year))
+            DateTime gameDate = GameManager.Instance != null ? GameManager.Instance.CurrentDate : DateTime.Now;
+            if (!_capManager.CanUseBiAnnualException(teamId, gameDate.Year))
             {
                 result.IsValid = false;
                 result.Reason = "Bi-Annual Exception not available this season";
@@ -361,19 +398,29 @@ namespace NBAHeadCoach.Core.Manager
                 return false;
             }
             
-            // Create contract
-            var contract = Contract.Create(
-                playerId, 
-                teamId, 
-                offer.AnnualSalary, 
-                offer.Years,
-                offer.Method == SigningMethod.BirdRights
-            );
-            
+            // Create the contract the signing method actually produces
+            Contract contract = offer.Method switch
+            {
+                SigningMethod.TwoWayContract =>
+                    Contract.CreateTwoWay(playerId, teamId, offer.Years),
+                SigningMethod.TenDayContract =>
+                    Contract.CreateTenDay(playerId, teamId, offer.PlayerYearsExperience),
+                _ => Contract.Create(playerId, teamId, offer.AnnualSalary, offer.Years,
+                        offer.Method == SigningMethod.BirdRights)
+            };
+
+            // Stamp the exception the deal was signed under (salary stays as offered)
+            contract.Type = offer.Method switch
+            {
+                SigningMethod.MinimumSalary => ContractType.Minimum,
+                SigningMethod.MidLevelException => ContractType.MidLevel,
+                SigningMethod.BiAnnualException => ContractType.BiAnnual,
+                _ => contract.Type
+            };
             _capManager.RegisterContract(contract);
             
             // Update exception usage
-            UpdateExceptionUsage(teamId, offer);
+            UpdateExceptionUsage(teamId, playerId, offer);
             
             // Remove from free agent list
             _freeAgents.RemoveAll(fa => fa.PlayerId == playerId);
@@ -394,17 +441,22 @@ namespace NBAHeadCoach.Core.Manager
         /// <summary>
         /// Extends a qualifying offer to make a player an RFA.
         /// </summary>
-        public bool ExtendQualifyingOffer(string teamId, string playerId)
+        public bool ExtendQualifyingOffer(string teamId, string playerId, long priorSalary = 0)
         {
             var freeAgent = _freeAgents.FirstOrDefault(fa => fa.PlayerId == playerId);
             if (freeAgent == null || freeAgent.PreviousTeamId != teamId)
                 return false;
-            
+
             freeAgent.Type = FreeAgentType.Restricted;
             freeAgent.HasQualifyingOffer = true;
-            
+            freeAgent.QualifyingOfferAmount =
+                ComputeQualifyingOfferAmount(_playerDatabase?.GetPlayer(playerId), priorSalary);
+
             return true;
         }
+
+        /// <summary>Read-only view of a team's exception usage (MLE/BAE debits).</summary>
+        public ExceptionUsage GetUsage(string teamId) => GetExceptionUsage(teamId);
 
         /// <summary>
         /// Matches an offer sheet for an RFA.
@@ -434,7 +486,7 @@ namespace NBAHeadCoach.Core.Manager
             return usage;
         }
 
-        private void UpdateExceptionUsage(string teamId, SigningOffer offer)
+        private void UpdateExceptionUsage(string teamId, string playerId, SigningOffer offer)
         {
             var usage = GetExceptionUsage(teamId);
             
@@ -446,6 +498,13 @@ namespace NBAHeadCoach.Core.Manager
                 case SigningMethod.BiAnnualException:
                     usage.BiAnnualUsed = true;
                     break;
+                case SigningMethod.TwoWayContract:
+                    usage.RecordTwoWay();
+                    break;
+                case SigningMethod.TenDayContract:
+                    usage.RecordTenDay(playerId);
+                    break;
+                // MinimumSalary debits nothing — the vet-min exception is always available
             }
         }
 
@@ -473,6 +532,13 @@ namespace NBAHeadCoach.Core.Manager
         {
             _teamExceptions.Clear();
         }
+
+        /// <summary>Clears the free-agent pool (not exception usage) — call before
+        /// restoring a save so a load doesn't double the pool.</summary>
+        public void Clear()
+        {
+            _freeAgents.Clear();
+        }
     }
 
     // ==================== DATA TYPES ====================
@@ -482,9 +548,11 @@ namespace NBAHeadCoach.Core.Manager
         public string PlayerId;
         public FreeAgentType Type;
         public string PreviousTeamId;
+        public int ConsecutiveSeasons;
         public BirdRightsType BirdRights;
         public float EstimatedValue;
         public bool HasQualifyingOffer;
+        public long QualifyingOfferAmount;
     }
 
     public enum FreeAgentType

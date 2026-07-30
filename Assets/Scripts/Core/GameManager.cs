@@ -74,6 +74,7 @@ namespace NBAHeadCoach.Core
         private SalaryCapManager _salaryCapManager;
         public SalaryCapManager SalaryCapManager => _salaryCapManager;
         private RosterManager _rosterManager;
+        public RosterManager RosterManager => _rosterManager;
         private TradeSystem _tradeSystem;
         public TradeSystem Trades => _tradeSystem;
         private TradeDeskSystem _tradeDesk;

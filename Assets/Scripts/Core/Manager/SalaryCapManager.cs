@@ -89,6 +89,10 @@ namespace NBAHeadCoach.Core.Manager
 
                 if (contract.YearsRemaining <= 0)
                 {
+                    // The season just completed still counts toward Bird rights even
+                    // though the contract expires at its end (Full Bird needs 3 full
+                    // seasons; without this a 3-year deal reached FA at 2).
+                    contract.ConsecutiveSeasonsWithTeam++;
                     expired.Add(contract);
                     _contracts.Remove(contract.PlayerId);
                     continue;
@@ -119,13 +123,31 @@ namespace NBAHeadCoach.Core.Manager
         // ==================== PAYROLL CALCULATIONS ====================
 
         /// <summary>
-        /// Calculates total team payroll (all active contracts).
+        /// Calculates total team payroll. Two-way salaries do not count against
+        /// the cap under the CBA, so they are excluded.
         /// </summary>
         public long GetTeamPayroll(string teamId)
         {
             return _contracts.Values
-                .Where(c => c.TeamId == teamId)
+                .Where(c => c.TeamId == teamId && c.Type != ContractType.TwoWay)
                 .Sum(c => c.CurrentYearSalary);
+        }
+
+        /// <summary>
+        /// Standard-roster headcount derived from the contract registry (two-ways
+        /// excluded). ponytail: contracts are the source of truth for signing
+        /// validation — RosterManager's TeamRoster registry is only populated by the
+        /// in-season roster flows, so it reads 0 during the offseason.
+        /// </summary>
+        public int GetStandardContractCount(string teamId)
+        {
+            return _contracts.Values.Count(c => c.TeamId == teamId && c.Type != ContractType.TwoWay);
+        }
+
+        /// <summary>Two-way headcount from the contract registry.</summary>
+        public int GetTwoWayContractCount(string teamId)
+        {
+            return _contracts.Values.Count(c => c.TeamId == teamId && c.Type == ContractType.TwoWay);
         }
 
         /// <summary>
