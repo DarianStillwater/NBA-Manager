@@ -14,8 +14,8 @@ namespace NBAHeadCoach.Core.Manager
         private SalaryCapManager _capManager;
         private PlayerDatabase _playerDatabase;
         
-        // Track exception usage per season
-        // ponytail: not persisted to save data yet — O2 folds this into market persistence.
+        // Track exception usage per season (persisted via OffseasonManager's save
+        // section — see GetAllUsage/RestoreUsage)
         private Dictionary<string, ExceptionUsage> _teamExceptions = new Dictionary<string, ExceptionUsage>();
         
         // Free agent market
@@ -458,6 +458,22 @@ namespace NBAHeadCoach.Core.Manager
         /// <summary>Read-only view of a team's exception usage (MLE/BAE debits).</summary>
         public ExceptionUsage GetUsage(string teamId) => GetExceptionUsage(teamId);
 
+        /// <summary>All teams with recorded exception usage (for save writing).</summary>
+        public IReadOnlyDictionary<string, ExceptionUsage> GetAllUsage() => _teamExceptions;
+
+        /// <summary>
+        /// Restore a team's exception usage from a save. Called after Clear() so a
+        /// load never doubles MLE/BAE debits.
+        /// </summary>
+        public void RestoreUsage(string teamId, long mleUsed, bool biAnnualUsed, int twoWayCount)
+        {
+            if (string.IsNullOrEmpty(teamId)) return;
+            var usage = GetExceptionUsage(teamId);
+            usage.MLEUsed = mleUsed;
+            usage.BiAnnualUsed = biAnnualUsed;
+            usage.TwoWayCount = twoWayCount;
+        }
+
         /// <summary>
         /// Matches an offer sheet for an RFA.
         /// </summary>
@@ -533,11 +549,12 @@ namespace NBAHeadCoach.Core.Manager
             _teamExceptions.Clear();
         }
 
-        /// <summary>Clears the free-agent pool (not exception usage) — call before
-        /// restoring a save so a load doesn't double the pool.</summary>
+        /// <summary>Clears the free-agent pool and exception usage — call before
+        /// restoring a save so a load doesn't double either.</summary>
         public void Clear()
         {
             _freeAgents.Clear();
+            _teamExceptions.Clear();
         }
     }
 

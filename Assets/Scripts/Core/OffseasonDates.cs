@@ -11,8 +11,12 @@ namespace NBAHeadCoach.Core
     public static class OffseasonDates
     {
         public static DateTime Draft(int calendarYear) => new DateTime(calendarYear, 6, 22);
+        /// <summary>Last day to tender a qualifying offer to a restricted free agent.</summary>
+        public static DateTime QualifyingOfferDeadline(int calendarYear) => new DateTime(calendarYear, 6, 29);
         public static DateTime FreeAgency(int calendarYear) => new DateTime(calendarYear, 7, 6);
         public static DateTime SummerLeague(int calendarYear) => new DateTime(calendarYear, 7, 12);
+        /// <summary>Day a still-unsigned restricted free agent takes his qualifying offer.</summary>
+        public static DateTime RfaQualifyingOfferAccept(int calendarYear) => new DateTime(calendarYear, 10, 1);
         public static DateTime CampStart(int calendarYear) => new DateTime(calendarYear, 9, 27);
         public static DateTime PreseasonLabel(int calendarYear) => new DateTime(calendarYear, 10, 4);
         public static DateTime CampEnd(int calendarYear) => new DateTime(calendarYear, 10, 20);

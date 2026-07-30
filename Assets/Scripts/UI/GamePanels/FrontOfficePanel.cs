@@ -40,6 +40,15 @@ namespace NBAHeadCoach.UI.GamePanels
         private bool _offerKicker;
         private string _contractTalkMsg;
 
+        // Market browser state (O2): filters + the open bid editor
+        private static readonly string[] PosFilters = { "ALL", "PG", "SG", "SF", "PF", "C" };
+        private static readonly string[] PriceFilters = { "ALL", "<$10M", "<$20M", "$20M+" };
+        private int _faPos;
+        private int _faPrice;
+        private string _bidPlayerId;
+        private int _bidYears = 2;
+        private long _bidSalary = 10_000_000L;
+
         public void SetDeepLinkPayload(string payload)
         {
             if (string.IsNullOrEmpty(payload)) return;
@@ -137,6 +146,15 @@ namespace NBAHeadCoach.UI.GamePanels
                 return;
             }
 
+            if (!string.IsNullOrEmpty(_status))
+            {
+                var note = B.Text(scroll, "Status", _status, 12, FontStyle.Italic, UITheme.Warning);
+                note.gameObject.AddComponent<LayoutElement>().preferredHeight = 20;
+            }
+
+            BuildMarketWire(scroll, off);
+            BuildRestrictedCard(scroll, gm, off);
+
             var pool = fam.GetFreeAgents();
             var ours = pool.Where(fa => fa.PreviousTeamId == _team.TeamId).ToList();
             var market = pool.Where(fa => fa.PreviousTeamId != _team.TeamId).ToList();
@@ -151,9 +169,264 @@ namespace NBAHeadCoach.UI.GamePanels
                 note.gameObject.AddComponent<LayoutElement>().preferredHeight = 20;
             }
 
-            BuildFaSection(scroll, "OPEN MARKET", market
+            var marketed = new HashSet<string>();
+            if (off.FreeAgencySigningOpen && off.Market != null)
+            {
+                marketed = new HashSet<string>(off.Market.MarketedPlayerIds);
+                BuildMarketBrowser(scroll, gm, off);
+            }
+
+            BuildFaSection(scroll, marketed.Count > 0 ? "OTHER FREE AGENTS" : "OPEN MARKET", market
+                .Where(fa => !marketed.Contains(fa.PlayerId))
                 .OrderByDescending(fa => gm.PlayerDatabase.GetPlayer(fa.PlayerId)?.OverallRating ?? 0)
                 .Take(40).ToList(), gm, off, off.FreeAgencySigningOpen);
+        }
+
+        // ==================== MARKET BROWSER (O2) ====================
+
+        /// <summary>Yesterday's league-wide signings, straight from the market digest.</summary>
+        private void BuildMarketWire(RectTransform scroll, OffseasonManager off)
+        {
+            string digest = off.Market?.LastDigest;
+            if (string.IsNullOrEmpty(digest)) return;
+
+            int lines = digest.Split('\n').Length;
+            var card = B.Card(scroll, "MARKET WIRE", UITheme.AccentSecondary);
+            card.gameObject.AddComponent<LayoutElement>().preferredHeight = 44 + lines * 16;
+            var rt = CardBody(card);
+            var text = B.Text(rt, "Digest", digest, 11, FontStyle.Normal, UITheme.TextSecondary);
+            text.gameObject.AddComponent<LayoutElement>().preferredHeight = lines * 16;
+            text.alignment = TextAnchor.UpperLeft;
+        }
+
+        /// <summary>
+        /// The bidding floor: who's drawing interest, what his agent is saying, when he
+        /// decides, and your own bid. Filters are panel-local cycle buttons.
+        /// </summary>
+        private void BuildMarketBrowser(RectTransform scroll, GameManager gm, OffseasonManager off)
+        {
+            var mkt = off.Market;
+            // Your own free agents belong to the YOUR FREE AGENTS card, not the market
+            var ownIds = new HashSet<string>((gm.FreeAgents?.GetFreeAgents() ?? new List<FreeAgent>())
+                .Where(fa => fa.PreviousTeamId == _team.TeamId).Select(fa => fa.PlayerId));
+            var rows = mkt.MarketedPlayerIds
+                .Where(id => !ownIds.Contains(id))
+                .Select(id => gm.PlayerDatabase.GetPlayer(id))
+                .Where(p => p != null && p.RetirementYear == 0 && PassesFilters(off, p))
+                .ToList();
+
+            var card = B.Card(scroll, "OPEN MARKET — THE BIDDING", _teamColor);
+            bool editing = rows.Any(p => p.PlayerId == _bidPlayerId);
+            card.gameObject.AddComponent<LayoutElement>().preferredHeight =
+                44 + 28 + Mathf.Max(1, rows.Count) * 40 + (editing ? 30 : 0);
+            var rt = CardBody(card);
+
+            // Filter row
+            var filters = B.Child(rt, "Filters");
+            filters.AddComponent<LayoutElement>().preferredHeight = 26;
+            var fh = filters.AddComponent<HorizontalLayoutGroup>();
+            fh.childControlWidth = true; fh.childControlHeight = true;
+            fh.childForceExpandWidth = false; fh.spacing = 6;
+            var frt = filters.GetComponent<RectTransform>();
+            Label(frt, "Filter:", 46);
+            SmallBtn(frt, PosFilters[_faPos], 52,
+                () => { _faPos = (_faPos + 1) % PosFilters.Length; Refresh(); });
+            SmallBtn(frt, PriceFilters[_faPrice], 66,
+                () => { _faPrice = (_faPrice + 1) % PriceFilters.Length; Refresh(); });
+
+            if (rows.Count == 0)
+            {
+                var none = B.Text(rt, "None", "Nobody on the market fits that filter.",
+                    12, FontStyle.Italic, UITheme.TextSecondary);
+                none.gameObject.AddComponent<LayoutElement>().preferredHeight = 20;
+                return;
+            }
+
+            bool viaGM = !NBAHeadCoach.Core.Data.RolePermissions.CanMakeRosterMoves;
+            foreach (var player in rows)
+            {
+                string pid = player.PlayerId;
+                var mine = mkt.GetPlayerTeamBid(pid);
+                var day = mkt.GetDecisionDay(pid);
+                long ask = off.EstimateMarketSalary(player);
+
+                string flags = mkt.IsContested(pid, _team.TeamId) ? "  ·  <color=#EAB308>CONTESTED</color>" : "";
+                if (day.HasValue)
+                {
+                    int days = (day.Value.Date - gm.CurrentDate.Date).Days;
+                    flags += days <= 0 ? "  ·  decides today" : $"  ·  decides in {days}d";
+                }
+                string yours = mine != null
+                    ? $"  ·  <color=white>your bid: {mine.Years}yr at {Money(mine.AnnualAverage)}/yr</color>" : "";
+
+                var row = PlayerRow(rt, $"MK_{pid}",
+                    $"{PlayerLine(gm, player, null)}  ·  asks {Money(ask)}/yr{flags}{yours}\n" +
+                    $"<i>{mkt.GetAgentIntel(pid)}</i>");
+                row.GetComponent<LayoutElement>().preferredHeight = 38;
+
+                var bidFor = mine;
+                RowButton(row, "Bid", viaGM ? "ASK GM" : (mine != null ? "RAISE" : "BID"),
+                    UITheme.AccentPrimary, () =>
+                {
+                    _bidPlayerId = pid;
+                    _bidYears = bidFor?.Years ?? 2;
+                    _bidSalary = bidFor?.AnnualAverage ?? ask;
+                    Refresh();
+                }, width: 70);
+
+                RowButton(row, "Negotiate", "NEGOTIATE", UITheme.AccentSecondary, () =>
+                {
+                    Action doTalk = () => OpenContractTalks(gm, off, player);
+                    if (viaGM) AskGM(NBAHeadCoach.Core.Data.RosterRequest.CreateSigningRequest(
+                        pid, player.FullName, "He's worth a real offer."), doTalk);
+                    else { doTalk(); Refresh(); }
+                }, width: 84);
+
+                if (mine != null)
+                    RowButton(row, "Withdraw", "WITHDRAW", UITheme.Danger, () =>
+                    {
+                        mkt.WithdrawBid(pid);
+                        _status = $"You pulled your offer to {player.FullName}.";
+                        if (_bidPlayerId == pid) _bidPlayerId = null;
+                        Refresh();
+                    }, width: 84);
+
+                if (_bidPlayerId == pid) BuildBidEditor(rt, mkt, player, viaGM);
+            }
+        }
+
+        /// <summary>Inline offer editor: same steppers as the contract table.</summary>
+        private void BuildBidEditor(RectTransform rt, FreeAgencyMarket mkt, Player player, bool viaGM)
+        {
+            var terms = B.Child(rt, "BidTerms");
+            terms.AddComponent<LayoutElement>().preferredHeight = 26;
+            var th = terms.AddComponent<HorizontalLayoutGroup>();
+            th.childControlWidth = true; th.childControlHeight = true;
+            th.childForceExpandWidth = false; th.spacing = 6;
+            var trt = terms.GetComponent<RectTransform>();
+
+            SmallBtn(trt, "-", 22, () => { _bidYears = Mathf.Max(1, _bidYears - 1); Refresh(); });
+            Label(trt, $"{_bidYears} yrs", 46);
+            SmallBtn(trt, "+", 22, () => { _bidYears = Mathf.Min(5, _bidYears + 1); Refresh(); });
+            long floor = mkt.MinSalaryFor(player.PlayerId);
+            SmallBtn(trt, "-", 22, () => { _bidSalary = Math.Max(floor, _bidSalary - 1_000_000L); Refresh(); });
+            Label(trt, $"${_bidSalary / 1_000_000f:F1}M/yr", 76);
+            SmallBtn(trt, "+", 22, () => { _bidSalary += 1_000_000L; Refresh(); });
+
+            string pid = player.PlayerId;
+            int years = _bidYears;
+            long salary = _bidSalary;
+            RowButton(terms, "Place", viaGM ? "ASK GM" : "PLACE BID", UITheme.Success, () =>
+            {
+                Action doBid = () =>
+                {
+                    if (mkt.PlaceBid(pid, years, salary, out string why))
+                    {
+                        // The market may have trimmed the terms to fit the cap
+                        var placed = mkt.GetPlayerTeamBid(pid);
+                        _status = $"Your offer to {player.FullName}: " +
+                                  $"{placed?.Years ?? years} yrs at " +
+                                  $"{Money(placed?.AnnualAverage ?? salary)}/yr.";
+                    }
+                    else _status = $"Bid rejected: {why}";
+                    _bidPlayerId = null;
+                };
+                if (viaGM) AskGM(NBAHeadCoach.Core.Data.RosterRequest.CreateSigningRequest(
+                    pid, player.FullName, "Put this offer on the table."), doBid);
+                else { doBid(); Refresh(); }
+            }, width: 96);
+            RowButton(terms, "Cancel", "CANCEL", UITheme.Warning,
+                () => { _bidPlayerId = null; Refresh(); }, width: 76);
+        }
+
+        private bool PassesFilters(OffseasonManager off, Player player)
+        {
+            if (_faPos > 0 && PositionShort(player.Position) != PosFilters[_faPos]) return false;
+            long ask = off.EstimateMarketSalary(player);
+            return _faPrice switch
+            {
+                1 => ask < 10_000_000L,
+                2 => ask < 20_000_000L,
+                3 => ask >= 20_000_000L,
+                _ => true
+            };
+        }
+
+        /// <summary>Qualifying offers awaiting a tender call, plus offer sheets to match.</summary>
+        private void BuildRestrictedCard(RectTransform scroll, GameManager gm, OffseasonManager off)
+        {
+            var qos = off.PendingQualifyingOffers ?? (IReadOnlyList<QualifyingOffer>)new List<QualifyingOffer>();
+            var sheets = off.Market?.PendingMatchDecisions
+                ?? (IReadOnlyList<RestrictedFreeAgentStatus>)new List<RestrictedFreeAgentStatus>();
+            if (qos.Count == 0 && sheets.Count == 0) return;
+
+            var card = B.Card(scroll, "RESTRICTED / QUALIFYING OFFERS", UITheme.AccentPrimary);
+            card.gameObject.AddComponent<LayoutElement>().preferredHeight =
+                44 + (qos.Count + sheets.Count) * 26;
+            var rt = CardBody(card);
+            bool viaGM = !NBAHeadCoach.Core.Data.RolePermissions.CanMakeRosterMoves;
+
+            foreach (var qo in qos.ToList())
+            {
+                var player = gm.PlayerDatabase.GetPlayer(qo.PlayerId);
+                if (player == null) continue;
+                string pid = qo.PlayerId;
+                var row = PlayerRow(rt, $"QO_{pid}",
+                    $"{player.FullName}  ·  {PositionShort(player.Position)}  ·  QO {Money((long)qo.Amount)}/yr  " +
+                    $"·  made {Money(qo.PriorSalary)} last year  ·  deadline {qo.Deadline:MMM d}");
+
+                RowButton(row, "Tender", viaGM ? "ASK GM" : "TENDER", UITheme.Success,
+                    () => ResolveQO(gm, off, player, pid, true, viaGM), width: 84);
+                RowButton(row, "Withhold", viaGM ? "ASK GM" : "WITHHOLD", UITheme.Danger,
+                    () => ResolveQO(gm, off, player, pid, false, viaGM), width: 84);
+            }
+
+            foreach (var sheet in sheets.ToList())
+            {
+                var player = gm.PlayerDatabase.GetPlayer(sheet.PlayerId);
+                var offer = sheet.OfferSheets?.FirstOrDefault();
+                if (player == null || offer == null) continue;
+                string pid = sheet.PlayerId;
+
+                var row = PlayerRow(rt, $"RFA_{pid}",
+                    $"{player.FullName}  ·  offer sheet from {TeamAbbr(offer.TeamId)}: " +
+                    $"{offer.Years}yr at {Money(offer.AnnualAverage)}/yr  ·  match by {sheet.MatchDeadline:MMM d}");
+
+                RowButton(row, "Match", viaGM ? "ASK GM" : "MATCH", UITheme.Success,
+                    () => ResolveMatch(gm, off, player, pid, true, viaGM), width: 84);
+                RowButton(row, "Walk", viaGM ? "ASK GM" : "LET WALK", UITheme.Danger,
+                    () => ResolveMatch(gm, off, player, pid, false, viaGM), width: 84);
+            }
+        }
+
+        private void ResolveQO(GameManager gm, OffseasonManager off, Player player, string pid,
+            bool tender, bool viaGM)
+        {
+            Action act = () =>
+            {
+                bool ok = off.SubmitQualifyingOfferDecision(gm, pid, tender, out string why);
+                _status = !ok ? $"Couldn't do that: {why}"
+                    : tender ? $"Qualifying offer tendered to {player.FullName} — he's restricted."
+                             : $"No qualifying offer for {player.FullName} — he walks unrestricted.";
+            };
+            if (viaGM) AskGM(NBAHeadCoach.Core.Data.RosterRequest.CreateSigningRequest(
+                pid, player.FullName, tender ? "Tender him the qualifying offer." : "Let him walk."), act);
+            else { act(); Refresh(); }
+        }
+
+        private void ResolveMatch(GameManager gm, OffseasonManager off, Player player, string pid,
+            bool match, bool viaGM)
+        {
+            Action act = () =>
+            {
+                bool ok = off.Market.ResolveMatchDecision(pid, match, out string why);
+                _status = !ok ? $"Couldn't do that: {why}"
+                    : match ? $"You matched the sheet — {player.FullName} stays."
+                            : $"{player.FullName} leaves on the offer sheet.";
+            };
+            if (viaGM) AskGM(NBAHeadCoach.Core.Data.RosterRequest.CreateSigningRequest(
+                pid, player.FullName, match ? "Match the sheet and keep him." : "Let him go."), act);
+            else { act(); Refresh(); }
         }
 
         /// <summary>In-season buyout wire: leftover pool, minimum deals only.</summary>
@@ -172,8 +445,9 @@ namespace NBAHeadCoach.UI.GamePanels
 
             if (result?.IsApproved == true)
             {
-                onApproved?.Invoke();
+                // Status first: if the approved action itself fails, its message wins
                 _status = $"GM approved: \"{result.GMResponse}\"";
+                onApproved?.Invoke();
             }
             else
             {
@@ -373,9 +647,15 @@ namespace NBAHeadCoach.UI.GamePanels
         private void BuildFaSection(RectTransform scroll, string headerText, List<FreeAgent> list,
             GameManager gm, OffseasonManager off, bool canSign)
         {
+            // Your own free agents can be under rival pressure too — those rows carry
+            // the agent-intel line, so they need the extra height
+            var mkt = off.Market;
+            bool Contested(FreeAgent fa) => mkt != null && fa.PreviousTeamId == _team.TeamId &&
+                                            mkt.IsContested(fa.PlayerId, _team.TeamId);
+
             var card = B.Card(scroll, headerText, _teamColor);
             card.gameObject.AddComponent<LayoutElement>().preferredHeight =
-                Mathf.Max(70, 44 + list.Count * 26);
+                Mathf.Max(70, 44 + list.Count * 26 + list.Count(Contested) * 14);
 
             var rt = CardBody(card);
 
@@ -392,8 +672,13 @@ namespace NBAHeadCoach.UI.GamePanels
                 if (player == null || player.RetirementYear > 0) continue;
 
                 long ask = off.EstimateMarketSalary(player);
+                bool contested = Contested(fa);
                 var row = PlayerRow(rt, $"FA_{fa.PlayerId}",
-                    $"{PlayerLine(gm, player, null)}  ·  asks {Money(ask)}/yr");
+                    $"{PlayerLine(gm, player, null)}  ·  asks {Money(ask)}/yr" +
+                    (contested
+                        ? $"  ·  <color=#EAB308>CONTESTED</color>\n<i>{mkt.GetAgentIntel(fa.PlayerId)}</i>"
+                        : ""));
+                if (contested) row.GetComponent<LayoutElement>().preferredHeight = 40;
 
                 if (canSign)
                 {

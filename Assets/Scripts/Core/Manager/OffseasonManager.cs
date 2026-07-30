@@ -86,6 +86,8 @@ namespace NBAHeadCoach.Core.Manager
         public string PlayerId;
         public string TeamId;
         public float Amount;
+        /// <summary>Final-season salary the QO amount was computed from.</summary>
+        public long PriorSalary;
         public bool Extended;
         public DateTime Deadline;
         public bool Accepted;
@@ -117,8 +119,9 @@ namespace NBAHeadCoach.Core.Manager
         public string PlayerId;
         public string TeamId;
         public int Years;
-        public float TotalValue;
-        public float AnnualAverage;
+        // Dollars, not millions — the market compares these against cap figures.
+        public long TotalValue;
+        public long AnnualAverage;
         public List<float> YearlySalaries = new List<float>();
         public bool PlayerOption;
         public bool TeamOption;
@@ -130,6 +133,8 @@ namespace NBAHeadCoach.Core.Manager
         public DateTime OfferDate;
         public DateTime ExpiresAt;
         public FreeAgentOfferStatus Status;
+        /// <summary>Cap mechanism the offer is made under (cap space, MLE, BAE, min).</summary>
+        public SigningMethod Method;
     }
 
     [Serializable]
@@ -300,6 +305,63 @@ namespace NBAHeadCoach.Core.Manager
         public bool FreeAgencySigningOpen => _engineActive && _freeAgencyOpen && !_campDone;
         public bool ReSignWindowOpen => _engineActive && _postSeasonDone && !_campDone;
 
+        // ==================== FREE AGENCY MARKET (O2) ====================
+
+        private FreeAgencyMarket _market;
+        private readonly List<QualifyingOffer> _pendingQOs = new List<QualifyingOffer>();
+
+        /// <summary>The live July market: bids, offer sheets, agent intel.</summary>
+        public FreeAgencyMarket Market => _market;
+
+        /// <summary>Qualifying offers awaiting YOUR tender/withhold call.</summary>
+        public IReadOnlyList<QualifyingOffer> PendingQualifyingOffers => _pendingQOs;
+
+        /// <summary>
+        /// Tender or withhold a qualifying offer on one of your expiring players.
+        /// Withholding leaves him unrestricted. Ignoring it until the deadline lets
+        /// the front office decide (tender anyone worth more than the QO).
+        /// </summary>
+        public bool SubmitQualifyingOfferDecision(GameManager gm, string playerId, bool tender,
+            out string failReason)
+        {
+            failReason = "";
+            var qo = _pendingQOs.FirstOrDefault(q => q.PlayerId == playerId);
+            if (qo == null) { failReason = "No qualifying-offer decision pending."; return false; }
+
+            if (tender && gm?.FreeAgents?.ExtendQualifyingOffer(qo.TeamId, playerId, qo.PriorSalary) != true)
+            { failReason = "He's no longer eligible for a qualifying offer."; return false; }
+
+            _pendingQOs.Remove(qo);
+            return true;
+        }
+
+        /// <summary>Deadline day: auto-tender anyone worth more than his QO.</summary>
+        private void AutoResolveQualifyingOffers(GameManager gm)
+        {
+            foreach (var qo in _pendingQOs.ToList())
+            {
+                var player = gm.PlayerDatabase?.GetPlayer(qo.PlayerId);
+                if (player != null && MarketValue(player) >= (long)qo.Amount)
+                    gm.FreeAgents?.ExtendQualifyingOffer(qo.TeamId, qo.PlayerId, qo.PriorSalary);
+            }
+            if (_pendingQOs.Count > 0)
+                InboxService.Instance?.Publish(InboxMessageType.League, Data.RolePermissions.AIGMName,
+                    "Qualifying offers filed",
+                    "The deadline passed with decisions outstanding, so we tendered everyone worth more " +
+                    "than his qualifying offer and let the rest walk.");
+            _pendingQOs.Clear();
+        }
+
+        /// <summary>Builds the market on first use (and after a load).</summary>
+        private FreeAgencyMarket EnsureMarket(GameManager gm)
+        {
+            if (_market != null || gm?.FreeAgents == null) return _market;
+            _market = new FreeAgencyMarket(gm.FreeAgents, gm.SalaryCapManager, gm.PlayerDatabase,
+                () => gm.AllTeams, () => gm.PlayerTeamId, seed: _seasonLabel * 131 + 11,
+                today: gm.CurrentDate);
+            return _market;
+        }
+
         /// <summary>
         /// Start the real offseason. Called by GameManager right after the champion
         /// is crowned and the season's awards are voted.
@@ -310,7 +372,11 @@ namespace NBAHeadCoach.Core.Manager
             _seasonLabel = seasonLabel;
             _calendarYear = seasonLabel + 1;
             _postSeasonDone = _draftDone = _freeAgencyOpen = _summerDone = _campDone = false;
+            _draftStarted = _onTheClock = false;   // without this, summer #2+ never starts a draft
+            _draft = null;
             _rng = new System.Random(seasonLabel * 31 + 7);
+            _market = null;              // fresh market each summer
+            _pendingQOs.Clear();
 
             InboxService.Instance?.Publish(InboxMessageType.League, "League Office",
                 $"The {_seasonLabel} season is in the books",
@@ -330,6 +396,11 @@ namespace NBAHeadCoach.Core.Manager
             {
                 if (!_postSeasonDone) { RunPostSeason(gm); _postSeasonDone = true; }
 
+                // Strictly after the stated deadline, so the deadline day is usable
+                if (_pendingQOs.Count > 0 &&
+                    date.Date > OffseasonDates.QualifyingOfferDeadline(_calendarYear).Date)
+                    AutoResolveQualifyingOffers(gm);
+
                 if (!_draftDone && date >= OffseasonDates.Draft(_calendarYear))
                 {
                     if (!_draftStarted) StartDraftNight(gm, date);
@@ -345,6 +416,11 @@ namespace NBAHeadCoach.Core.Manager
 
                 if (_freeAgencyOpen && !_campDone)
                     RunDailyFreeAgency(gm, date);
+
+                // Oct 1: leftover tendered RFAs take the qualifying offer rather than rot
+                if (_freeAgencyOpen && !_campDone &&
+                    date.Date >= OffseasonDates.RfaQualifyingOfferAccept(_calendarYear).Date)
+                    AcceptLeftoverQualifyingOffers(gm);
 
                 if (!_summerDone && date >= OffseasonDates.SummerLeague(_calendarYear))
                 { RunSummerLeague(gm); _summerDone = true; }
@@ -447,15 +523,26 @@ namespace NBAHeadCoach.Core.Manager
 
                 // Restricted free agency: rookie-scale expirations and short-service
                 // players get a qualifying offer if they're worth more than the QO.
-                // Every team auto-tenders this phase, the player's included —
-                // interactive tendering lands in O2.
+                // AI teams decide now; YOUR calls become pending decisions until the
+                // Jun 29 deadline auto-resolves them.
                 if (fam0 != null && !string.IsNullOrEmpty(contract.TeamId) &&
                     IsRfaEligible(player, contract, seasonYear))
                 {
                     long qo = fam0.ComputeQualifyingOfferAmount(player, contract.CurrentYearSalary);
-                    if (MarketSalary(player) >= qo &&
-                        fam0.ExtendQualifyingOffer(contract.TeamId, contract.PlayerId,
-                            contract.CurrentYearSalary))
+                    bool mine = contract.TeamId == gm.PlayerTeamId &&
+                                Data.RolePermissions.CanMakeRosterMoves;
+                    if (mine)
+                        _pendingQOs.Add(new QualifyingOffer
+                        {
+                            PlayerId = contract.PlayerId,
+                            TeamId = contract.TeamId,
+                            Amount = qo,
+                            PriorSalary = contract.CurrentYearSalary,
+                            Deadline = OffseasonDates.QualifyingOfferDeadline(_calendarYear)
+                        });
+                    else if (MarketValue(player) >= qo &&
+                             fam0.ExtendQualifyingOffer(contract.TeamId, contract.PlayerId,
+                                 contract.CurrentYearSalary))
                         tendered++;
                 }
 
@@ -468,6 +555,13 @@ namespace NBAHeadCoach.Core.Manager
                 $"Free-agent class takes shape: {toMarket} players hit the market",
                 $"Contracts have expired across the league. {tendered} qualifying offers were tendered, " +
                 "making those players restricted. Free agency opens July 6.");
+
+            if (_pendingQOs.Count > 0)
+                inbox?.Publish(InboxMessageType.League, "Front Office",
+                    $"{_pendingQOs.Count} qualifying offer decision(s) on your desk",
+                    "Tender to keep first refusal on a restricted free agent, or withhold and let him " +
+                    $"walk unrestricted. Deadline {OffseasonDates.QualifyingOfferDeadline(_calendarYear):MMM d}.",
+                    highPriority: true, deepLinkPanelId: "FrontOffice");
         }
 
         /// <summary>
@@ -766,7 +860,7 @@ namespace NBAHeadCoach.Core.Manager
         // ==================== PLAYER-DRIVEN FREE AGENCY ====================
 
         /// <summary>Asking price for a free agent (shown on the Front Office market).</summary>
-        public long EstimateMarketSalary(Data.Player p) => MarketSalary(p);
+        public long EstimateMarketSalary(Data.Player p) => MarketValue(p);
 
         /// <summary>
         /// Sign a free agent to YOUR team from the Front Office panel. Own free
@@ -775,9 +869,11 @@ namespace NBAHeadCoach.Core.Manager
         /// space, then a minimum deal.
         /// </summary>
         /// <summary>
-        /// Sign an own free agent at NEGOTIATED terms (from a ContractNegotiationManager
+        /// Sign a free agent at NEGOTIATED terms (from a ContractNegotiationManager
         /// session the agent accepted) — same cap plumbing as the one-shot path, but
         /// the agreed salary and years are honored instead of the market lookup.
+        /// A handshake on a CONTESTED free agent doesn't end it: the agreement becomes
+        /// your leading bid and he decides on his decision day.
         /// </summary>
         public bool FinalizeNegotiatedSigning(GameManager gm, string playerId, int years,
             long annualSalary, out string failReason)
@@ -793,21 +889,45 @@ namespace NBAHeadCoach.Core.Manager
             if (team.RosterPlayerIds.Count >= 15) { failReason = "Roster is full (15)."; return false; }
 
             years = Mathf.Clamp(years, 1, 5);
-            annualSalary = Math.Max(1_200_000L, annualSalary);
             bool ownFreeAgent = fa.PreviousTeamId == team.TeamId;
+            annualSalary = Math.Max(Data.LeagueCBA.GetMinimumSalary(ServiceYears(gm, player)), annualSalary);
+
+            // Contested: the handshake is a bid, not a signature. Your OWN free agent
+            // is different — Bird rights mean an accepted deal is a signature.
+            var market = EnsureMarket(gm);
+            if (!ownFreeAgent && market != null && market.IsContested(playerId, team.TeamId))
+            {
+                if (!market.PlaceBid(playerId, years, annualSalary, out failReason)) return false;
+
+                // The market may have trimmed the salary or stepped the years down
+                var placed = market.GetPlayerTeamBid(playerId);
+                int bidYears = placed?.Years ?? years;
+                long bidSalary = placed?.AnnualAverage ?? annualSalary;
+                var day = market.GetDecisionDay(playerId);
+                InboxService.Instance?.Publish(InboxMessageType.League, "Front Office",
+                    $"You're the leader for {player.FullName}",
+                    $"Your offer — {bidYears} years at ${bidSalary / 1_000_000f:0.0}M a year — is on the table, " +
+                    "but he's still taking calls." +
+                    (day.HasValue ? $" He decides {day.Value:dddd, MMM d}." : ""),
+                    highPriority: true, deepLinkPanelId: "FrontOffice", deepLinkPayload: playerId);
+                return true;
+            }
 
             var methods = ownFreeAgent
                 ? new[] { SigningMethod.BirdRights, SigningMethod.CapSpace, SigningMethod.MinimumSalary }
-                : new[] { SigningMethod.CapSpace, SigningMethod.MinimumSalary };
+                : new[] { SigningMethod.CapSpace, SigningMethod.MidLevelException,
+                          SigningMethod.BiAnnualException, SigningMethod.MinimumSalary };
 
             foreach (var method in methods)
             {
+                int service = ServiceYears(gm, player);
                 var offer = new SigningOffer
                 {
-                    AnnualSalary = method == SigningMethod.MinimumSalary ? 1_200_000L : annualSalary,
+                    AnnualSalary = method == SigningMethod.MinimumSalary
+                        ? Data.LeagueCBA.GetMinimumSalary(service) : annualSalary,
                     Years = years,
                     Method = method,
-                    PlayerYearsExperience = player.YearsPro
+                    PlayerYearsExperience = service
                 };
 
                 var check = fam.CanSign(team.TeamId, playerId, offer);
@@ -817,9 +937,12 @@ namespace NBAHeadCoach.Core.Manager
                 {
                     if (!team.RosterPlayerIds.Contains(playerId))
                         team.RosterPlayerIds.Add(playerId);
+                    market?.DropPlayer(playerId);   // no ghost bids on a signed player
 
                     InboxService.Instance?.Publish(InboxMessageType.League, "League Office",
-                        $"{player.FullName} re-signs with {team.Name}",
+                        ownFreeAgent
+                            ? $"{player.FullName} re-signs with {team.Name}"
+                            : $"{player.FullName} signs with {team.Name}",
                         $"Agreed at the table: {years} years, ${offer.AnnualSalary * years / 1_000_000f:0.0}M total.",
                         highPriority: true);
                     return true;
@@ -847,21 +970,33 @@ namespace NBAHeadCoach.Core.Manager
             if (team.RosterPlayerIds.Count >= 15)
             { failReason = "Roster is full (15)."; return false; }
 
-            long ask = MarketSalary(player);
+            long ask = MarketValue(player);
             years = Mathf.Clamp(years, 1, 4);
+
+            // A contested free agent can't be signed on the spot — the one-shot offer
+            // becomes a bid and he decides on his decision day (same as the table deal)
+            if (!ownFreeAgent)
+            {
+                var market = EnsureMarket(gm);
+                if (market != null && market.IsContested(playerId, team.TeamId))
+                    return FinalizeNegotiatedSigning(gm, playerId, years, ask, out failReason);
+            }
 
             var methods = ownFreeAgent
                 ? new[] { SigningMethod.BirdRights, SigningMethod.CapSpace, SigningMethod.MinimumSalary }
-                : new[] { SigningMethod.CapSpace, SigningMethod.MinimumSalary };
+                : new[] { SigningMethod.CapSpace, SigningMethod.MidLevelException,
+                          SigningMethod.BiAnnualException, SigningMethod.MinimumSalary };
 
             foreach (var method in methods)
             {
+                int service = ServiceYears(gm, player);
                 var offer = new SigningOffer
                 {
-                    AnnualSalary = method == SigningMethod.MinimumSalary ? 1_200_000L : ask,
+                    AnnualSalary = method == SigningMethod.MinimumSalary
+                        ? Data.LeagueCBA.GetMinimumSalary(service) : ask,
                     Years = years,
                     Method = method,
-                    PlayerYearsExperience = player.YearsPro
+                    PlayerYearsExperience = service
                 };
 
                 var check = fam.CanSign(team.TeamId, playerId, offer);
@@ -871,6 +1006,7 @@ namespace NBAHeadCoach.Core.Manager
                 {
                     if (!team.RosterPlayerIds.Contains(playerId))
                         team.RosterPlayerIds.Add(playerId);
+                    _market?.DropPlayer(playerId);   // no ghost bids on a signed player
 
                     InboxService.Instance?.Publish(InboxMessageType.League, "League Office",
                         ownFreeAgent
@@ -895,104 +1031,168 @@ namespace NBAHeadCoach.Core.Manager
         }
 
         /// <summary>
-        /// AI signings, a few per day: best available free agents pick the team with
-        /// the most cap room that has a roster spot. Your team only auto-signs cheap
-        /// depth if the roster is short (full FA control arrives with the FA screen).
+        /// The market runs itself (bids, bidding wars, decision days, offer sheets),
+        /// then the scrap heap drains: a couple of depth deals a day for free agents
+        /// nobody is bidding on.
         /// </summary>
         private void RunDailyFreeAgency(GameManager gm, DateTime date)
         {
             var fam = gm.FreeAgents;
             if (fam == null) return;
 
-            var pool = fam.GetFreeAgents();
+            EnsureMarket(gm)?.RunDay(date);
+            RunScrapHeap(gm);
+        }
+
+        /// <summary>
+        /// Depth signings for free agents outside the marketed tier — what keeps the
+        /// pool draining all summer. A team with room pays roughly what the player is
+        /// worth; everyone else offers the minimum. A free agent nobody will take is
+        /// skipped, never a reason to stop the day. Restricted free agents are left
+        /// alone — their original team holds first refusal (see
+        /// AcceptLeftoverQualifyingOffers).
+        /// </summary>
+        private void RunScrapHeap(GameManager gm)
+        {
+            var fam = gm.FreeAgents;
+            var pool = fam?.GetFreeAgents();
             if (pool == null || pool.Count == 0) return;
 
-            int signingsToday = Math.Max(2, pool.Count / 12);
-
+            var marketed = new HashSet<string>(_market?.MarketedPlayerIds ?? new List<string>());
             var ranked = pool
-                .Select(fa => new { fa, player = gm.PlayerDatabase.GetPlayer(fa.PlayerId) })
-                .Where(x => x.player != null && x.player.RetirementYear == 0)
-                .OrderByDescending(x => x.player.OverallRating)
+                .Where(fa => fa.Type != FreeAgentType.Restricted)
+                .Select(fa => gm.PlayerDatabase.GetPlayer(fa.PlayerId))
+                .Where(p => p != null && p.RetirementYear == 0 && !marketed.Contains(p.PlayerId))
+                .OrderByDescending(p => p.OverallRating)
                 .ToList();
 
-            foreach (var entry in ranked.Take(signingsToday))
+            int signingsToday = Math.Max(2, pool.Count / 12);
+            int signed = 0;
+
+            foreach (var player in ranked)
             {
-                var player = entry.player;
+                if (signed >= signingsToday) break;
 
                 var suitors = gm.AllTeams.Where(t =>
                         t != null &&
-                        t.RosterPlayerIds.Count < 15 &&
+                        gm.SalaryCapManager.GetStandardContractCount(t.TeamId) < RosterManager.STANDARD_ROSTER_MAX &&
                         (t.TeamId != gm.PlayerTeamId ||
                          !Data.RolePermissions.CanMakeRosterMoves ||
-                         t.RosterPlayerIds.Count < 13))
+                         gm.SalaryCapManager.GetStandardContractCount(t.TeamId) < 13))
                     .OrderByDescending(t => gm.SalaryCapManager.GetCapSpace(t.TeamId))
                     .ToList();
-                if (suitors.Count == 0) return;
+                if (suitors.Count == 0) return;   // nobody in the league has a spot
 
-                // Modest market randomness: one of the top three cap-space teams
                 var team = suitors[Math.Min(_rng.Next(3), suitors.Count - 1)];
+                int service = ServiceYears(gm, player);
+                int years = 1 + _rng.Next(2);
+                var offer = ScrapHeapOffer(gm.SalaryCapManager.GetCapSpace(team.TeamId),
+                    MarketValue(player), service, years);
 
-                long ask = MarketSalary(player);
-                long capSpace = gm.SalaryCapManager.GetCapSpace(team.TeamId);
-                var offer = new SigningOffer
+                if (!fam.ExecuteSigning(team.TeamId, player.PlayerId, offer))
                 {
-                    AnnualSalary = Math.Min(ask, Math.Max(capSpace, 1_200_000L)),
-                    Years = player.OverallRating >= 80 ? 3 + _rng.Next(2) : 1 + _rng.Next(3),
-                    Method = capSpace >= ask ? SigningMethod.CapSpace : SigningMethod.MinimumSalary,
-                    PlayerYearsExperience = player.YearsPro
-                };
-                if (offer.Method == SigningMethod.MinimumSalary) offer.AnnualSalary = 1_200_000L;
-
-                // Restricted free agency: the original team gets first refusal.
-                // ponytail: naive match heuristic (keep good players you can pay) —
-                // real offer sheets and a player-team match prompt arrive in O2.
-                var rfa = entry.fa;
-                if (rfa.Type == FreeAgentType.Restricted && rfa.HasQualifyingOffer &&
-                    !string.IsNullOrEmpty(rfa.PreviousTeamId) && rfa.PreviousTeamId != team.TeamId)
-                {
-                    var original = gm.AllTeams.FirstOrDefault(t => t?.TeamId == rfa.PreviousTeamId);
-                    bool worthMatching = original != null && original.RosterPlayerIds.Count < 15 &&
-                        (player.OverallRating >= 78 ||
-                         (player.OverallRating >= 70 &&
-                          gm.SalaryCapManager.GetCapSpace(original.TeamId) >= offer.AnnualSalary));
-
-                    if (worthMatching)
-                    {
-                        var matched = new SigningOffer
-                        {
-                            AnnualSalary = offer.AnnualSalary,
-                            Years = offer.Years,
-                            PlayerYearsExperience = offer.PlayerYearsExperience,
-                            Method = rfa.BirdRights != Data.BirdRightsType.None
-                                ? SigningMethod.BirdRights
-                                : SigningMethod.CapSpace
-                        };
-                        // A match the original team can't legally make is no match at
-                        // all — the offer sheet then goes through as signed.
-                        if (fam.CanSign(original.TeamId, player.PlayerId, matched).IsValid)
-                        {
-                            team = original;
-                            offer = matched;
-                        }
-                    }
+                    // Cap-space deal didn't validate — fall back to the minimum
+                    if (offer.Method == SigningMethod.MinimumSalary) continue;
+                    offer = ScrapHeapOffer(0L, MarketValue(player), service, years);
+                    if (!fam.ExecuteSigning(team.TeamId, player.PlayerId, offer)) continue;
                 }
+                if (!team.RosterPlayerIds.Contains(player.PlayerId))
+                    team.RosterPlayerIds.Add(player.PlayerId);
+                signed++;
 
-                if (fam.ExecuteSigning(team.TeamId, player.PlayerId, offer))
+                if (team.TeamId == gm.PlayerTeamId)
+                    InboxService.Instance?.Publish(InboxMessageType.League, "League Office",
+                        $"{player.FullName} signs with {team.Name}",
+                        offer.Method == SigningMethod.MinimumSalary
+                            ? $"{offer.Years} year(s) at the minimum."
+                            : $"{offer.Years} year(s) at ${offer.AnnualSalary / 1_000_000f:0.0}M a year.",
+                        highPriority: true);
+            }
+        }
+
+        /// <summary>
+        /// What a depth free agent gets: real money (up to his market value) from a
+        /// team with cap room, the league minimum from a team without it. Never below
+        /// the minimum for his service, never above the room the team actually has.
+        /// </summary>
+        internal static SigningOffer ScrapHeapOffer(long capSpace, long marketValue, int service, int years)
+        {
+            long min = Data.LeagueCBA.GetMinimumSalary(service);
+            bool hasRoom = capSpace >= min;
+            return new SigningOffer
+            {
+                AnnualSalary = hasRoom ? Math.Max(min, Math.Min(marketValue, capSpace)) : min,
+                Years = Math.Max(1, years),
+                Method = hasRoom ? SigningMethod.CapSpace : SigningMethod.MinimumSalary,
+                PlayerYearsExperience = service
+            };
+        }
+
+        /// <summary>
+        /// Oct 1: any tendered restricted free agent still unsigned takes his
+        /// qualifying offer — one year with his original team (Bird rights, so an
+        /// over-the-cap team can still do it). Without this, an RFA outside the
+        /// marketed top tier would sit in the pool forever.
+        /// </summary>
+        private void AcceptLeftoverQualifyingOffers(GameManager gm)
+        {
+            var fam = gm.FreeAgents;
+            if (fam == null) return;
+
+            foreach (var fa in fam.GetFreeAgents()
+                         .Where(f => f.Type == FreeAgentType.Restricted && f.HasQualifyingOffer &&
+                                     f.QualifyingOfferAmount > 0 &&
+                                     !string.IsNullOrEmpty(f.PreviousTeamId)).ToList())
+            {
+                var player = gm.PlayerDatabase?.GetPlayer(fa.PlayerId);
+                var team = gm.GetTeam(fa.PreviousTeamId);
+                if (player == null || player.RetirementYear > 0 || team == null) continue;
+                // A live offer sheet gets to play out first
+                if (_market?.HasOfferSheet(fa.PlayerId) == true) continue;
+
+                int service = ServiceYears(gm, player);
+                foreach (var method in new[] { SigningMethod.BirdRights, SigningMethod.CapSpace,
+                                               SigningMethod.MinimumSalary })
                 {
-                    if (!team.RosterPlayerIds.Contains(player.PlayerId))
-                        team.RosterPlayerIds.Add(player.PlayerId);
+                    var offer = new SigningOffer
+                    {
+                        AnnualSalary = method == SigningMethod.MinimumSalary
+                            ? Data.LeagueCBA.GetMinimumSalary(service)
+                            : fa.QualifyingOfferAmount,
+                        Years = 1,
+                        Method = method,
+                        PlayerYearsExperience = service
+                    };
+                    if (!fam.ExecuteSigning(team.TeamId, fa.PlayerId, offer)) continue;
 
-                    bool notable = player.OverallRating >= 80 || team.TeamId == gm.PlayerTeamId;
-                    if (notable)
-                        InboxService.Instance?.Publish(InboxMessageType.League, "League Office",
-                            $"{player.FullName} signs with {team.Name}",
-                            $"{offer.Years} years, ${offer.AnnualSalary * offer.Years / 1_000_000f:0.0}M total.",
-                            highPriority: team.TeamId == gm.PlayerTeamId);
+                    if (!team.RosterPlayerIds.Contains(fa.PlayerId))
+                        team.RosterPlayerIds.Add(fa.PlayerId);
+                    _market?.DropPlayer(fa.PlayerId);
+
+                    if (team.TeamId == gm.PlayerTeamId)
+                        InboxService.Instance?.Publish(InboxMessageType.League, "Front Office",
+                            $"{player.FullName} accepts his qualifying offer",
+                            $"No offer sheet came in, so he takes the one-year deal at " +
+                            $"${offer.AnnualSalary / 1_000_000f:0.0}M and is back in camp.",
+                            highPriority: true, deepLinkPanelId: "Roster",
+                            deepLinkPayload: fa.PlayerId);
+                    break;
                 }
             }
         }
 
-        private long MarketSalary(Data.Player p)
+        /// <summary>
+        /// Years of service. YearsPro is 0 for every shipped player, so entry year is
+        /// the real source.
+        /// </summary>
+        private static int ServiceYears(GameManager gm, Data.Player p)
+        {
+            if (p == null) return 0;
+            int year = gm != null ? gm.CurrentDate.Year : 0;
+            return p.DraftYear > 0 && year > 1 ? Math.Max(0, year - p.DraftYear) : p.YearsPro;
+        }
+
+        internal static long MarketValue(Data.Player p)
         {
             int r = p.OverallRating;
             if (r >= 90) return 45_000_000L;
@@ -1166,12 +1366,13 @@ namespace NBAHeadCoach.Core.Manager
                         .FirstOrDefault();
                     if (best == null) break;
 
+                    int service = ServiceYears(gm, best);
                     var offer = new SigningOffer
                     {
-                        AnnualSalary = 1_200_000L,
+                        AnnualSalary = Data.LeagueCBA.GetMinimumSalary(service),
                         Years = 1,
                         Method = SigningMethod.MinimumSalary,
-                        PlayerYearsExperience = best.YearsPro
+                        PlayerYearsExperience = service
                     };
                     if (fam.ExecuteSigning(team.TeamId, best.PlayerId, offer))
                     {
@@ -1198,6 +1399,8 @@ namespace NBAHeadCoach.Core.Manager
         private void Rollover(GameManager gm)
         {
             _engineActive = false;
+            _market = null;
+            _pendingQOs.Clear();
 
             PlayoffManager.Instance?.ResetForNewSeason();
             gm.Development?.SetCurrentSeason(_seasonLabel + 1);
@@ -1261,15 +1464,56 @@ namespace NBAHeadCoach.Core.Manager
                         TypeInt = (int)fa.Type,
                         HasQualifyingOffer = fa.HasQualifyingOffer,
                         QualifyingOfferAmount = fa.QualifyingOfferAmount
-                    }).ToList() ?? new List<Data.FreeAgentRecord>()
+                    }).ToList() ?? new List<Data.FreeAgentRecord>(),
+
+                // O2 market: live bids, pending offer sheets, decision days, plus the
+                // browser's marketed list and wire digest (rebuilt only on a market day)
+                MarketBids = _market?.ToSave() ?? new List<Data.MarketBidRecord>(),
+                MarketMarketedIds = _market?.MarketedPlayerIds?.ToList() ?? new List<string>(),
+                MarketLastDigest = _market?.LastDigest ?? "",
+
+                PendingQualifyingOffers = _pendingQOs
+                    .Select(q => new Data.PendingQualifyingOfferRecord
+                    {
+                        PlayerId = q.PlayerId,
+                        TeamId = q.TeamId,
+                        Amount = (long)q.Amount,
+                        PriorSalary = q.PriorSalary,
+                        DeadlineStr = q.Deadline.Year > 1 ? q.Deadline.ToString("o") : ""
+                    }).ToList(),
+
+                // Cap-exception usage lives in FreeAgentManager and is only meaningful
+                // alongside the market, so it rides in this section.
+                // ponytail: ISaveSection.WriteSave has no gm parameter, so the pool and
+                // usage come off the singleton — widen the interface if that ever hurts.
+                ExceptionUsage = GameManager.Instance?.FreeAgents?.GetAllUsage()?
+                    .Select(kv => new Data.ExceptionUsageRecord
+                    {
+                        TeamId = kv.Key,
+                        MLEUsed = kv.Value.MLEUsed,
+                        BiAnnualUsed = kv.Value.BiAnnualUsed,
+                        TwoWayCount = kv.Value.TwoWayCount
+                    }).ToList() ?? new List<Data.ExceptionUsageRecord>()
             };
         }
 
         public void ReadSave(Data.SaveData data, in SaveReadContext ctx)
         {
             var s = data.Offseason;
+
+            // MLE/BAE debits are season state, not offseason state — an in-season load
+            // needs them back even though the engine is idle.
+            void RestoreExceptionUsage(FreeAgentManager target)
+            {
+                if (target == null || s?.ExceptionUsage == null) return;
+                foreach (var u in s.ExceptionUsage)
+                    target.RestoreUsage(u?.TeamId, u?.MLEUsed ?? 0L, u?.BiAnnualUsed ?? false,
+                        u?.TwoWayCount ?? 0);
+            }
+
             if (s == null || !s.EngineActive)
             {
+                RestoreExceptionUsage(GameManager.Instance?.FreeAgents);
                 _engineActive = false;
                 return;
             }
@@ -1294,12 +1538,43 @@ namespace NBAHeadCoach.Core.Manager
             var fam = gm?.FreeAgents;
             if (fam != null && s.FreeAgentPool != null)
             {
-                fam.Clear();
+                fam.Clear();   // pool AND exception usage, so a load doubles neither
                 // Pre-O1 saves have no TypeInt/QO fields — they default to UFA/0
                 foreach (var record in s.FreeAgentPool)
                     fam.AddFreeAgent(record.PlayerId, (FreeAgentType)record.TypeInt,
                         record.PreviousTeamId, record.ConsecutiveSeasons,
                         record.HasQualifyingOffer, record.QualifyingOfferAmount);
+
+                // Pre-O2 saves have no usage records — teams start the load with
+                // untouched exceptions, which is the old behavior. Re-applied here
+                // because fam.Clear() above wiped what the early restore put back.
+                RestoreExceptionUsage(fam);
+            }
+
+            // Market state: cleared then restored (absent = empty market)
+            _market = null;
+            _pendingQOs.Clear();
+            if (gm != null)
+            {
+                EnsureMarket(gm)?.Restore(s.MarketBids, gm.CurrentDate,
+                    s.MarketMarketedIds, s.MarketLastDigest);
+
+                if (s.PendingQualifyingOffers != null)
+                    foreach (var q in s.PendingQualifyingOffers)
+                    {
+                        if (q == null || string.IsNullOrEmpty(q.PlayerId)) continue;
+                        var qo = new QualifyingOffer
+                        {
+                            PlayerId = q.PlayerId,
+                            TeamId = q.TeamId,
+                            Amount = q.Amount,
+                            PriorSalary = q.PriorSalary
+                        };
+                        if (DateTime.TryParse(q.DeadlineStr, null,
+                                System.Globalization.DateTimeStyles.RoundtripKind, out var dl))
+                            qo.Deadline = dl;
+                        _pendingQOs.Add(qo);
+                    }
             }
 
             // Mid-draft-night load: regenerate the class from the deterministic seed,

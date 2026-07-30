@@ -795,6 +795,16 @@ namespace NBAHeadCoach.Core.Data
         public List<string> ScrimmageLines = new List<string>();
         public List<FreeAgentRecord> FreeAgentPool = new List<FreeAgentRecord>();
 
+        // O2 market state. All absent in older saves — restore treats null/empty as
+        // "no market, no exception usage".
+        public List<MarketBidRecord> MarketBids = new List<MarketBidRecord>();
+        public List<PendingQualifyingOfferRecord> PendingQualifyingOffers = new List<PendingQualifyingOfferRecord>();
+        /// <summary>Free agents the browser shows as "on the market" (rebuilt daily otherwise).</summary>
+        public List<string> MarketMarketedIds = new List<string>();
+        /// <summary>Last day's signings digest, so the Market Wire survives a load.</summary>
+        public string MarketLastDigest;
+        public List<ExceptionUsageRecord> ExceptionUsage = new List<ExceptionUsageRecord>();
+
         // Mid-draft-night state (the class regenerates deterministically from the
         // seed; already-drafted prospects are pruned by checking the player DB)
         public bool DraftStarted;
@@ -817,6 +827,53 @@ namespace NBAHeadCoach.Core.Data
         public int TypeInt;
         public bool HasQualifyingOffer;
         public long QualifyingOfferAmount;
+    }
+
+    /// <summary>
+    /// One live free-agency bid, or (with IsOfferSheet) one pending RFA offer sheet.
+    /// A record with an empty TeamId carries only a decision day for a free agent
+    /// nobody has bid on yet.
+    /// </summary>
+    [Serializable]
+    public class MarketBidRecord
+    {
+        public string PlayerId;
+        public string TeamId;
+        public int Years;
+        public long AnnualSalary;
+        /// <summary>SigningMethod as int (JsonUtility can't do string enums).</summary>
+        public int MethodInt;
+        /// <summary>ISO date the free agent decides; "" = not on the clock.</summary>
+        public string DecisionDayStr;
+
+        public bool IsOfferSheet;
+        public string OriginalTeamId;
+        public string MatchDeadlineStr;
+        public long QualifyingOfferAmount;
+    }
+
+    /// <summary>A qualifying offer awaiting the player's tender/withhold call.</summary>
+    [Serializable]
+    public class PendingQualifyingOfferRecord
+    {
+        public string PlayerId;
+        public string TeamId;
+        public long Amount;
+        public long PriorSalary;
+        public string DeadlineStr;
+    }
+
+    /// <summary>
+    /// Per-team cap-exception usage (MLE dollars spent, BAE burned, two-ways signed).
+    /// ponytail: 10-day history is in-season churn and isn't persisted.
+    /// </summary>
+    [Serializable]
+    public class ExceptionUsageRecord
+    {
+        public string TeamId;
+        public long MLEUsed;
+        public bool BiAnnualUsed;
+        public int TwoWayCount;
     }
 
     /// <summary>
