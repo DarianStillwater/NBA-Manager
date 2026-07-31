@@ -18,6 +18,15 @@ namespace NBAHeadCoach.Tests
 
         private void Start()
         {
+            // A debug bootstrap boot needs the real GameManager to load cleanly —
+            // the test rigs swap manager singletons mid-run and race its LoadGameData
+            // coroutine. Debug sessions skip the suite (they don't need it anyway).
+            if (PlayerPrefs.GetInt("DebugMatchBootstrap", 0) == 1 ||
+                !string.IsNullOrEmpty(PlayerPrefs.GetString("DebugOffseasonBootstrap", "")))
+            {
+                Debug.Log("[TestRunner] Debug bootstrap armed — skipping the suite this session.");
+                return;
+            }
             if (_runOnStart) RunAllTests();
         }
 
