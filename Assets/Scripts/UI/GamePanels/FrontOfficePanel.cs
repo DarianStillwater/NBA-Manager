@@ -8,6 +8,7 @@ using NBAHeadCoach.Core.Data;
 using NBAHeadCoach.Core.Manager;
 using NBAHeadCoach.UI.Shell;
 using ContractOffer = NBAHeadCoach.Core.Manager.ContractOffer;
+using DraftProspect = NBAHeadCoach.Core.Manager.DraftProspect;
 using B = NBAHeadCoach.UI.Shell.UIBuilder;
 
 namespace NBAHeadCoach.UI.GamePanels
@@ -1228,6 +1229,9 @@ namespace NBAHeadCoach.UI.GamePanels
             var off = OffseasonManager.Instance;
             var draft = off?.DraftBoard;
 
+            if (gm != null && off != null && off.WorkoutsOpen(gm.CurrentDate))
+                BuildWorkoutsCard(scroll, gm, off);
+
             if (off == null || !off.DraftActive || draft == null)
             {
                 Empty(scroll, "The draft is held on June 22.\nWhen your pick is on the clock, the board goes live here.");
@@ -1267,7 +1271,7 @@ namespace NBAHeadCoach.UI.GamePanels
 
             // Available prospects
             var available = draft.GetProspects()
-                .OrderBy(p => p.MockDraftPosition)
+                .OrderBy(p => p.Intel.ConsensusRank)
                 .Take(25)
                 .ToList();
 
@@ -1279,13 +1283,7 @@ namespace NBAHeadCoach.UI.GamePanels
 
             foreach (var prospect in available)
             {
-                string intel = gm?.Scouting != null
-                    ? (gm.Scouting.IsScouted(prospect.ProspectId)
-                        ? $"<color=white>{gm.Scouting.DescribeProspect(prospect.ProspectId)}</color>"
-                        : "<color=#EAB308>unscouted — drafting blind</color>")
-                    : prospect.Tier.ToString();
-                var row = PlayerRow(rt, $"P_{prospect.ProspectId}",
-                    $"Mock #{prospect.MockDraftPosition}  {prospect.FirstName} {prospect.LastName}  ·  {prospect.Position}  ·  {prospect.Age}y  ·  {prospect.College}  ·  {intel}");
+                var row = PlayerRow(rt, $"P_{prospect.ProspectId}", ProspectLine(gm, prospect));
 
                 if (off.PlayerOnClock)
                 {
@@ -1297,6 +1295,79 @@ namespace NBAHeadCoach.UI.GamePanels
                     });
                 }
             }
+        }
+
+        /// <summary>
+        /// Pre-draft workouts (Jun 10 → draft day): six invites, each one worth two
+        /// scouting trips and a chance to shake loose whatever a prospect is hiding.
+        /// </summary>
+        private void BuildWorkoutsCard(RectTransform scroll, GameManager gm, OffseasonManager off)
+        {
+            var pool = gm.Scouting?.GetProspectPreview(off.SeasonLabel);
+            if (pool == null || pool.Count == 0) return;
+
+            var shown = pool.OrderBy(p => p.Intel.ConsensusRank).Take(15).ToList();
+            var card = B.Card(scroll, $"PRE-DRAFT WORKOUTS — {off.WorkoutInvitesRemaining} INVITE(S) LEFT",
+                UITheme.AccentPrimary);
+            card.gameObject.AddComponent<LayoutElement>().preferredHeight = 44 + shown.Count * 26;
+            var rt = CardBody(card);
+            bool viaGM = !NBAHeadCoach.Core.Data.RolePermissions.CanMakeRosterMoves;
+
+            foreach (var prospect in shown)
+            {
+                var row = PlayerRow(rt, $"W_{prospect.ProspectId}", ProspectLine(gm, prospect));
+                if (off.WorkoutInvites.Contains(prospect.ProspectId)) continue;
+                if (off.WorkoutInvitesRemaining <= 0) continue;
+
+                string pid = prospect.ProspectId, name = prospect.FullName;
+                RowButton(row, "Invite", viaGM ? "ASK GM" : "INVITE", UITheme.Success, () =>
+                {
+                    Action act = () =>
+                    {
+                        bool ok = OffseasonManager.Instance.InviteToWorkout(GameManager.Instance, pid,
+                            out string why);
+                        _status = ok ? $"{name} worked out for us — report filed."
+                                     : $"Couldn't do that: {why}";
+                    };
+                    if (viaGM) AskGM(NBAHeadCoach.Core.Data.RosterRequest.CreateSigningRequest(
+                        pid, name, "Bring him in for a pre-draft workout."), act);
+                    else { act(); Refresh(); }
+                }, width: 84);
+            }
+        }
+
+        /// <summary>
+        /// One prospect row: public college production and mock range always, the
+        /// department's projection range once he's been scouted, the red flag only
+        /// once something surfaced it, and the workout note if we brought him in.
+        /// </summary>
+        private string ProspectLine(GameManager gm, DraftProspect prospect)
+        {
+            var intel = prospect.Intel;
+            var parts = new List<string>
+            {
+                $"{prospect.FirstName} {prospect.LastName}",
+                PositionShort(prospect.Position),
+                $"{prospect.Age}y",
+                prospect.College ?? prospect.Country ?? "—",
+                intel.StatLine,
+                intel.MockRange
+            };
+
+            var sc = gm?.Scouting;
+            if (sc == null) return string.Join("  ·  ", parts);
+
+            parts.Add(sc.IsScouted(prospect.ProspectId)
+                ? $"<color=white>{sc.ProjectionRange(prospect)}</color>"
+                : "<color=#EAB308>unscouted — drafting blind</color>");
+
+            if (intel.RedFlag != ProspectRedFlag.None && sc.IsRedFlagRevealed(prospect.ProspectId))
+                parts.Add($"<color=#EF4444>FLAG: {intel.RedFlagText}</color>");
+
+            string workout = sc.GetWorkoutSummary(prospect.ProspectId);
+            if (!string.IsNullOrEmpty(workout)) parts.Add($"<color=white>workout — {workout}</color>");
+
+            return string.Join("  ·  ", parts);
         }
 
         // ==================== HELPERS ====================

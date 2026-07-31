@@ -418,6 +418,47 @@ namespace NBAHeadCoach.Core.Manager
         public int ScoutingLevel;
 
         /// <summary>
+        /// Public pre-draft file: college production, consensus mock range, hidden
+        /// red flag. Derived on demand from a ProspectId-seeded sub-rng, so a
+        /// prospect regenerated from an old save reads identically and none of it
+        /// needs save fields.
+        /// </summary>
+        [NonSerialized] private ProspectIntel _intel;
+        public ProspectIntel Intel => _intel ??= ProspectIntel.Derive(this);
+
+        /// <summary>
+        /// Deterministic across runs (string.GetHashCode is not guaranteed to be),
+        /// which is what every derived-intel seed depends on.
+        /// </summary>
+        public static int StableHash(string s)
+        {
+            unchecked
+            {
+                int hash = 17;
+                foreach (char c in s ?? "") hash = hash * 31 + c;
+                return hash & 0x7FFFFFFF;   // System.Random dislikes int.MinValue
+            }
+        }
+
+        /// <summary>
+        /// Career-scoped mix applied to every hidden-intel seed, so busts/sleepers/red
+        /// flags aren't identical across every playthrough. Process-wide static — fine
+        /// for a single-career game (ponytail: no per-save-slot isolation).
+        /// </summary>
+        public static int CareerSalt = 0;
+
+        /// <summary>
+        /// Deterministic seed for a StableHash-derived System.Random, clamped into the
+        /// regime .NET's seeded Random ctor handles correctly (seeds beyond ~161803398
+        /// degrade SeedArray and can push NextDouble() outside [0,1)).
+        /// </summary>
+        public static int SeedFor(string id, int mix = 0)
+        {
+            int hash = StableHash(id) ^ mix ^ CareerSalt;
+            return (hash & 0x7FFFFFFF) % 161803398;
+        }
+
+        /// <summary>
         /// Overall rating alias for UI compatibility
         /// </summary>
         public int Overall => ProjectedOverall;
@@ -535,6 +576,95 @@ namespace NBAHeadCoach.Core.Manager
         private static int Clamp(int value)
         {
             return Math.Max(25, Math.Min(99, value)); // Keep attributes between 25-99
+        }
+    }
+
+    public enum ProspectRedFlag
+    {
+        None,
+        Attitude,
+        Medical,
+        Motor,
+        BustRisk
+    }
+
+    /// <summary>
+    /// Everything the public "knows" about a prospect before the draft — college
+    /// stat line, where the mocks have him, and the thing nobody has printed yet.
+    /// All of it is a pure function of ProspectId + the prospect's hidden skill, so
+    /// it never needs saving and never drifts between the January preview and the
+    /// June class.
+    /// </summary>
+    public class ProspectIntel
+    {
+        public float PPG, RPG, APG;
+        public float FieldGoalPct, ThreePointPct;
+        /// <summary>Where the mocks have him (1 = first overall).</summary>
+        public int ConsensusRank;
+        /// <summary>Best/worst slot in the mock spread (MockHigh is the lower number).</summary>
+        public int MockHigh, MockLow;
+        /// <summary>Hidden until deep scouting or a workout surfaces it.</summary>
+        public ProspectRedFlag RedFlag;
+        /// <summary>The mocks are well ahead of the tape — inflated stats included.</summary>
+        public bool Overhyped;
+
+        public string StatLine =>
+            $"{PPG:0.0}p {RPG:0.0}r {APG:0.0}a · {FieldGoalPct:0}/{ThreePointPct:0}%";
+
+        public string MockRange =>
+            MockHigh == MockLow ? $"mock {MockHigh}" : $"mock {MockHigh}-{MockLow}";
+
+        public string RedFlagText => RedFlag switch
+        {
+            ProspectRedFlag.Attitude => "attitude — people in the program don't vouch for him",
+            ProspectRedFlag.Medical => "medical — there's a history the physicals won't like",
+            ProspectRedFlag.Motor => "motor — takes plays off when the ball isn't his",
+            ProspectRedFlag.BustRisk => "bust risk — the production doesn't match the tape",
+            _ => ""
+        };
+
+        public static ProspectIntel Derive(DraftProspect p)
+        {
+            var rng = new System.Random(DraftProspect.SeedFor(p.ProspectId));
+            var intel = new ProspectIntel();
+
+            // Consensus rank = talent order plus noise; a slice of the class is
+            // badly overrated and a slice is badly underrated.
+            int talentRank = Math.Max(1, p.MockDraftPosition);
+            double roll = rng.NextDouble();
+            int shift = roll < 0.12 ? -(6 + rng.Next(10))    // overhyped
+                      : roll > 0.88 ? (6 + rng.Next(12))     // sleeper
+                      : rng.Next(-3, 4);
+            intel.ConsensusRank = Mathf.Clamp(talentRank + shift, 1, 120);
+            intel.Overhyped = shift <= -6;
+
+            int spread = Math.Max(1, 2 + rng.Next(5));
+            intel.MockHigh = Math.Max(1, intel.ConsensusRank - spread);
+            intel.MockLow = Math.Min(120, intel.ConsensusRank + spread); // 120 = class-size cap used above
+
+            // College production tracks hidden skill; hype inflates it, sleepers
+            // get undersold. Reports can be wrong, and this is how.
+            float hype = intel.Overhyped ? 1.18f + (float)rng.NextDouble() * 0.16f
+                       : shift >= 6 ? 0.90f
+                       : 1f;
+            float skill = p.ProjectedOverall;
+
+            intel.PPG = Mathf.Clamp((skill * 0.30f - 4f + rng.Next(-2, 3)) * hype, 2.5f, 31f);
+            float reboundBase = p.Position >= Position.PowerForward ? 7.0f
+                              : p.Position == Position.SmallForward ? 4.8f : 3.0f;
+            intel.RPG = Mathf.Clamp(reboundBase + skill * 0.04f + (float)rng.NextDouble() * 1.5f, 1f, 14f);
+            float assistBase = p.Position == Position.PointGuard ? 5.0f
+                             : p.Position == Position.ShootingGuard ? 2.8f : 1.4f;
+            intel.APG = Mathf.Clamp(assistBase + skill * 0.02f + (float)rng.NextDouble() * 1.2f, 0.4f, 11f);
+            intel.FieldGoalPct = Mathf.Clamp((40f + skill * 0.12f + rng.Next(-3, 4)) * hype, 33f, 62f);
+            intel.ThreePointPct = Mathf.Clamp((26f + p.Shooting * 0.12f + rng.Next(-3, 4)) * hype, 18f, 47f);
+
+            // ~17% of a class carries something the medicals or the interviews find
+            intel.RedFlag = rng.NextDouble() < 0.17
+                ? (ProspectRedFlag)(1 + rng.Next(4))
+                : ProspectRedFlag.None;
+
+            return intel;
         }
     }
 

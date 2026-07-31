@@ -33,6 +33,7 @@ namespace NBAHeadCoach.Core.Data
 
         [Header("Career")]
         public UnifiedCareerProfile Career;
+        public int CareerSeed; // salts hidden-intel generation so busts/sleepers aren't identical across careers; 0 = legacy save, old behavior
         public string PlayerTeamId;
         public DifficultySettings Difficulty;
         public UserRoleConfiguration UserRoleConfig;
@@ -813,6 +814,13 @@ namespace NBAHeadCoach.Core.Data
         public string DraftDayStr;
         public List<string> DraftOrder1 = new List<string>();
         public List<string> DraftOrder2 = new List<string>();
+
+        // O3 pre-draft workouts: which invites were spent and whether the window
+        // has opened/closed. The reports live in ScoutingData; the stat line, mock
+        // rank and red flag are re-derived from the ProspectId and never saved.
+        public List<string> WorkoutInvites = new List<string>();
+        public bool WorkoutsOpened;
+        public bool WorkoutsDone;
     }
 
     [Serializable]

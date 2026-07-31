@@ -24,6 +24,8 @@ namespace NBAHeadCoach.Core.Manager
 
         private readonly Dictionary<string, int> _timesScouted = new Dictionary<string, int>();
         private readonly Dictionary<string, ScoutingReport> _reports = new Dictionary<string, ScoutingReport>();
+        private readonly Dictionary<string, string> _workouts = new Dictionary<string, string>();
+        private readonly HashSet<string> _flagsRevealed = new HashSet<string>();
 
         private List<DraftProspect> _preview = new List<DraftProspect>();
         private int _previewSeason = -1;
@@ -141,6 +143,69 @@ namespace NBAHeadCoach.Core.Manager
             return $"scouted: {report.ProjectedRole}";
         }
 
+        // ==================== PROJECTION RANGES / WORKOUTS ====================
+
+        /// <summary>How sure the department is, from how often the target was seen.</summary>
+        private static float DepthAccuracy(int timesScouted) =>
+            Mathf.Clamp01(0.35f + timesScouted * 0.13f);
+
+        /// <summary>Grade points of uncertainty either side of the projection.</summary>
+        internal static int ProjectionSpread(int timesScouted) =>
+            Mathf.RoundToInt((1f - DepthAccuracy(timesScouted)) * 28f);
+
+        /// <summary>
+        /// The projection the department will commit to — a RANGE in descriptor
+        /// vocabulary that narrows every time the prospect is scouted again.
+        /// </summary>
+        public string ProjectionRange(DraftProspect prospect)
+        {
+            if (prospect == null) return "";
+            int times = GetTimesScouted(prospect.ProspectId);
+            if (times <= 0) return "unscouted — drafting blind";
+
+            int spread = ProjectionSpread(times);
+            int mid = (prospect.ProjectedOverall + prospect.Potential) / 2;
+            string low = SkillGradeDescriptors.GetGrade(Mathf.Clamp(mid - spread, 0, 100));
+            string high = SkillGradeDescriptors.GetGrade(Mathf.Clamp(mid + spread, 0, 100));
+            return low == high ? $"projects {low}" : $"projects {low} → {high}";
+        }
+
+        /// <summary>
+        /// Red flags stay buried until the book is deep or a workout shakes one out.
+        /// </summary>
+        public bool IsRedFlagRevealed(string prospectId) =>
+            _flagsRevealed.Contains(prospectId ?? "") || GetTimesScouted(prospectId) >= 4;
+
+        public string GetWorkoutSummary(string prospectId) =>
+            _workouts.TryGetValue(prospectId ?? "", out var s) ? s : null;
+
+        /// <summary>
+        /// A private workout: worth two scouting visits, and a good (not certain)
+        /// chance of surfacing whatever he's hiding. The reveal roll is seeded from
+        /// the ProspectId so it's the same answer on a reload.
+        /// </summary>
+        public string FileWorkoutReport(DraftProspect prospect)
+        {
+            if (prospect == null || string.IsNullOrEmpty(prospect.ProspectId)) return null;
+            string id = prospect.ProspectId;
+
+            _timesScouted[id] = GetTimesScouted(id) + 2;
+
+            var rng = new System.Random(DraftProspect.SeedFor(id, 0x5EED));
+            bool revealed = rng.NextDouble() < 0.75 &&
+                            prospect.Intel.RedFlag != ProspectRedFlag.None;
+            if (revealed) _flagsRevealed.Add(id);
+
+            string summary =
+                $"shooting drills: {SkillGradeDescriptors.GetGrade(prospect.Shooting)}; " +
+                $"movement: {SkillGradeDescriptors.GetGrade(prospect.Athleticism)}. " +
+                (revealed
+                    ? $"Concern surfaced — {prospect.Intel.RedFlagText}."
+                    : "Competed hard; medical and interview checked out clean.");
+            _workouts[id] = summary;
+            return summary;
+        }
+
         // ==================== SAVE ====================
 
         public void WriteSave(SaveData data)
@@ -148,6 +213,13 @@ namespace NBAHeadCoach.Core.Manager
             var save = new ScoutingSaveData { PreviewSeason = _previewSeason };
             foreach (var kvp in _timesScouted)
                 save.Counts.Add(new ScoutCountRecord { TargetId = kvp.Key, Count = kvp.Value });
+            foreach (var kvp in _workouts)
+                save.Workouts.Add(new WorkoutReportRecord
+                {
+                    ProspectId = kvp.Key,
+                    Summary = kvp.Value,
+                    FlagRevealed = _flagsRevealed.Contains(kvp.Key)
+                });
             foreach (var kvp in _reports)
             {
                 save.Reports.Add(new StoredScoutingReport
@@ -164,12 +236,22 @@ namespace NBAHeadCoach.Core.Manager
         {
             _timesScouted.Clear();
             _reports.Clear();
+            _workouts.Clear();
+            _flagsRevealed.Clear();
 
             var save = data.ScoutingData;
             if (save != null)
             {
                 foreach (var record in save.Counts ?? new List<ScoutCountRecord>())
                     _timesScouted[record.TargetId] = record.Count;
+
+                // Pre-O3 saves have no workout list — nothing filed, nothing revealed
+                foreach (var w in save.Workouts ?? new List<WorkoutReportRecord>())
+                {
+                    if (w == null || string.IsNullOrEmpty(w.ProspectId)) continue;
+                    _workouts[w.ProspectId] = w.Summary;
+                    if (w.FlagRevealed) _flagsRevealed.Add(w.ProspectId);
+                }
 
                 foreach (var stored in save.Reports ?? new List<StoredScoutingReport>())
                 {
@@ -197,6 +279,16 @@ namespace NBAHeadCoach.Core.Manager
         public int PreviewSeason = -1;
         public List<ScoutCountRecord> Counts = new List<ScoutCountRecord>();
         public List<StoredScoutingReport> Reports = new List<StoredScoutingReport>();
+        /// <summary>O3 pre-draft workouts. Absent in older saves = none filed.</summary>
+        public List<WorkoutReportRecord> Workouts = new List<WorkoutReportRecord>();
+    }
+
+    [Serializable]
+    public class WorkoutReportRecord
+    {
+        public string ProspectId;
+        public string Summary;
+        public bool FlagRevealed;
     }
 
     [Serializable]

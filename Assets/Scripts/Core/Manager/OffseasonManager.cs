@@ -294,6 +294,12 @@ namespace NBAHeadCoach.Core.Manager
         private List<string> _draftOrder2 = new List<string>();
         private readonly List<string> _playerPickResults = new List<string>();
 
+        // Pre-draft workouts (O3): your invites, pending until draft day auto-fills
+        public const int MaxWorkoutInvites = 6;
+        private readonly List<string> _workoutInvites = new List<string>();
+        private bool _workoutsOpened;
+        private bool _workoutsDone;
+
         // ==================== PUBLIC STATE (Front Office panel) ====================
 
         public bool EngineActive => _engineActive;
@@ -303,6 +309,19 @@ namespace NBAHeadCoach.Core.Manager
         public int NextPickNumber => _nextPick;
         public DraftSystem DraftBoard => _draft;
         public bool FreeAgencySigningOpen => _engineActive && _freeAgencyOpen && !_campDone;
+
+        /// <summary>Prospects you've brought in for a workout this summer.</summary>
+        public IReadOnlyList<string> WorkoutInvites => _workoutInvites;
+        public int WorkoutInvitesRemaining => Math.Max(0, MaxWorkoutInvites - _workoutInvites.Count);
+
+        /// <summary>Jun 10 through draft day: the invite window.</summary>
+        public bool WorkoutsOpen(DateTime date) =>
+            _engineActive && !_workoutsDone && !_draftStarted && !_draftDone &&
+            date.Date >= OffseasonDates.Workouts(_calendarYear).Date &&
+            date.Date <= OffseasonDates.Draft(_calendarYear).Date;
+
+        /// <summary>The season label whose draft class is on the board this summer.</summary>
+        public int SeasonLabel => _seasonLabel;
         public bool ReSignWindowOpen => _engineActive && _postSeasonDone && !_campDone;
 
         // ==================== FREE AGENCY MARKET (O2) ====================
@@ -377,6 +396,8 @@ namespace NBAHeadCoach.Core.Manager
             _rng = new System.Random(seasonLabel * 31 + 7);
             _market = null;              // fresh market each summer
             _pendingQOs.Clear();
+            _workoutInvites.Clear();
+            _workoutsOpened = _workoutsDone = false;
 
             InboxService.Instance?.Publish(InboxMessageType.League, "League Office",
                 $"The {_seasonLabel} season is in the books",
@@ -401,8 +422,12 @@ namespace NBAHeadCoach.Core.Manager
                     date.Date > OffseasonDates.QualifyingOfferDeadline(_calendarYear).Date)
                     AutoResolveQualifyingOffers(gm);
 
+                if (!_workoutsOpened && !_draftDone && date >= OffseasonDates.Workouts(_calendarYear))
+                { OpenWorkouts(gm); _workoutsOpened = true; }
+
                 if (!_draftDone && date >= OffseasonDates.Draft(_calendarYear))
                 {
+                    if (!_workoutsDone) RunRemainingWorkouts(gm);
                     if (!_draftStarted) StartDraftNight(gm, date);
                     // Advancing past draft night with a pick pending = the clock ran
                     // out; the war room picks best-available and the night resumes.
@@ -669,6 +694,90 @@ namespace NBAHeadCoach.Core.Manager
                 BasketballIQ = p.BasketballIQ,
                 Leadership = p.Leadership
             };
+        }
+
+        // ==================== PRE-DRAFT WORKOUTS (O3) ====================
+
+        /// <summary>
+        /// Jun 10: the gym opens. You get six invites; whoever you don't use by
+        /// draft day the war room spends on prospects around your slot.
+        /// </summary>
+        private void OpenWorkouts(GameManager gm)
+        {
+            if (!Data.RolePermissions.CanMakeRosterMoves) return;   // the GM runs his own gym
+            InboxService.Instance?.Publish(InboxMessageType.Scouting, "Scouting Department",
+                "Pre-draft workouts are open",
+                $"We can bring in {MaxWorkoutInvites} prospects before the {OffseasonDates.Draft(_calendarYear):MMM d} " +
+                "draft. A workout is worth two scouting trips and can shake loose whatever a kid is hiding. " +
+                "Pick them on the draft board.",
+                deepLinkPanelId: "FrontOffice");
+        }
+
+        /// <summary>The draft class as the scouting department sees it right now.</summary>
+        private IReadOnlyList<DraftProspect> WorkoutPool(GameManager gm) =>
+            _draft?.GetProspects() as IReadOnlyList<DraftProspect>
+            ?? gm?.Scouting?.GetProspectPreview(_seasonLabel)
+            ?? new List<DraftProspect>();
+
+        /// <summary>
+        /// Bring a prospect in. He works out the same day and the report lands
+        /// immediately — that's the whole point of spending an invite.
+        /// </summary>
+        public bool InviteToWorkout(GameManager gm, string prospectId, out string failReason)
+        {
+            failReason = "";
+            if (gm == null || string.IsNullOrEmpty(prospectId)) { failReason = "Unavailable."; return false; }
+            if (!WorkoutsOpen(gm.CurrentDate))
+            { failReason = $"Workouts run {OffseasonDates.Workouts(_calendarYear):MMM d} to draft day."; return false; }
+            if (_workoutInvites.Contains(prospectId)) { failReason = "He's already worked out for us."; return false; }
+            if (WorkoutInvitesRemaining <= 0) { failReason = $"All {MaxWorkoutInvites} invites are spent."; return false; }
+
+            var prospect = WorkoutPool(gm).FirstOrDefault(p => p.ProspectId == prospectId);
+            if (prospect == null) { failReason = "Unknown prospect."; return false; }
+
+            string summary = gm.Scouting?.FileWorkoutReport(prospect);
+            if (summary == null) { failReason = "Scouting department unavailable."; return false; }
+            _workoutInvites.Add(prospectId);
+
+            InboxService.Instance?.Publish(InboxMessageType.Scouting, "Scouting Department",
+                $"Workout: {prospect.FullName}", summary,
+                deepLinkPanelId: "FrontOffice");
+            return true;
+        }
+
+        /// <summary>
+        /// Draft day: unspent invites go to prospects sitting around our slot, and
+        /// the whole batch lands as one note instead of six.
+        /// ponytail: AI teams don't run workouts — their picks read the hidden
+        /// truth already, so per-team invites would buy nothing. Give AI drafting
+        /// a scouting fog and this is where their invites go.
+        /// </summary>
+        private void RunRemainingWorkouts(GameManager gm)
+        {
+            _workoutsDone = true;
+            int remaining = WorkoutInvitesRemaining;
+            if (remaining <= 0) return;
+
+            int slot = Math.Max(1, gm.AllTeams
+                .Where(t => t != null).OrderBy(t => t.Wins).ThenBy(t => t.TeamId)
+                .ToList().FindIndex(t => t.TeamId == gm.PlayerTeamId) + 1);
+
+            var filled = new List<string>();
+            foreach (var prospect in WorkoutPool(gm)
+                         .Where(p => p != null && !_workoutInvites.Contains(p.ProspectId))
+                         .OrderBy(p => Math.Abs(p.Intel.ConsensusRank - slot))
+                         .Take(remaining))
+            {
+                string summary = gm.Scouting?.FileWorkoutReport(prospect);
+                if (summary == null) return;
+                _workoutInvites.Add(prospect.ProspectId);
+                filled.Add($"{prospect.FullName} — {summary}");
+            }
+
+            if (filled.Count > 0 && Data.RolePermissions.CanMakeRosterMoves)
+                InboxService.Instance?.Publish(InboxMessageType.Scouting, "Scouting Department",
+                    $"{filled.Count} last-minute workout(s) around pick #{slot}",
+                    string.Join("\n\n", filled), deepLinkPanelId: "FrontOffice");
         }
 
         /// <summary>
@@ -1455,6 +1564,9 @@ namespace NBAHeadCoach.Core.Manager
                 DraftDayStr = _draftDay.Year > 1 ? _draftDay.ToString("o") : "",
                 DraftOrder1 = new List<string>(_draftOrder1),
                 DraftOrder2 = new List<string>(_draftOrder2),
+                WorkoutInvites = new List<string>(_workoutInvites),
+                WorkoutsOpened = _workoutsOpened,
+                WorkoutsDone = _workoutsDone,
                 FreeAgentPool = GameManager.Instance?.FreeAgents?.GetFreeAgents()?
                     .Select(fa => new Data.FreeAgentRecord
                     {
@@ -1584,6 +1696,12 @@ namespace NBAHeadCoach.Core.Manager
             _nextPick = Math.Max(1, s.NextPick);
             _draftOrder1 = s.DraftOrder1 ?? new List<string>();
             _draftOrder2 = s.DraftOrder2 ?? new List<string>();
+            // Pre-O3 saves have no workout state — no invites spent, window unopened.
+            // The reports themselves ride in ScoutingData next to the scouting book.
+            _workoutInvites.Clear();
+            if (s.WorkoutInvites != null) _workoutInvites.AddRange(s.WorkoutInvites);
+            _workoutsOpened = s.WorkoutsOpened;
+            _workoutsDone = s.WorkoutsDone;
             if (!string.IsNullOrEmpty(s.DraftDayStr) &&
                 DateTime.TryParse(s.DraftDayStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out var dd))
                 _draftDay = dd;
@@ -1598,6 +1716,13 @@ namespace NBAHeadCoach.Core.Manager
                 if (_draftOrder1.Count > 0)
                     _draft.SetDraftOrder(_draftOrder1, _draftOrder2);
                 Debug.Log($"[Offseason] Mid-draft load: resumed at pick {_nextPick}, pruned {pruned} drafted prospects");
+            }
+            else
+            {
+                // Not mid-draft (pre-draft or post-draft save): drop any stale draft pool
+                // so WorkoutPool falls back to the preview instead of pointing at a
+                // post-draft prospect pool that no longer has the invited players.
+                _draft = null;
             }
         }
 

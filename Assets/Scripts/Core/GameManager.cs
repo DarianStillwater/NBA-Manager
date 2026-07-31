@@ -41,6 +41,7 @@ namespace NBAHeadCoach.Core
         [SerializeField] private string _playerTeamId;
         [SerializeField] private int _currentSeason;
         [SerializeField] private DateTime _currentDate;
+        [SerializeField] private int _careerSeed; // salts hidden draft-intel generation per career; 0 = legacy/unset
         [SerializeField] private UserRoleConfiguration _userRoleConfig;
         private DifficultySettings _difficulty = new DifficultySettings();
         public DifficultySettings Difficulty => _difficulty;
@@ -613,6 +614,8 @@ namespace NBAHeadCoach.Core
             // Initialize season
             _currentSeason = DateTime.Now.Year;
             _currentDate = new DateTime(_currentSeason, 10, 21); // Eve of regular season (first games Oct 22)
+            _careerSeed = System.Guid.NewGuid().GetHashCode() & 0x7FFFFFFF;
+            Manager.DraftProspect.CareerSalt = _careerSeed;
 
             // Create user role configuration
             _userRoleConfig = new UserRoleConfiguration
@@ -909,9 +912,10 @@ namespace NBAHeadCoach.Core
                 _jobSecurityManager?.InitializeForNewSeason(_career, _playerTeamId);
             _developmentManager?.InitializeForNewSeason(_allTeams);
 
-            // Generate initial draft class for upcoming draft
-            var draftGen = DraftClassGenerator.Instance;
-            draftGen?.GenerateDraftClass(_currentSeason + 1);
+            // The live draft class comes from ProspectGenerator, generated on demand
+            // from a deterministic seed (ScoutingSystem preview / OffseasonManager
+            // draft night). DraftClassGenerator is a dormant parallel system with no
+            // consumers, so nothing generates here any more.
 
             // Initialize trade AI enhancement systems with player team
             SetupTradeSystemsForTeam(_playerTeamId);
@@ -1059,6 +1063,8 @@ namespace NBAHeadCoach.Core
         private void RestoreFromSaveData(SaveData data)
         {
             _career = data.Career;
+            _careerSeed = data.CareerSeed;
+            Manager.DraftProspect.CareerSalt = _careerSeed;
             _playerTeamId = data.PlayerTeamId;
             _userRoleConfig = data.UserRoleConfig ?? new UserRoleConfiguration { CurrentRole = UserRole.Both };
             Preferences = data.Preferences ?? new GamePreferences();
@@ -1171,6 +1177,7 @@ namespace NBAHeadCoach.Core
                 SaveTimestamp = DateTime.Now,
                 SaveTimestampStr = DateTime.Now.ToString("o"),
                 Career = _career,
+                CareerSeed = _careerSeed,
                 PlayerTeamId = _playerTeamId,
                 Difficulty = _difficulty,
                 UserRoleConfig = _userRoleConfig,

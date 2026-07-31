@@ -10,6 +10,8 @@ namespace NBAHeadCoach.Core
     /// </summary>
     public static class OffseasonDates
     {
+        /// <summary>Pre-draft workouts open; the invite window closes on draft day.</summary>
+        public static DateTime Workouts(int calendarYear) => new DateTime(calendarYear, 6, 10);
         public static DateTime Draft(int calendarYear) => new DateTime(calendarYear, 6, 22);
         /// <summary>Last day to tender a qualifying offer to a restricted free agent.</summary>
         public static DateTime QualifyingOfferDeadline(int calendarYear) => new DateTime(calendarYear, 6, 29);

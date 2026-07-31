@@ -187,7 +187,8 @@ namespace NBAHeadCoach.UI.GamePanels
             }
 
             // Draft class preview — the fog of war
-            var prospects = scouting.GetProspectPreview(gm.CurrentSeason).Take(15).ToList();
+            var prospects = scouting.GetProspectPreview(gm.CurrentSeason)
+                .OrderBy(p => p.Intel.ConsensusRank).Take(15).ToList();
             if (prospects.Count == 0) return;
 
             var board = B.Card(scroll, "NEXT DRAFT CLASS — SCOUTED PROSPECTS STOP BEING GAMBLES", _teamColor);

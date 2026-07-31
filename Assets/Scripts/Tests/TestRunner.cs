@@ -78,6 +78,7 @@ namespace NBAHeadCoach.Tests
             RunTest<OffseasonEngineTest>("Offseason Engine");
             RunTest<FreeAgencyMarketTest>("Free Agency Market (bids, wars, RFA sheets)");
             RunTest<OffseasonStabilityTest>("Offseason Stability (3 consecutive offseasons)");
+            RunTest<DraftScoutingTest>("Draft Scouting (intel, ranges, workouts)");
             RunTest<TradeDeskTest>("Trade Desk");
             RunTest<FinanceFlowTest>("Finance Flow");
             RunTest<StaffEffectsTest>("Staff Effects");
