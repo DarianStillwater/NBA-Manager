@@ -105,7 +105,15 @@ namespace NBAHeadCoach.Core.Manager
                 result.IsValid = false;
                 result.Issues.AddRange(recentlySignedResult.Issues);
             }
-            
+
+            // 8. Check every pick in the deal is still there to trade
+            var pickResult = ValidatePickAvailability(proposal);
+            if (!pickResult.IsValid)
+            {
+                result.IsValid = false;
+                result.Issues.AddRange(pickResult.Issues);
+            }
+
             return result;
         }
         
@@ -154,6 +162,50 @@ namespace NBAHeadCoach.Core.Manager
                 }
             }
             
+            return result;
+        }
+
+        // ==================== PICK AVAILABILITY ====================
+
+        /// <summary>
+        /// Every draft pick in the deal must still be an asset the sender has: not
+        /// already exercised on draft night, and still registered to the sending team.
+        /// This is the gate on both draft-night double-dipping (sell the #4 pick after
+        /// drafting with it) and stale proposals (a negotiation or saved incoming offer
+        /// naming a pick that has since been sold to someone else).
+        /// ponytail: a pick the registry doesn't know (conveyed, or a past draft the
+        /// registry has already pruned) is left alone — ownership can't be checked and
+        /// the transfer will fail loudly in TransferDraftPick.
+        /// </summary>
+        public TradeValidationResult ValidatePickAvailability(TradeProposal proposal)
+        {
+            var result = new TradeValidationResult { IsValid = true };
+            if (_draftPickRegistry == null) return result;
+
+            foreach (var asset in proposal.AllAssets)
+            {
+                if (asset.Type != TradeAssetType.DraftPick)
+                    continue;
+
+                int round = asset.IsFirstRound ? 1 : 2;
+                string original = asset.OriginalTeamId ?? asset.SendingTeamId;
+                var pick = _draftPickRegistry.GetPick(original, asset.Year, round);
+                if (pick == null)
+                    continue;
+
+                if (pick.IsUsed)
+                {
+                    result.IsValid = false;
+                    result.Issues.Add($"{asset.GetDescription()}: pick already used - the selection has been made");
+                }
+                else if (pick.CurrentOwnerId != asset.SendingTeamId)
+                {
+                    result.IsValid = false;
+                    result.Issues.Add($"{asset.SendingTeamId}: team no longer owns this pick " +
+                        $"({asset.GetDescription()} now belongs to {pick.CurrentOwnerId})");
+                }
+            }
+
             return result;
         }
 
@@ -280,27 +332,42 @@ namespace NBAHeadCoach.Core.Manager
         public TradeValidationResult ValidateRosterLimits(TradeProposal proposal, string teamId)
         {
             var result = new TradeValidationResult { IsValid = true };
-            
-            int currentRoster = _capManager.GetTeamContracts(teamId).Count;
-            int outgoing = proposal.GetOutgoingPlayerCount(teamId);
-            int incoming = proposal.GetIncomingPlayerCount(teamId);
+
+            // Standard-roster headcount on both sides: the 15 is a standard-contract
+            // limit, so two-ways (and, on draft night, a rookie who isn't on a standard
+            // deal yet) must not push a legal deal over it.
+            // ponytail: two-way trade limits (max 2 per team) aren't modeled — two-ways
+            // are simply excluded from both sides of the count.
+            int currentRoster = _capManager.GetStandardContractCount(teamId);
+            int outgoing = CountStandardPlayers(proposal, teamId, sending: true);
+            int incoming = CountStandardPlayers(proposal, teamId, sending: false);
             int newRoster = currentRoster - outgoing + incoming;
-            
+
             // Maximum 15 standard + 2 two-way = 17
             if (newRoster > 15)
             {
                 result.IsValid = false;
                 result.Issues.Add($"{teamId}: Trade would result in {newRoster} players (max 15)");
             }
-            
-            // Minimum 12 during season (simplified)
-            if (newRoster < 12)
+
+            // Minimum 12 during season (simplified). Only a net-negative deal can be
+            // blamed for a sub-12 roster, so picks-for-picks and roster-neutral swaps
+            // aren't blocked by an already-short July roster.
+            if (newRoster < 12 && incoming < outgoing)
             {
                 result.IsValid = false;
                 result.Issues.Add($"{teamId}: Trade would result in only {newRoster} players (min 12)");
             }
-            
+
             return result;
+        }
+
+        /// <summary>Players moving one way in the deal that occupy a standard roster spot.</summary>
+        private int CountStandardPlayers(TradeProposal proposal, string teamId, bool sending)
+        {
+            return proposal.AllAssets.Count(a => a.Type == TradeAssetType.Player &&
+                (sending ? a.SendingTeamId : a.ReceivingTeamId) == teamId &&
+                _capManager.GetContract(a.PlayerId)?.IsTwoWay != true);
         }
 
         // ==================== NO-TRADE CLAUSES ====================

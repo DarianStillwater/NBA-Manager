@@ -186,6 +186,22 @@ namespace NBAHeadCoach.Core.Manager
         }
 
         /// <summary>
+        /// Wrap a pick as a trade asset. One shape, used by the AI offer builders and
+        /// the Front Office proposal builder alike.
+        /// </summary>
+        public static TradeAsset ToTradeAsset(DraftPick pick, string fromTeamId, string toTeamId) =>
+            pick == null ? null : new TradeAsset
+            {
+                Type = TradeAssetType.DraftPick,
+                Year = pick.Year,
+                IsFirstRound = pick.Round == 1,
+                OriginalTeamId = pick.OriginalTeamId,
+                SendingTeamId = fromTeamId,
+                ReceivingTeamId = toTeamId,
+                DraftPickDetails = pick
+            };
+
+        /// <summary>
         /// Transfer ownership of a pick from one team to another.
         /// </summary>
         public bool TransferPick(string originalTeamId, int year, int round, string fromTeamId, string toTeamId)
@@ -223,6 +239,16 @@ namespace NBAHeadCoach.Core.Manager
             OnPickTransferred?.Invoke(pick, fromTeamId, toTeamId);
 
             return true;
+        }
+
+        /// <summary>
+        /// Burn a pick: the selection has been made with it. Rides in the existing
+        /// pick save record (JsonUtility bool, absent = false on old saves).
+        /// </summary>
+        public void MarkUsed(string originalTeamId, int year, int round)
+        {
+            var pick = GetPick(originalTeamId, year, round);
+            if (pick != null) pick.IsUsed = true;
         }
 
         /// <summary>

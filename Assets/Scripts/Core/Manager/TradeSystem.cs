@@ -469,6 +469,14 @@ namespace NBAHeadCoach.Core.Manager
                     asset.SendingTeamId,
                     asset.ReceivingTeamId);
 
+                // Unreachable once ValidateTrade's pick-availability step has run, but
+                // a silent no-op here means the receiving team never gets what it paid
+                // for — so it's an error, not a warning.
+                if (!transferred)
+                    Debug.LogError($"[TradeSystem] Pick transfer FAILED, trade is now partial: " +
+                        $"{asset.GetDescription()} ({originalTeam} {asset.Year} Rd{round}) " +
+                        $"{asset.SendingTeamId} -> {asset.ReceivingTeamId}");
+
                 // Add any protections from the trade asset
                 if (transferred && asset.DraftPickDetails?.Protections?.Count > 0)
                 {

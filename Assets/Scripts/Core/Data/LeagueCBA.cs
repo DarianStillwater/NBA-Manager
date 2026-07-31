@@ -283,6 +283,12 @@ namespace NBAHeadCoach.Core.Data
         /// <summary>Trade deadline (simplified to Feb 6 — must match SeasonController/SeasonCalendar)</summary>
         public static DateTime GetTradeDeadline(int year) => new DateTime(year, 2, 6);
         
+        /// <summary>
+        /// The offseason trade market reopens once the Finals are done (mid-June) —
+        /// draft-night pick trades live in that window.
+        /// </summary>
+        public static DateTime GetOffseasonTradeWindowOpen(int year) => new DateTime(year, 6, 15);
+
         public static bool IsPastTradeDeadline(DateTime currentDate)
         {
             var deadline = GetTradeDeadline(currentDate.Year);
@@ -293,7 +299,11 @@ namespace NBAHeadCoach.Core.Data
             
             int seasonEndYear = currentDate.Month > 7 ? currentDate.Year + 1 : currentDate.Year;
             deadline = GetTradeDeadline(seasonEndYear);
-            
+
+            // Jun 15 – Jul 31 is the offseason market (Aug onward already falls before
+            // NEXT February's deadline), so only Feb 7 – Jun 14 is a closed window.
+            if (currentDate >= GetOffseasonTradeWindowOpen(seasonEndYear)) return false;
+
             return currentDate > deadline;
         }
         /// <summary>RFA offer sheet matching period (reduced to 24 hours in 2023 CBA)</summary>

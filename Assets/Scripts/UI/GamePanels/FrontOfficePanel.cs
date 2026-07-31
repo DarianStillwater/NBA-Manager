@@ -28,6 +28,9 @@ namespace NBAHeadCoach.UI.GamePanels
         private string _tradePartnerId;
         private readonly HashSet<string> _sendIds = new HashSet<string>();
         private readonly HashSet<string> _getIds = new HashSet<string>();
+        // O4: draft picks in the same proposal, keyed "{OriginalTeamId}_{Year}_{Round}"
+        private readonly HashSet<string> _sendPickKeys = new HashSet<string>();
+        private readonly HashSet<string> _getPickKeys = new HashSet<string>();
         private string _activeNegotiationId;
         private string _status;
 
@@ -1017,7 +1020,8 @@ namespace NBAHeadCoach.UI.GamePanels
             var partner = string.IsNullOrEmpty(_tradePartnerId) ? null : gm.GetTeam(_tradePartnerId);
             int gridRows = Mathf.CeilToInt(partners.Count / 10f);
             int listRows = partner == null ? 0
-                : TradablePlayers(gm, _team).Count + TradablePlayers(gm, partner).Count + 4;
+                : TradablePlayers(gm, _team).Count + TradablePlayers(gm, partner).Count
+                  + TradablePicks(gm, _team).Count + TradablePicks(gm, partner).Count + 4;
             card.gameObject.AddComponent<LayoutElement>().preferredHeight =
                 44 + gridRows * 26 + listRows * 24 + (partner == null ? 10 : 70);
 
@@ -1061,7 +1065,9 @@ namespace NBAHeadCoach.UI.GamePanels
             }
 
             BuildPickList(rt, gm, _team, _sendIds, "YOU SEND");
+            BuildDraftPickRows(rt, gm, _team, _sendPickKeys);
             BuildPickList(rt, gm, partner, _getIds, $"{partner.Abbreviation} SEND");
+            BuildDraftPickRows(rt, gm, partner, _getPickKeys);
 
             // Totals + legality + propose
             long salaryOut = _sendIds.Sum(id => gm.SalaryCapManager.GetContract(id)?.CurrentYearSalary ?? 0);
@@ -1071,7 +1077,7 @@ namespace NBAHeadCoach.UI.GamePanels
                 12, FontStyle.Normal, UITheme.TextSecondary);
             totals.gameObject.AddComponent<LayoutElement>().preferredHeight = 20;
 
-            if (_sendIds.Count > 0 && _getIds.Count > 0)
+            if (_sendIds.Count + _sendPickKeys.Count > 0 && _getIds.Count + _getPickKeys.Count > 0)
             {
                 var proposal = BuildDraftProposal(gm);
                 var validation = gm.Trades.ValidateProposal(proposal);
@@ -1094,11 +1100,16 @@ namespace NBAHeadCoach.UI.GamePanels
                     {
                         if (tradeViaGM)
                         {
-                            string targetId = _getIds.FirstOrDefault();
-                            string awayId = _sendIds.FirstOrDefault();
+                            string targetId = _getIds.FirstOrDefault() ?? "";
+                            string awayId = _sendIds.FirstOrDefault() ?? "";
+                            // Picks-only deal: name the picks instead, so the GM's inbox
+                            // message reads as a deal rather than "target for outgoing".
+                            string targetName = gm.PlayerDatabase.GetPlayer(targetId)?.FullName
+                                ?? PickName(gm, _getPickKeys) ?? "target";
+                            string awayName = gm.PlayerDatabase.GetPlayer(awayId)?.FullName
+                                ?? PickName(gm, _sendPickKeys) ?? "outgoing";
                             var req = NBAHeadCoach.Core.Data.RosterRequest.CreateTradeRequest(
-                                targetId, gm.PlayerDatabase.GetPlayer(targetId)?.FullName ?? "target",
-                                awayId, gm.PlayerDatabase.GetPlayer(awayId)?.FullName ?? "outgoing",
+                                targetId, targetName, awayId, awayName,
                                 "This deal makes us better. I want it done.");
                             AskGM(req, () => SubmitProposal(gm));
                         }
@@ -1127,6 +1138,79 @@ namespace NBAHeadCoach.UI.GamePanels
                     Refresh();
                 });
             }
+        }
+
+        /// <summary>
+        /// Draft picks a team can put in the deal: this draft's year plus the next two.
+        /// On draft night current-year picks show the slot they're on ("#7 overall").
+        /// </summary>
+        private void BuildDraftPickRows(RectTransform rt, GameManager gm, Team team,
+            HashSet<string> selection)
+        {
+            var off = OffseasonManager.Instance;
+            foreach (var pick in TradablePicks(gm, team))
+            {
+                string key = PickKey(pick);
+                bool selected = selection.Contains(key);
+
+                int slot = off != null && off.DraftActive && pick.Year == off.OffseasonCalendarYear
+                    ? off.PickSlotFor(pick.OriginalTeamId, pick.Round) : 0;
+                string label = PickLabel(pick) + (slot > 0 ? $" — #{slot} overall" : "");
+
+                var row = PlayerRow(rt, $"PK_{team.TeamId}_{key}",
+                    (selected ? "<color=white><b>✓ </b></color>" : "") + label);
+
+                RowButton(row, "TogglePick", selected ? "REMOVE" : "ADD",
+                    selected ? UITheme.Danger : UITheme.AccentSecondary, () =>
+                {
+                    if (!selection.Remove(key)) selection.Add(key);
+                    Refresh();
+                });
+            }
+        }
+
+        private static List<DraftPick> TradablePicks(GameManager gm, Team team)
+        {
+            var off = OffseasonManager.Instance;
+            bool nightLive = off != null && off.DraftActive;
+            int firstYear = nightLive ? off.OffseasonCalendarYear : gm.CurrentDate.Year;
+
+            // A pre-O4 mid-draft save has no slot order, so the board can't re-derive
+            // ownership tonight — a sold pick would still pick for the seller. Keep this
+            // draft's picks off the table on those saves; future years trade fine.
+            int minYear = nightLive && !off.SlotOrderTracked ? firstYear + 1 : firstYear;
+
+            return (gm.DraftPickRegistry?.GetPicksOwnedBy(team.TeamId) ?? new List<DraftPick>())
+                .Where(p => !p.IsUsed && p.Year >= minYear && p.Year <= firstYear + 2)
+                .OrderBy(p => p.Year).ThenBy(p => p.Round).ToList();
+        }
+
+        /// <summary>"2027 1st (via BOS)" — the deal-desk name for a pick.</summary>
+        private static string PickLabel(DraftPick pick)
+        {
+            string via = pick.CurrentOwnerId != pick.OriginalTeamId
+                ? $" (via {TeamAbbr(pick.OriginalTeamId)})" : "";
+            return $"{pick.Year} {(pick.Round == 1 ? "1st" : "2nd")}{via}";
+        }
+
+        /// <summary>Label of the first selected pick, for describing a picks-only deal.</summary>
+        private static string PickName(GameManager gm, HashSet<string> keys)
+        {
+            var pick = keys.Select(k => PickFromKey(gm, k)).FirstOrDefault(p => p != null);
+            return pick == null ? null : PickLabel(pick);
+        }
+
+        private static string PickKey(DraftPick pick) =>
+            $"{pick.OriginalTeamId}_{pick.Year}_{pick.Round}";
+
+        private static DraftPick PickFromKey(GameManager gm, string key)
+        {
+            var parts = key?.Split('_');
+            if (parts == null || parts.Length < 3) return null;
+            if (!int.TryParse(parts[parts.Length - 2], out int year) ||
+                !int.TryParse(parts[parts.Length - 1], out int round)) return null;
+            string original = string.Join("_", parts.Take(parts.Length - 2));
+            return gm.DraftPickRegistry?.GetPick(original, year, round);
         }
 
         private List<(Player player, Contract contract)> TradablePlayers(GameManager gm, Team team)
@@ -1162,7 +1246,19 @@ namespace NBAHeadCoach.UI.GamePanels
                     SendingTeamId = _tradePartnerId, ReceivingTeamId = gm.PlayerTeamId
                 });
             }
+            AddPickAssets(proposal, gm, _sendPickKeys, gm.PlayerTeamId, _tradePartnerId);
+            AddPickAssets(proposal, gm, _getPickKeys, _tradePartnerId, gm.PlayerTeamId);
             return proposal;
+        }
+
+        private static void AddPickAssets(TradeProposal proposal, GameManager gm,
+            HashSet<string> keys, string from, string to)
+        {
+            foreach (var key in keys)
+            {
+                var asset = DraftPickRegistry.ToTradeAsset(PickFromKey(gm, key), from, to);
+                if (asset != null) proposal.AllAssets.Add(asset);
+            }
         }
 
         private void SubmitProposal(GameManager gm)
@@ -1194,6 +1290,8 @@ namespace NBAHeadCoach.UI.GamePanels
         {
             _sendIds.Clear();
             _getIds.Clear();
+            _sendPickKeys.Clear();
+            _getPickKeys.Clear();
             if (!keepPartner) _tradePartnerId = null;
         }
 

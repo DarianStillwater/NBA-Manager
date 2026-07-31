@@ -379,7 +379,8 @@ namespace NBAHeadCoach.Core.Manager
                 var availablePicks = _draftPickRegistry?.GetPicksOwnedBy(offeringFO.TeamId)
                     ?? new List<DraftPick>();
 
-                foreach (var pick in availablePicks.OrderBy(p => p.Year).ThenByDescending(p => p.Round))
+                foreach (var pick in availablePicks.Where(p => !p.IsUsed)
+                             .OrderBy(p => p.Year).ThenByDescending(p => p.Round))
                 {
                     if (offeredValue >= targetValue * 0.95f) break;
                     if (proposal.AllAssets.Count(a => a.Type == TradeAssetType.DraftPick) >= 2) break;
@@ -463,6 +464,18 @@ namespace NBAHeadCoach.Core.Manager
                     Debug.Log($"[AITradeOffer] Offer from {offer.OfferingTeamId} expired");
                 }
             }
+        }
+
+        /// <summary>
+        /// Put an externally-built offer on the desk — draft-night trade-up calls come
+        /// in this way, so they render and accept through the normal incoming-offers UI.
+        /// </summary>
+        public void InjectOffer(IncomingTradeOffer offer)
+        {
+            if (offer == null || string.IsNullOrEmpty(offer.OfferId)) return;
+            if (_pendingOffers.Any(o => o.OfferId == offer.OfferId)) return;
+            _pendingOffers.Add(offer);
+            OnNewOfferGenerated?.Invoke(offer);
         }
 
         /// <summary>

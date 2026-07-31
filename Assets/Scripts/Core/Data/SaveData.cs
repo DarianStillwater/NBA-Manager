@@ -814,6 +814,10 @@ namespace NBAHeadCoach.Core.Data
         public string DraftDayStr;
         public List<string> DraftOrder1 = new List<string>();
         public List<string> DraftOrder2 = new List<string>();
+        // O4: which ORIGINAL team's pick sits at each slot (fixed for the night, unlike
+        // ownership). Empty in pre-O4 saves, which keeps ownership frozen as before.
+        public List<string> SlotOrder1 = new List<string>();
+        public List<string> SlotOrder2 = new List<string>();
 
         // O3 pre-draft workouts: which invites were spent and whether the window
         // has opened/closed. The reports live in ScoutingData; the stat line, mock

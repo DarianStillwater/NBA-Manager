@@ -1487,6 +1487,9 @@ namespace NBAHeadCoach.Core
                     $"Trade between {string.Join("/", teamIds)}: {string.Join(", ", names)}");
             }
 
+            // Draft night: a traded pick can change who's on the clock
+            _offseasonManager?.NotifyTradeExecuted(this);
+
             // Check if player team's captain was traded away
             if (string.IsNullOrEmpty(_playerTeamId)) return;
 

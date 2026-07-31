@@ -292,7 +292,13 @@ namespace NBAHeadCoach.Core.Manager
         private DateTime _draftDay;
         private List<string> _draftOrder1 = new List<string>();
         private List<string> _draftOrder2 = new List<string>();
+        // O4: which ORIGINAL team's pick sits at each slot. The slot order is fixed on
+        // draft night; _draftOrderN is a derived view of who owns each slot right now.
+        private List<string> _slotOrder1 = new List<string>();
+        private List<string> _slotOrder2 = new List<string>();
         private readonly List<string> _playerPickResults = new List<string>();
+        /// <summary>Draft-night trade-up offers carry this OfferId prefix so they can be found again.</summary>
+        private const string OnClockOfferPrefix = "draftup-";
 
         // Pre-draft workouts (O3): your invites, pending until draft day auto-fills
         public const int MaxWorkoutInvites = 6;
@@ -393,6 +399,7 @@ namespace NBAHeadCoach.Core.Manager
             _postSeasonDone = _draftDone = _freeAgencyOpen = _summerDone = _campDone = false;
             _draftStarted = _onTheClock = false;   // without this, summer #2+ never starts a draft
             _draft = null;
+            _slotOrder1.Clear(); _slotOrder2.Clear();
             _rng = new System.Random(seasonLabel * 31 + 7);
             _market = null;              // fresh market each summer
             _pendingQOs.Clear();
@@ -819,21 +826,19 @@ namespace NBAHeadCoach.Core.Manager
                 slotOrder = byRecord.Select(t => t.TeamId).ToList(); // degenerate fallback
             }
 
-            // Pick ownership: a traded pick belongs to its current owner
-            List<string> OwnersFor(int round) => slotOrder
-                .Select(original =>
-                    gm.DraftPickRegistry?.GetPick(original, _calendarYear, round)?.CurrentOwnerId ?? original)
-                .ToList();
-
-            _draftOrder1 = OwnersFor(1);
-            _draftOrder2 = OwnersFor(2);
-            _draft.SetDraftOrder(_draftOrder1, _draftOrder2);
+            // Slot identity is fixed; ownership is looked up (and re-looked-up after
+            // every trade tonight) from the registry.
+            _slotOrder1 = new List<string>(slotOrder);
+            _slotOrder2 = new List<string>(slotOrder);
+            _draftOrder1 = new List<string>(slotOrder);
+            _draftOrder2 = new List<string>(slotOrder);
 
             _draftStarted = true;
             _draftDay = date;
             _nextPick = 1;
             _onTheClock = false;
             _playerPickResults.Clear();
+            RefreshDraftOrderOwnership(gm, resumeClock: false);
 
             int playerPickCount = _draftOrder1.Concat(_draftOrder2)
                 .Count(id => id == gm.PlayerTeamId);
@@ -844,6 +849,179 @@ namespace NBAHeadCoach.Core.Manager
                     : "You hold no picks this year — watch the board in the Front Office.",
                 highPriority: playerPickCount > 0,
                 deepLinkPanelId: "FrontOffice");
+        }
+
+        // ==================== O4: DRAFT-NIGHT PICK TRADING ====================
+
+        /// <summary>
+        /// A trade just executed. During draft night the remaining slots may have
+        /// changed hands, so re-derive ownership. Called from
+        /// GameManager.OnTradeExecutedHandler — TradeSystem.ExecuteTrade fires
+        /// OnTradeExecuted on every path (propose, agreed offer, AI-to-AI), so it's
+        /// the one choke point that covers them all.
+        /// </summary>
+        public void NotifyTradeExecuted(GameManager gm)
+        {
+            if (!DraftActive) return;
+            RefreshDraftOrderOwnership(gm);
+        }
+
+        /// <summary>Overall pick number a team's own pick sits at tonight (0 when unknown).</summary>
+        public int PickSlotFor(string originalTeamId, int round)
+        {
+            var slots = round == 1 ? _slotOrder1 : _slotOrder2;
+            int i = slots.IndexOf(originalTeamId);
+            return i < 0 ? 0 : (round == 1 ? i + 1 : 31 + i);
+        }
+
+        /// <summary>
+        /// Whether tonight's slot identity is known. False for a pre-O4 mid-draft save,
+        /// where the board can't re-derive ownership, so this draft's picks must not trade.
+        /// </summary>
+        public bool SlotOrderTracked => _slotOrder1.Count > 0;
+
+        /// <summary>Original team whose pick sits at an overall pick number (null when untracked).</summary>
+        private string SlotOwnerAt(int pick, out int round)
+        {
+            round = pick <= 30 ? 1 : 2;
+            var slots = round == 1 ? _slotOrder1 : _slotOrder2;
+            int i = round == 1 ? pick - 1 : pick - 31;
+            return i >= 0 && i < slots.Count ? slots[i] : null;
+        }
+
+        /// <summary>
+        /// The slot on the clock was just exercised: burn the ORIGINAL team's pick in
+        /// the registry so it can't be sold for the rest of the night, then advance.
+        /// Every selection path (AI, your pick, clock expiry) advances through here.
+        /// </summary>
+        private void ConsumePick(GameManager gm)
+        {
+            string original = SlotOwnerAt(_nextPick, out int round);
+            if (original != null) gm?.DraftPickRegistry?.MarkUsed(original, _calendarYear, round);
+            _nextPick++;
+        }
+
+        /// <summary>
+        /// Re-derive who owns every REMAINING slot from the registry. Picks already
+        /// made keep the team that made them. When the pick on the clock changes hands
+        /// the night hands off: an AI owner picks immediately, a player owner is clocked.
+        /// Pre-O4 saves have no slot order, so this is a no-op for them.
+        /// </summary>
+        private void RefreshDraftOrderOwnership(GameManager gm, bool resumeClock = true)
+        {
+            if (_draft == null || _slotOrder1.Count == 0) return;
+            var registry = gm?.DraftPickRegistry;
+
+            List<string> Owners(List<string> slots, List<string> current, int round, int firstPick)
+            {
+                var owners = new List<string>(slots);
+                for (int i = 0; i < slots.Count; i++)
+                {
+                    bool alreadyUsed = firstPick + i < _nextPick;
+                    if (alreadyUsed && i < current.Count && !string.IsNullOrEmpty(current[i]))
+                        owners[i] = current[i];      // never rewrite history
+                    else
+                        owners[i] = registry?.GetPick(slots[i], _calendarYear, round)?.CurrentOwnerId
+                                    ?? slots[i];
+                }
+                return owners;
+            }
+
+            string before = _draft.GetTeamAtPick(_nextPick);
+            _draftOrder1 = Owners(_slotOrder1, _draftOrder1, 1, 1);
+            _draftOrder2 = Owners(_slotOrder2, _draftOrder2, 2, 31);
+            _draft.SetDraftOrder(_draftOrder1, _draftOrder2);
+
+            string after = _draft.GetTeamAtPick(_nextPick);
+            if (!resumeClock || before == after || !DraftActive) return;
+
+            ExpireOnClockOffers(gm);
+            _onTheClock = false;
+            ContinueDraft(gm);   // the new owner picks, or you get clocked
+        }
+
+        /// <summary>
+        /// You're on the clock inside the top 20: rivals call about moving up. Their
+        /// later first (plus a future second) for your slot, built as picks-for-picks
+        /// and validated by the same CBA path as any trade, then dropped on the normal
+        /// incoming-offers desk.
+        /// ponytail: picks-only packages and no AI-to-AI draft trades — a player
+        /// sweetener drags salary matching in, and AI-to-AI would need the whole
+        /// evaluator on the clock. Both are upgrades, not blockers.
+        /// </summary>
+        private void GenerateOnClockOffers(GameManager gm, int pick)
+        {
+            var gen = gm?.TradeOfferGenerator;
+            var registry = gm?.DraftPickRegistry;
+            if (gen == null || registry == null || gm.Trades == null) return;
+            if (pick > 20 || pick > _slotOrder1.Count) return;
+            if (gen.GetPendingOffers().Any(o => o.OfferId?.StartsWith(OnClockOfferPrefix) == true))
+                return;   // calls already on the desk for this pick
+
+            // A top-5 pick ALWAYS draws calls; deeper in the round it's a roll, and by
+            // #20 nobody's jumping the queue.
+            if (pick > 5 && _rng.NextDouble() >= 0.85 - pick * 0.03) return;
+            int wanted = _rng.NextDouble() < 0.35 ? 2 : 1;
+
+            var yours = registry.GetPick(_slotOrder1[pick - 1], _calendarYear, 1);
+            if (yours == null || yours.CurrentOwnerId != gm.PlayerTeamId) return;
+
+            // Suitors: teams picking at least three slots behind you tonight, nearest
+            // first — a jump from #28 to #3 isn't a call anyone makes.
+            var suitors = new List<(Data.DraftPick pick, int slot)>();
+            for (int i = pick + 2; i < _slotOrder1.Count; i++)
+            {
+                var theirs = registry.GetPick(_slotOrder1[i], _calendarYear, 1);
+                if (theirs == null || theirs.CurrentOwnerId == gm.PlayerTeamId) continue;
+                suitors.Add((theirs, i + 1));
+                if (suitors.Count >= 8) break;
+            }
+            if (suitors.Count == 0) return;
+
+            for (int n = 0; n < wanted && suitors.Count > 0; n++)
+            {
+                var (theirs, slot) = suitors[_rng.Next(suitors.Count)];
+                suitors.RemoveAll(s => s.pick.CurrentOwnerId == theirs.CurrentOwnerId);
+                string suitorId = theirs.CurrentOwnerId;
+
+                var proposal = new TradeProposal { ProposedDate = gm.CurrentDate };
+                proposal.AllAssets.Add(DraftPickRegistry.ToTradeAsset(yours, gm.PlayerTeamId, suitorId));
+                proposal.AllAssets.Add(DraftPickRegistry.ToTradeAsset(theirs, suitorId, gm.PlayerTeamId));
+
+                var sweetener = registry.GetPicksOwnedBy(suitorId)
+                    .FirstOrDefault(p => p.Round == 2 && p.Year > _calendarYear);
+                if (sweetener != null)
+                    proposal.AllAssets.Add(DraftPickRegistry.ToTradeAsset(sweetener, suitorId, gm.PlayerTeamId));
+
+                if (!(gm.Trades.ValidateProposal(proposal)?.IsValid ?? false)) continue;
+
+                string sweetText = sweetener != null
+                    ? $" and their {sweetener.Year} second-rounder" : "";
+                gen.InjectOffer(new IncomingTradeOffer
+                {
+                    OfferId = OnClockOfferPrefix + Guid.NewGuid(),
+                    OfferingTeamId = suitorId,
+                    Proposal = proposal,
+                    OfferMessage = $"Draft night: we want to move up. We'll give you #{slot} overall" +
+                                   $"{sweetText} for the #{pick} pick — answer before you're off the clock.",
+                    ReceivedAt = gm.CurrentDate,
+                    ExpiresAt = _draftDay.AddDays(1),
+                    Status = IncomingOfferStatus.Pending
+                });
+            }
+        }
+
+        /// <summary>
+        /// Kill the trade-up calls: the pick they were about is gone. Found by OfferId
+        /// prefix, so offers that rode through a mid-night save still get cleaned up.
+        /// </summary>
+        private static void ExpireOnClockOffers(GameManager gm)
+        {
+            var offers = gm?.TradeOfferGenerator?.GetPendingOffers();
+            if (offers == null) return;
+            foreach (var offer in offers)
+                if (offer.OfferId?.StartsWith(OnClockOfferPrefix) == true)
+                    offer.Status = IncomingOfferStatus.Expired;
         }
 
         /// <summary>Run AI picks until the player is on the clock or the draft ends.</summary>
@@ -862,6 +1040,7 @@ namespace NBAHeadCoach.Core.Manager
                     Data.RolePermissions.CanMakeRosterMoves)
                 {
                     _onTheClock = true;
+                    GenerateOnClockOffers(gm, _nextPick);
                     inbox?.Publish(InboxMessageType.League, "League Office",
                         $"You're ON THE CLOCK at pick #{_nextPick}",
                         "Make your selection in the Front Office. Advancing the day lets the war room pick best-available.",
@@ -871,7 +1050,7 @@ namespace NBAHeadCoach.Core.Manager
                 }
 
                 DoAIPick(gm, _nextPick, teamId);
-                _nextPick++;
+                ConsumePick(gm);
             }
 
             FinishDraft(gm);
@@ -895,8 +1074,9 @@ namespace NBAHeadCoach.Core.Manager
                 deepLinkPanelId: "Roster",
                 deepLinkPayload: drafted.PlayerId);
 
-            _nextPick++;
+            ConsumePick(gm);
             _onTheClock = false;
+            ExpireOnClockOffers(gm);   // the pick they wanted is spent
             ContinueDraft(gm);
             return true;
         }
@@ -915,8 +1095,9 @@ namespace NBAHeadCoach.Core.Manager
                     "The war room went best-available when the clock ran out.",
                     highPriority: true);
             }
-            _nextPick++;
+            ConsumePick(gm);
             _onTheClock = false;
+            ExpireOnClockOffers(gm);
         }
 
         private void DoAIPick(GameManager gm, int pick, string teamId)
@@ -1564,6 +1745,8 @@ namespace NBAHeadCoach.Core.Manager
                 DraftDayStr = _draftDay.Year > 1 ? _draftDay.ToString("o") : "",
                 DraftOrder1 = new List<string>(_draftOrder1),
                 DraftOrder2 = new List<string>(_draftOrder2),
+                SlotOrder1 = new List<string>(_slotOrder1),
+                SlotOrder2 = new List<string>(_slotOrder2),
                 WorkoutInvites = new List<string>(_workoutInvites),
                 WorkoutsOpened = _workoutsOpened,
                 WorkoutsDone = _workoutsDone,
@@ -1696,6 +1879,10 @@ namespace NBAHeadCoach.Core.Manager
             _nextPick = Math.Max(1, s.NextPick);
             _draftOrder1 = s.DraftOrder1 ?? new List<string>();
             _draftOrder2 = s.DraftOrder2 ?? new List<string>();
+            // Pre-O4 saves have no slot order — leaving it empty makes ownership
+            // refresh a no-op, i.e. exactly the old behavior (owners frozen at tip-off).
+            _slotOrder1 = s.SlotOrder1 ?? new List<string>();
+            _slotOrder2 = s.SlotOrder2 ?? new List<string>();
             // Pre-O3 saves have no workout state — no invites spent, window unopened.
             // The reports themselves ride in ScoutingData next to the scouting book.
             _workoutInvites.Clear();
@@ -1715,6 +1902,9 @@ namespace NBAHeadCoach.Core.Manager
                     gm.PlayerDatabase.GetPlayer($"draft_{_calendarYear}_{p.ProspectId}") != null);
                 if (_draftOrder1.Count > 0)
                     _draft.SetDraftOrder(_draftOrder1, _draftOrder2);
+                // Picks traded before the save are conveyed by the registry, so the
+                // remaining slots come back owned by whoever holds them now.
+                RefreshDraftOrderOwnership(gm, resumeClock: false);
                 Debug.Log($"[Offseason] Mid-draft load: resumed at pick {_nextPick}, pruned {pruned} drafted prospects");
             }
             else

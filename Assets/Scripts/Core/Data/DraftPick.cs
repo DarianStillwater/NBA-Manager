@@ -30,6 +30,13 @@ namespace NBAHeadCoach.Core.Data
         /// <summary>For swap rights: team with the swap option</summary>
         public string SwapBeneficiaryTeamId;
 
+        /// <summary>
+        /// The selection has been made with this pick. Set the moment the slot is
+        /// exercised on draft night so a spent pick can't be traded for the rest of
+        /// the night. Absent in pre-O4 saves, which reads back as false.
+        /// </summary>
+        public bool IsUsed;
+
         // ==================== PROTECTIONS ====================
         
         /// <summary>List of protections on this pick</summary>
