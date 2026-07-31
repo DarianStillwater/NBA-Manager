@@ -28,6 +28,9 @@ namespace NBAHeadCoach.Core.AI
         private RosterRequestHistory _requestHistory;
         private List<string> _discoveredTraits;
 
+        // O6: what the coach talked him into this summer
+        private List<GMPreference> _preferences = new List<GMPreference>();
+
         public RosterRequestHistory RequestHistory => _requestHistory;
         public List<string> DiscoveredTraits => _discoveredTraits;
 
@@ -75,7 +78,8 @@ namespace NBAHeadCoach.Core.AI
                 DiscoveredTraits = new List<string>(_discoveredTraits),
                 TotalRequests = _requestHistory?.TotalRequests ?? 0,
                 ApprovedRequests = _requestHistory?.ApprovedRequests ?? 0,
-                DeniedRequests = _requestHistory?.DeniedRequests ?? 0
+                DeniedRequests = _requestHistory?.DeniedRequests ?? 0,
+                Preferences = new List<GMPreference>(_preferences)
             };
         }
 
@@ -94,6 +98,91 @@ namespace NBAHeadCoach.Core.AI
                 ApprovedRequests = data.ApprovedRequests,
                 DeniedRequests = data.DeniedRequests
             };
+            _preferences = data.Preferences ?? new List<GMPreference>();
+        }
+
+        // ==================== CONSULTATION WITH TEETH (O6) ====================
+
+        /// <summary>Standing preferences the coach won this summer.</summary>
+        public IReadOnlyList<GMPreference> Preferences => _preferences;
+
+        /// <summary>End of the offseason: the summer's asks stop counting.</summary>
+        public void ClearPreferences() => _preferences.Clear();
+
+        /// <summary>Positions the coach asked for (draft board + free-agent targeting bias).</summary>
+        public List<Position> PreferredPositions => _preferences
+            .Where(p => p.Kind == GMPreference.PositionKind)
+            .Select(p => (Position)p.PositionInt).Distinct().ToList();
+
+        /// <summary>Players/prospects the coach named by name.</summary>
+        public List<string> PreferredPlayerIds => _preferences
+            .Where(p => p.Kind == GMPreference.TargetKind && !string.IsNullOrEmpty(p.PlayerId))
+            .Select(p => p.PlayerId).Distinct().ToList();
+
+        /// <summary>True when the coach asked for this exact free agent or prospect.</summary>
+        public bool PrefersPlayer(string playerId) => !string.IsNullOrEmpty(playerId) &&
+            _preferences.Any(p => p.Kind == GMPreference.TargetKind && p.PlayerId == playerId);
+
+        /// <summary>True when the coach asked for help at this position.</summary>
+        public bool PrefersPosition(Position pos) => _preferences.Any(p =>
+            p.Kind == GMPreference.PositionKind && p.PositionInt == (int)pos);
+
+        /// <summary>
+        /// An approved ask during the offseason months becomes a standing preference:
+        /// in coach-only mode the AI GM runs the draft and the market himself, and
+        /// these are what he remembers you asking for. In season an approved ask is
+        /// executed on the spot by the caller, so there's nothing to store.
+        /// </summary>
+        private void RecordPreference(RosterRequest request)
+        {
+            // Default 6 only for a clock-less rig (tests); production always has a date.
+            // June through September: the draft, free agency, and the long tail of it.
+            int month = GameManager.Instance?.CurrentDate.Month ?? 6;
+            if (month < 6 || month > 9) return;
+
+            switch (request.Type)
+            {
+                case RosterRequestType.SignFreeAgent:
+                case RosterRequestType.TradePlayer:
+                    Remember(GMPreference.TargetKind, request.TargetPlayerId, 0);
+                    // A named free agent also stands for his position, so the bias
+                    // survives him signing elsewhere.
+                    var pos = GameManager.Instance?.PlayerDatabase
+                        ?.GetPlayer(request.TargetPlayerId)?.Position;
+                    if (pos.HasValue) Remember(GMPreference.PositionKind, null, (int)pos.Value);
+                    break;
+
+                case RosterRequestType.AcquireGuard:
+                    Remember(GMPreference.PositionKind, null, (int)Position.PointGuard);
+                    Remember(GMPreference.PositionKind, null, (int)Position.ShootingGuard);
+                    break;
+                case RosterRequestType.AcquireBigMan:
+                    Remember(GMPreference.PositionKind, null, (int)Position.PowerForward);
+                    Remember(GMPreference.PositionKind, null, (int)Position.Center);
+                    break;
+                case RosterRequestType.AcquireShooter:
+                    Remember(GMPreference.PositionKind, null, (int)Position.ShootingGuard);
+                    Remember(GMPreference.PositionKind, null, (int)Position.SmallForward);
+                    break;
+                case RosterRequestType.AcquireDefender:
+                    Remember(GMPreference.PositionKind, null, (int)Position.SmallForward);
+                    break;
+            }
+        }
+
+        /// <summary>Store a preference, or weight up one he's already heard.</summary>
+        private void Remember(string kind, string playerId, int positionInt)
+        {
+            if (kind == GMPreference.TargetKind && string.IsNullOrEmpty(playerId)) return;
+
+            var existing = _preferences.FirstOrDefault(p => p.Kind == kind &&
+                p.PlayerId == playerId && p.PositionInt == positionInt);
+            if (existing != null) { existing.Weight += 1f; return; }
+
+            _preferences.Add(new GMPreference
+            {
+                Kind = kind, PlayerId = playerId, PositionInt = positionInt, Weight = 1f
+            });
         }
 
         /// <summary>
@@ -110,6 +199,9 @@ namespace NBAHeadCoach.Core.AI
 
             // Update history
             _requestHistory.UpdateRequestResult(request.RequestId, result);
+
+            // An approved summer ask sticks: it biases what the GM does on his own
+            if (result?.IsApproved == true) RecordPreference(request);
 
             // Possibly reveal a personality trait
             if (result.RevealedTrait != null && !_discoveredTraits.Contains(result.RevealedTrait))
@@ -519,6 +611,26 @@ namespace NBAHeadCoach.Core.AI
         public int TotalRequests;
         public int ApprovedRequests;
         public int DeniedRequests;
+        /// <summary>O6 consultation: approved summer asks. Empty in older saves.</summary>
+        public List<GMPreference> Preferences = new List<GMPreference>();
+    }
+
+    /// <summary>
+    /// Something the coach talked the GM into during the summer — a named target or
+    /// a position of need. The AI GM's draft board and free-agent targeting read
+    /// these; OffseasonManager clears them at rollover.
+    /// </summary>
+    [Serializable]
+    public class GMPreference
+    {
+        public const string TargetKind = "target";
+        public const string PositionKind = "position";
+
+        /// <summary>TargetKind (a named player/prospect) or PositionKind.</summary>
+        public string Kind;
+        public string PlayerId;      // TargetKind only
+        public int PositionInt;      // PositionKind only (Data.Position)
+        public float Weight = 1f;    // how many times he heard it
     }
 
     /// <summary>

@@ -248,9 +248,11 @@ namespace NBAHeadCoach.Core.Manager
             if (_prospects.Count == 0)
                 return null;
             
-            // Score each prospect
+            // Score each prospect. One RNG for the whole board: a fresh Random per
+            // prospect shares the TickCount seed and gives every one the same offset.
+            var rng = new System.Random(pickNumber * 7919 + (teamId?.GetHashCode() ?? 0));
             var scoredProspects = new List<(DraftProspect prospect, float score)>();
-            
+
             foreach (var prospect in _prospects)
             {
                 float score = prospect.ProjectedOverall + prospect.Potential * 0.3f;
@@ -258,12 +260,17 @@ namespace NBAHeadCoach.Core.Manager
                 // Boost for team needs
                 if (needs != null && needs.PositionNeeds.Contains(prospect.Position))
                     score += 5;
-                
+
+                // A prospect the front office was told to want by name (O6 coach
+                // consultation) gets a bigger nudge — still a weight, not an override.
+                if (needs != null && needs.PreferredProspectIds.Contains(prospect.ProspectId))
+                    score += 8;
+
                 // Penalize for high bust probability
                 score -= prospect.BustProbability * 10;
                 
                 // Add some randomness
-                score += (float)new System.Random().NextDouble() * 5 - 2.5f;
+                score += (float)rng.NextDouble() * 5 - 2.5f;
                 
                 scoredProspects.Add((prospect, score));
             }
@@ -365,6 +372,8 @@ namespace NBAHeadCoach.Core.Manager
     public class TeamNeeds
     {
         public List<Position> PositionNeeds = new List<Position>();
+        /// <summary>Prospects the front office was asked for by name (O6 consultation).</summary>
+        public List<string> PreferredProspectIds = new List<string>();
         public bool NeedsScoring;
         public bool NeedsDefense;
         public bool NeedsPlaymaking;

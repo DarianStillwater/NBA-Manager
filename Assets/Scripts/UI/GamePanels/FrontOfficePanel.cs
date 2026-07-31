@@ -1415,13 +1415,21 @@ namespace NBAHeadCoach.UI.GamePanels
             {
                 var row = PlayerRow(rt, $"W_{prospect.ProspectId}", ProspectLine(gm, prospect));
                 if (off.WorkoutInvites.Contains(prospect.ProspectId)) continue;
-                if (off.WorkoutInvitesRemaining <= 0) continue;
+                // Coach-only: the GM spends all six invites the day the window opens, so
+                // the ask has to stay live — it's the only way to name a prospect to him.
+                if (!viaGM && off.WorkoutInvitesRemaining <= 0) continue;
 
                 string pid = prospect.ProspectId, name = prospect.FullName;
                 RowButton(row, "Invite", viaGM ? "ASK GM" : "INVITE", UITheme.Success, () =>
                 {
                     Action act = () =>
                     {
+                        if (off.WorkoutInvitesRemaining <= 0)
+                        {
+                            _status = $"Noted — the workout slots are already spent, " +
+                                      $"but {name} is on his board now.";
+                            return;
+                        }
                         bool ok = OffseasonManager.Instance.InviteToWorkout(GameManager.Instance, pid,
                             out string why);
                         _status = ok ? $"{name} worked out for us — report filed."

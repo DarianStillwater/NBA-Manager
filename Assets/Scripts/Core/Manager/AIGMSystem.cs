@@ -22,11 +22,17 @@ namespace NBAHeadCoach.Core.Manager
 
             EnsureInitialized(gm);
 
+            // Single narrator: through the summer every AI-GM message comes from
+            // OffseasonManager (which is actually doing things), so the vague daily
+            // chatter stays out of it.
+            if (OffseasonManager.Instance?.EngineActive == true) return;
+
             var actions = AIGMController.Instance.ProcessDailyDecisions();
             if (actions == null) return;
             foreach (var action in actions)
             {
-                InboxService.Instance?.Publish(InboxMessageType.League, "Front Office",
+                InboxService.Instance?.Publish(InboxMessageType.League,
+                    AIGMController.Instance.GMName ?? "Front Office",
                     action, "Word from the front office.", deepLinkPanelId: "FrontOffice");
             }
         }

@@ -302,13 +302,33 @@ namespace NBAHeadCoach.Core.Manager
                 .ToList();
             if (candidates.Count == 0) return;
 
-            var team = candidates[_rng.Next(candidates.Count)];
+            // Coach-only: the player's team bids like anyone else, and the coach's
+            // approved asks decide which free agents it chases (O6 consultation).
+            var team = PreferredBidder(candidates, playerId, player)
+                       ?? candidates[_rng.Next(candidates.Count)];
             long bidSalary = top > 0 ? (long)(top * ESCALATION) : ask;
             int years = ask >= STAR_VALUE ? 3 + _rng.Next(2) : 1 + _rng.Next(3);
 
             var terms = Afford(team.TeamId, playerId, player, bidSalary, years);
             if (terms == null) return;
             RecordBid(playerId, team.TeamId, terms);
+        }
+
+        /// <summary>
+        /// The player's own team, when the AI GM is running it and the coach asked
+        /// for this free agent (by name or by position). Null in GM mode, or when
+        /// the team can't be a bidder today anyway.
+        /// </summary>
+        private Team PreferredBidder(List<Team> candidates, string playerId, Player player)
+        {
+            string me = _playerTeamSource();
+            if (string.IsNullOrEmpty(me) || RolePermissions.CanMakeRosterMoves) return null;
+
+            var mine = candidates.FirstOrDefault(t => t.TeamId == me);
+            if (mine == null) return null;
+
+            var gm = AI.AIGMController.Instance;
+            return gm.PrefersPlayer(playerId) || gm.PrefersPosition(player.Position) ? mine : null;
         }
 
         private void RecordBid(string playerId, string teamId, Terms terms)
@@ -407,7 +427,10 @@ namespace NBAHeadCoach.Core.Manager
                         $"({best.Years}yr, {Money(best.AnnualAverage)}/yr) — {original} must match.");
 
             bool mine = fa.PreviousTeamId == _playerTeamSource();
-            if (mine || OffseasonManager.MarketValue(player) >= STAR_VALUE)
+            // Coach-only: you can't answer the sheet, and the GM resolves it the same
+            // tick — his verdict is the only note worth sending.
+            bool coachOnly = mine && !RolePermissions.CanMakeRosterMoves;
+            if (!coachOnly && (mine || OffseasonManager.MarketValue(player) >= STAR_VALUE))
                 InboxService.Instance?.Publish(InboxMessageType.League,
                     mine ? "Front Office" : "League Office",
                     mine
@@ -426,18 +449,47 @@ namespace NBAHeadCoach.Core.Manager
         {
             // Strictly after the deadline: the stated match-by day is the player's to use
             foreach (var sheet in _sheets.Where(s => s.MatchDeadline.Date < date.Date).ToList())
-            {
-                var offer = sheet.OfferSheets.FirstOrDefault();
-                if (offer == null) { _sheets.Remove(sheet); continue; }
+                ResolveSheet(sheet, walkNote: "no match");
+        }
 
-                if (ShouldMatch(sheet, offer) && TryMatch(sheet, offer))
-                    _sheets.Remove(sheet);
-                else
-                {
-                    Sign(offer, note: "no match");
-                    _sheets.Remove(sheet);
-                }
+        /// <summary>
+        /// Coach-only (O6): the AI GM answers YOUR offer sheets the day they land
+        /// rather than letting the deadline decide. Returns what he did, so the
+        /// caller can narrate it. The deadline sweep stays as the backstop.
+        /// </summary>
+        public List<(string playerId, bool matched, bool wantedToMatch)> AIResolveOwnTeamSheets()
+        {
+            var decided = new List<(string, bool, bool)>();
+            string me = _playerTeamSource();
+            if (string.IsNullOrEmpty(me)) return decided;
+
+            foreach (var sheet in _sheets.Where(s => s.OriginalTeamId == me).ToList())
+            {
+                // Read the verdict before resolving so the caller can tell "not worth it"
+                // from "wanted him but the CBA wouldn't allow the match".
+                var offer = sheet.OfferSheets.FirstOrDefault();
+                bool wanted = offer != null && ShouldMatch(sheet, offer);
+                decided.Add((sheet.PlayerId,
+                    ResolveSheet(sheet, walkNote: "declined match", byOurGM: true), wanted));
             }
+            return decided;
+        }
+
+        /// <summary>
+        /// Front-office verdict on one sheet: match if the heuristic likes it and the
+        /// CBA allows, otherwise the bidding team gets him. The sheet is closed either
+        /// way. Returns true when it was matched. byOurGM: the AI GM is answering for
+        /// us and narrates the walk himself, so the wire note is suppressed.
+        /// </summary>
+        private bool ResolveSheet(RestrictedFreeAgentStatus sheet, string walkNote, bool byOurGM = false)
+        {
+            var offer = sheet.OfferSheets.FirstOrDefault();
+            if (offer == null) { _sheets.Remove(sheet); return false; }
+
+            bool matched = ShouldMatch(sheet, offer) && TryMatch(sheet, offer);
+            if (!matched) Sign(offer, note: walkNote, quietLoss: byOurGM);
+            _sheets.Remove(sheet);
+            return matched;
         }
 
         /// <summary>
@@ -482,7 +534,8 @@ namespace NBAHeadCoach.Core.Manager
 
         // ==================== SIGNING ====================
 
-        private bool Sign(FreeAgentOffer offer, string note = null)
+        /// <summary>quietLoss: our GM narrates this departure himself — skip the wire note.</summary>
+        private bool Sign(FreeAgentOffer offer, string note = null, bool quietLoss = false)
         {
             var player = _db?.GetPlayer(offer.PlayerId);
             var team = FindTeam(offer.TeamId);
@@ -519,17 +572,46 @@ namespace NBAHeadCoach.Core.Manager
             bool mine = offer.TeamId == me;
             bool lost = !mine && previousTeamId == me;
             long value = OffseasonManager.MarketValue(player);
-            if (mine || lost || value >= STAR_VALUE)
-                InboxService.Instance?.Publish(InboxMessageType.League, "League Office",
-                    lost
-                        ? $"{player.FullName} leaves for {team.Name}"
-                        : $"{player.FullName} signs with {team.Name}",
+
+            // Coach-only: a move on OUR roster is the GM reporting in, not the wire
+            bool byOurGM = mine && !RolePermissions.CanMakeRosterMoves;
+            if (!(quietLoss && lost) && (mine || lost || value >= STAR_VALUE))
+                InboxService.Instance?.Publish(InboxMessageType.League,
+                    byOurGM ? RolePermissions.AIGMName : "League Office",
+                    byOurGM
+                        ? $"I signed {player.FullName} — {offer.Years}yr, " +
+                          $"{Money(offer.AnnualAverage * offer.Years)} total"
+                        : lost
+                            ? $"{player.FullName} leaves for {team.Name}"
+                            : $"{player.FullName} signs with {team.Name}",
                     $"{offer.Years} years at {Money(offer.AnnualAverage)} a year" +
-                    (string.IsNullOrEmpty(note) ? "." : $" ({note})."),
+                    (string.IsNullOrEmpty(note) ? "." : $" ({note}).") +
+                    (byOurGM ? GMSigningNote(player) : ""),
                     highPriority: mine || lost,
                     deepLinkPanelId: "FrontOffice");
             return true;
         }
+
+        /// <summary>Why the GM says he did it — naming the consultation when it applied.</summary>
+        private static string GMSigningNote(Player player)
+        {
+            var gm = AI.AIGMController.Instance;
+            if (gm.PrefersPlayer(player.PlayerId))
+                return $" You asked for {player.FullName} — he's ours.";
+            if (gm.PrefersPosition(player.Position))
+                return $" You wanted help at {PosWord(player.Position)}; he's it.";
+            return $" We needed the {PosWord(player.Position)} minutes.";
+        }
+
+        /// <summary>Plain-English position, for GM narration.</summary>
+        internal static string PosWord(Position pos) => pos switch
+        {
+            Position.PointGuard => "point guard",
+            Position.ShootingGuard => "shooting guard",
+            Position.SmallForward => "wing",
+            Position.PowerForward => "power forward",
+            _ => "center"
+        };
 
         private void PublishDigest()
         {

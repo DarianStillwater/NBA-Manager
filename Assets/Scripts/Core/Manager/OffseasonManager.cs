@@ -365,22 +365,61 @@ namespace NBAHeadCoach.Core.Manager
             return true;
         }
 
-        /// <summary>Deadline day: auto-tender anyone worth more than his QO.</summary>
-        private void AutoResolveQualifyingOffers(GameManager gm)
+        /// <summary>
+        /// The front office files the qualifying offers itself: tender anyone worth
+        /// more than his QO, let the rest walk. Runs at the deadline in GM mode
+        /// (asGM: false, the backstop) and the day they land in coach-only mode
+        /// (asGM: true, where it's the GM's call to begin with).
+        /// </summary>
+        private void ResolveQualifyingOffers(GameManager gm, bool asGM)
         {
+            if (_pendingQOs.Count == 0) return;
+
+            var tendered = new List<string>();
+            var walked = new List<string>();
+            var failed = new List<string>();   // worth tendering, but the tender wouldn't file
             foreach (var qo in _pendingQOs.ToList())
             {
                 var player = gm.PlayerDatabase?.GetPlayer(qo.PlayerId);
-                if (player != null && MarketValue(player) >= (long)qo.Amount)
-                    gm.FreeAgents?.ExtendQualifyingOffer(qo.TeamId, qo.PlayerId, qo.PriorSalary);
+                string name = player?.FullName ?? qo.PlayerId;
+                bool warranted = player != null && MarketValue(player) >= (long)qo.Amount;
+                if (warranted &&
+                    gm.FreeAgents?.ExtendQualifyingOffer(qo.TeamId, qo.PlayerId, qo.PriorSalary) == true)
+                    tendered.Add(name);
+                else if (warranted)
+                    failed.Add(name);
+                else
+                    walked.Add(name);
             }
-            if (_pendingQOs.Count > 0)
-                InboxService.Instance?.Publish(InboxMessageType.League, Data.RolePermissions.AIGMName,
-                    "Qualifying offers filed",
-                    "The deadline passed with decisions outstanding, so we tendered everyone worth more " +
-                    "than his qualifying offer and let the rest walk.");
             _pendingQOs.Clear();
+
+            string body = asGM
+                ? (tendered.Count > 0
+                      ? $"I tendered offers to {Names(tendered)} — first refusal is worth the slot."
+                      : "I tendered nobody.") +
+                  (walked.Count > 0
+                      ? $" Let {Names(walked)} walk; the market outgrew what we could hold him at."
+                      : "")
+                : "The deadline passed with decisions outstanding, so we tendered everyone worth more " +
+                  "than his qualifying offer and let the rest walk.";
+
+            if (failed.Count > 0)
+                body += $" Wanted to tender {Names(failed)} — the paperwork wouldn't file, " +
+                        "so he's unrestricted.";
+
+            InboxService.Instance?.Publish(InboxMessageType.League, Data.RolePermissions.AIGMName,
+                asGM ? "Qualifying offers are in" : "Qualifying offers filed", body,
+                deepLinkPanelId: "FrontOffice");
         }
+
+        /// <summary>"A", "A and B", "A, B and C" — for GM narration.</summary>
+        private static string Names(List<string> names) => names.Count switch
+        {
+            0 => "",
+            1 => names[0],
+            2 => $"{names[0]} and {names[1]}",
+            _ => string.Join(", ", names.Take(names.Count - 1)) + $" and {names[names.Count - 1]}"
+        };
 
         /// <summary>Builds the market on first use (and after a load).</summary>
         private FreeAgencyMarket EnsureMarket(GameManager gm)
@@ -430,10 +469,13 @@ namespace NBAHeadCoach.Core.Manager
             {
                 if (!_postSeasonDone) { RunPostSeason(gm); _postSeasonDone = true; }
 
-                // Strictly after the stated deadline, so the deadline day is usable
-                if (_pendingQOs.Count > 0 &&
-                    date.Date > OffseasonDates.QualifyingOfferDeadline(_calendarYear).Date)
-                    AutoResolveQualifyingOffers(gm);
+                // Coach-only: the GM files them the day they land and tells you what
+                // he did. GM mode: strictly after the deadline, so the day is usable.
+                if (_pendingQOs.Count > 0 && !Data.RolePermissions.CanMakeRosterMoves)
+                    ResolveQualifyingOffers(gm, asGM: true);
+                else if (_pendingQOs.Count > 0 &&
+                         date.Date > OffseasonDates.QualifyingOfferDeadline(_calendarYear).Date)
+                    ResolveQualifyingOffers(gm, asGM: false);
 
                 if (!_workoutsOpened && !_draftDone && date >= OffseasonDates.Workouts(_calendarYear))
                 { OpenWorkouts(gm); _workoutsOpened = true; }
@@ -567,8 +609,9 @@ namespace NBAHeadCoach.Core.Manager
                     IsRfaEligible(player, contract, seasonYear))
                 {
                     long qo = fam0.ComputeQualifyingOfferAmount(player, contract.CurrentYearSalary);
-                    bool mine = contract.TeamId == gm.PlayerTeamId &&
-                                Data.RolePermissions.CanMakeRosterMoves;
+                    // Our own expirings become pending decisions in both modes — in
+                    // coach-only the AI GM resolves them on the same tick and narrates.
+                    bool mine = contract.TeamId == gm.PlayerTeamId;
                     if (mine)
                         _pendingQOs.Add(new QualifyingOffer
                         {
@@ -594,7 +637,7 @@ namespace NBAHeadCoach.Core.Manager
                 $"Contracts have expired across the league. {tendered} qualifying offers were tendered, " +
                 "making those players restricted. Free agency opens July 6.");
 
-            if (_pendingQOs.Count > 0)
+            if (_pendingQOs.Count > 0 && Data.RolePermissions.CanMakeRosterMoves)
                 inbox?.Publish(InboxMessageType.League, "Front Office",
                     $"{_pendingQOs.Count} qualifying offer decision(s) on your desk",
                     "Tender to keep first refusal on a restricted free agent, or withhold and let him " +
@@ -717,7 +760,12 @@ namespace NBAHeadCoach.Core.Manager
         /// </summary>
         private void OpenWorkouts(GameManager gm)
         {
-            if (!Data.RolePermissions.CanMakeRosterMoves) return;   // the GM runs his own gym
+            if (!Data.RolePermissions.CanMakeRosterMoves)
+            {
+                // The GM runs his own gym: he spends all six the day the window opens
+                RunRemainingWorkouts(gm);
+                return;
+            }
             InboxService.Instance?.Publish(InboxMessageType.Scouting, "Scouting Department",
                 "Pre-draft workouts are open",
                 $"We can bring in {MaxWorkoutInvites} prospects before the {OffseasonDates.Draft(_calendarYear):MMM d} " +
@@ -775,22 +823,36 @@ namespace NBAHeadCoach.Core.Manager
                 .Where(t => t != null).OrderBy(t => t.Wins).ThenBy(t => t.TeamId)
                 .ToList().FindIndex(t => t.TeamId == gm.PlayerTeamId) + 1);
 
+            // Prospects the coach asked about go first, then whoever sits near our slot
+            var wanted = AI.AIGMController.Instance;
             var filled = new List<string>();
+            var names = new List<string>();
             foreach (var prospect in WorkoutPool(gm)
                          .Where(p => p != null && !_workoutInvites.Contains(p.ProspectId))
-                         .OrderBy(p => Math.Abs(p.Intel.ConsensusRank - slot))
+                         .OrderByDescending(p => wanted.PrefersPlayer(p.ProspectId) ? 1 : 0)
+                         .ThenByDescending(p => wanted.PrefersPosition(p.Position) ? 1 : 0)
+                         .ThenBy(p => Math.Abs(p.Intel.ConsensusRank - slot))
                          .Take(remaining))
             {
                 string summary = gm.Scouting?.FileWorkoutReport(prospect);
                 if (summary == null) return;
                 _workoutInvites.Add(prospect.ProspectId);
                 filled.Add($"{prospect.FullName} — {summary}");
+                names.Add(prospect.FullName);
             }
+            if (filled.Count == 0) return;
 
-            if (filled.Count > 0 && Data.RolePermissions.CanMakeRosterMoves)
+            if (Data.RolePermissions.CanMakeRosterMoves)
                 InboxService.Instance?.Publish(InboxMessageType.Scouting, "Scouting Department",
                     $"{filled.Count} last-minute workout(s) around pick #{slot}",
                     string.Join("\n\n", filled), deepLinkPanelId: "FrontOffice");
+            else
+                InboxService.Instance?.Publish(InboxMessageType.Scouting,
+                    Data.RolePermissions.AIGMName,
+                    $"I'm bringing {filled.Count} prospect(s) in before the draft",
+                    $"Workouts booked around pick #{slot}: {Names(names)}. Reports are on the " +
+                    "draft board — come watch if you want a look at them yourself.",
+                    deepLinkPanelId: "FrontOffice");
         }
 
         /// <summary>
@@ -1055,6 +1117,16 @@ namespace NBAHeadCoach.Core.Manager
                     return;
                 }
 
+                // Coach-only: rivals still call about our slot, and the GM answers
+                // them himself before he picks.
+                if (teamId == pid && !string.IsNullOrEmpty(pid))
+                {
+                    AIGMHandleOnClockOffers(gm, _nextPick);
+                    // Taking a trade-up call re-enters the night through the ownership
+                    // refresh; if it did, that pass finished the draft and we're done.
+                    if (_draftDone || _draft.GetTeamAtPick(_nextPick) != teamId) return;
+                }
+
                 DoAIPick(gm, _nextPick, teamId);
                 ConsumePick(gm);
             }
@@ -1087,10 +1159,81 @@ namespace NBAHeadCoach.Core.Manager
             return true;
         }
 
+        /// <summary>
+        /// Coach-only draft night: the GM evaluates the trade-up calls on our slot
+        /// with the normal AI trade evaluator and answers them, narrated. Accepting
+        /// hands the slot over, which routes the pick to its new owner.
+        /// </summary>
+        private void AIGMHandleOnClockOffers(GameManager gm, int pick)
+        {
+            if (Data.RolePermissions.CanMakeRosterMoves) return;
+
+            GenerateOnClockOffers(gm, pick);
+            var offers = gm?.TradeOfferGenerator?.GetPendingOffers()
+                ?.Where(o => o.OfferId?.StartsWith(OnClockOfferPrefix) == true).ToList();
+            if (offers == null || offers.Count == 0) return;
+
+            foreach (var offer in offers)
+            {
+                var eval = gm.TradeEvaluator?.EvaluateTrade(offer.Proposal, gm.PlayerTeamId);
+                bool took = eval?.IsAcceptable == true &&
+                            gm.TradeDesk?.AcceptIncomingOffer(offer.OfferId, gm.CurrentDate)
+                                ?.Status == TradeStatus.Completed;
+                // No desk to decline through: kill the offer here, or it stays Pending
+                // and blocks (then wrongly re-answers under) every later pick.
+                if (!took)
+                {
+                    if (gm.TradeDesk != null) gm.TradeDesk.DeclineIncomingOffer(offer.OfferId);
+                    else offer.Status = IncomingOfferStatus.Expired;
+                }
+
+                string them = gm.GetTeam(offer.OfferingTeamId)?.Name ?? offer.OfferingTeamId;
+                InboxService.Instance?.Publish(InboxMessageType.League,
+                    Data.RolePermissions.AIGMName,
+                    took ? $"I moved the #{pick} pick to {them}"
+                         : $"I turned down {them} on the #{pick} pick",
+                    (took
+                        ? $"They wanted up badly enough to pay for it, so the slot is theirs. "
+                        : $"Their package didn't cover the slot, so we're still picking at #{pick}. ") +
+                    (eval?.Reasoning ?? ""),
+                    deepLinkPanelId: "FrontOffice");
+
+                if (took) return;   // the slot is gone; nothing left to answer
+            }
+        }
+
+        /// <summary>
+        /// What the coach talked the GM into this summer, in the shape the draft board
+        /// reads. Null when nothing was approved — then it's pure best-available.
+        /// </summary>
+        private static TeamNeeds PlayerTeamNeeds()
+        {
+            var wanted = AI.AIGMController.Instance;
+            var needs = new TeamNeeds();
+            needs.PositionNeeds.AddRange(wanted.PreferredPositions);
+            needs.PreferredProspectIds.AddRange(wanted.PreferredPlayerIds);
+            return needs.PositionNeeds.Count == 0 && needs.PreferredProspectIds.Count == 0
+                ? null : needs;
+        }
+
+        /// <summary>The consultation line, when the coach's ask is why this kid is ours.</summary>
+        private static string ConsultNote(TeamNeeds needs, DraftProspect prospect)
+        {
+            if (needs == null || prospect == null) return "";
+            if (needs.PreferredProspectIds.Contains(prospect.ProspectId))
+                return " You asked about him by name — he was there, so we took him.";
+            if (needs.PositionNeeds.Contains(prospect.Position))
+                return $" You asked for {FreeAgencyMarket.PosWord(prospect.Position)} help — he fits.";
+            return "";
+        }
+
         private void AutoPickPending(GameManager gm)
         {
             if (!_onTheClock || _draft == null) return;
-            var selection = _draft.AISelectPick(_nextPick, gm.PlayerTeamId);
+            // The coach's asks are the GM's marching orders, not the war room's: in GM
+            // mode a clock expiry is pure best-available.
+            var needs = Data.RolePermissions.CanMakeRosterMoves ? null : PlayerTeamNeeds();
+            var selection = _draft.AISelectPick(_nextPick, gm.PlayerTeamId, needs);
             var drafted = selection?.DraftedPlayer;
             if (drafted != null)
             {
@@ -1098,7 +1241,8 @@ namespace NBAHeadCoach.Core.Manager
                 _playerPickResults.Add($"#{_nextPick}: {drafted.FullName} ({drafted.Position}) [auto]");
                 InboxService.Instance?.Publish(InboxMessageType.League, "War Room",
                     $"Clock expired — {drafted.FullName} selected at #{_nextPick}",
-                    "The war room went best-available when the clock ran out.",
+                    "The war room went best-available when the clock ran out." +
+                    ConsultNote(needs, selection.Prospect),
                     highPriority: true);
             }
             ConsumePick(gm);
@@ -1108,15 +1252,19 @@ namespace NBAHeadCoach.Core.Manager
 
         private void DoAIPick(GameManager gm, int pick, string teamId)
         {
-            var selection = _draft.AISelectPick(pick, teamId);
+            bool mine = teamId == gm.PlayerTeamId && !string.IsNullOrEmpty(teamId);
+            var needs = mine ? PlayerTeamNeeds() : null;
+            var selection = _draft.AISelectPick(pick, teamId, needs);
             var drafted = selection?.DraftedPlayer;
-            if (drafted != null && teamId == gm.PlayerTeamId)
+            if (drafted != null && mine)
             {
                 // Coach-only: the GM ran the war room
+                _playerPickResults.Add($"#{pick}: {drafted.FullName} ({drafted.Position})");
                 InboxService.Instance?.Publish(InboxMessageType.League,
                     Data.RolePermissions.AIGMName,
-                    $"We took {drafted.FullName} at #{pick}",
-                    $"{drafted.FullName} ({drafted.Position}) is our pick. Get him ready.",
+                    $"With #{pick} I took {drafted.FullName}",
+                    $"{drafted.FullName} ({drafted.Position}) was the best board left at a spot " +
+                    $"we needed.{ConsultNote(needs, selection.Prospect)} Get him ready.",
                     highPriority: true, deepLinkPanelId: "Roster", deepLinkPayload: drafted.PlayerId);
             }
             if (drafted == null) return;
@@ -1139,6 +1287,7 @@ namespace NBAHeadCoach.Core.Manager
 
         private void FinishDraft(GameManager gm)
         {
+            if (_draftDone) return;   // a mid-loop trade can finish the night re-entrantly
             _draftDone = true;
             _onTheClock = false;
             gm.DraftPickRegistry?.ProcessDraftCompletion(_calendarYear);
@@ -1337,7 +1486,39 @@ namespace NBAHeadCoach.Core.Manager
             if (fam == null) return;
 
             EnsureMarket(gm)?.RunDay(date);
+            if (!Data.RolePermissions.CanMakeRosterMoves) AIGMResolveOfferSheets(gm);
             RunScrapHeap(gm);
+        }
+
+        /// <summary>
+        /// Coach-only: the GM answers an offer sheet on one of our restricted free
+        /// agents the day it lands — a day before the match deadline the sheet set,
+        /// which stays as the backstop. Each call gets its own note.
+        /// </summary>
+        private void AIGMResolveOfferSheets(GameManager gm)
+        {
+            var decided = _market?.AIResolveOwnTeamSheets();
+            if (decided == null) return;
+
+            foreach (var (playerId, matched, wantedToMatch) in decided)
+            {
+                // A match already signed him, and the signing path posts the GM's note
+                // for it — one narrator per event.
+                if (matched) continue;
+
+                var player = gm.PlayerDatabase?.GetPlayer(playerId);
+                string name = player?.FullName ?? playerId;
+                InboxService.Instance?.Publish(InboxMessageType.League,
+                    Data.RolePermissions.AIGMName,
+                    $"I let {name} go on the offer sheet",
+                    wantedToMatch
+                        ? "I wanted to match that sheet and couldn't fit it under the rules. " +
+                          "He's theirs."
+                        : "That sheet was over what he's worth to us, and matching it would have " +
+                          "cost us the flexibility we need. He's theirs.",
+                    highPriority: true, deepLinkPanelId: "FrontOffice",
+                    deepLinkPayload: playerId);
+            }
         }
 
         /// <summary>
@@ -1397,7 +1578,9 @@ namespace NBAHeadCoach.Core.Manager
                 signed++;
 
                 if (team.TeamId == gm.PlayerTeamId)
-                    InboxService.Instance?.Publish(InboxMessageType.League, "League Office",
+                    InboxService.Instance?.Publish(InboxMessageType.League,
+                        Data.RolePermissions.CanMakeRosterMoves
+                            ? "League Office" : Data.RolePermissions.AIGMName,
                         $"{player.FullName} signs with {team.Name}",
                         offer.Method == SigningMethod.MinimumSalary
                             ? $"{offer.Years} year(s) at the minimum."
@@ -1466,7 +1649,9 @@ namespace NBAHeadCoach.Core.Manager
                     _market?.DropPlayer(fa.PlayerId);
 
                     if (team.TeamId == gm.PlayerTeamId)
-                        InboxService.Instance?.Publish(InboxMessageType.League, "Front Office",
+                        InboxService.Instance?.Publish(InboxMessageType.League,
+                            Data.RolePermissions.CanMakeRosterMoves
+                                ? "Front Office" : Data.RolePermissions.AIGMName,
                             $"{player.FullName} accepts his qualifying offer",
                             $"No offer sheet came in, so he takes the one-year deal at " +
                             $"${offer.AnnualSalary / 1_000_000f:0.0}M and is back in camp.",
@@ -1795,6 +1980,7 @@ namespace NBAHeadCoach.Core.Manager
             _engineActive = false;
             _market = null;
             _pendingQOs.Clear();
+            AI.AIGMController.Instance.ClearPreferences();   // the summer's asks expire
             _preseasonEvents.Clear();   // exhibitions are done; don't ghost-inject PRE rows into next save
 
             PlayoffManager.Instance?.ResetForNewSeason();

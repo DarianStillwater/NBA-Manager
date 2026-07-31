@@ -885,6 +885,9 @@ namespace NBAHeadCoach.Core
             // GM-only hires get their named AI coach installed on the new bench
             ApplyAICoachToPlayerTeam();
 
+            // New job, new front office: last summer's asks don't follow you
+            AIGMController.Instance.ClearPreferences();
+
             // The new owner sets expectations on day one
             _jobSecurityManager?.InitializeForNewSeason(_career, teamId);
             _careerStakes?.SetPlayerSeasonExpectations();
