@@ -62,6 +62,9 @@ namespace NBAHeadCoach.Core.Simulation
         private readonly MoraleChemistryManager _morale;
         private readonly Func<string, Team> _teamLookup;
 
+        /// <summary>Longest a camp exhibition can put someone out.</summary>
+        public const int PreseasonMaxInjuryDays = 5;
+
         /// <summary>
         /// Fires after all steps for a game. Future consumers: form updates,
         /// development credit, transaction/news publication.
@@ -112,32 +115,46 @@ namespace NBAHeadCoach.Core.Simulation
             var homeTeam = _teamLookup?.Invoke(result.HomeTeamId);
             var awayTeam = _teamLookup?.Invoke(result.AwayTeamId);
 
-            // 1. Season stats + game logs for every participant
-            GameStatRecorder.Record(result, ctx.GameEvent.EventId, ctx.GameEvent.Date,
-                _db, homeTeam, awayTeam, ctx.IsPlayoff, ctx.PlayoffRound);
+            // Camp exhibition: the tape counts, the box score doesn't. Nothing that
+            // feeds a season number (stats, form, league averages, W/L) runs — the
+            // physical cost does, at half price with capped injuries.
+            bool preseason = ctx.GameEvent.IsPreseason;
 
-            // 1b. Form: recompute each participant's hot/cold streak from their
-            //     freshly-recorded recent games.
-            if (result.BoxScore?.PlayerStats != null && _db != null)
+            if (!preseason)
             {
-                foreach (var stats in result.BoxScore.PlayerStats.Values)
+                // 1. Season stats + game logs for every participant
+                GameStatRecorder.Record(result, ctx.GameEvent.EventId, ctx.GameEvent.Date,
+                    _db, homeTeam, awayTeam, ctx.IsPlayoff, ctx.PlayoffRound);
+
+                // 1b. Form: recompute each participant's hot/cold streak from their
+                //     freshly-recorded recent games.
+                if (result.BoxScore?.PlayerStats != null && _db != null)
                 {
-                    if (stats == null || stats.Minutes <= 0) continue;
-                    FormTracker.Recompute(_db.GetPlayer(stats.PlayerId));
+                    foreach (var stats in result.BoxScore.PlayerStats.Values)
+                    {
+                        if (stats == null || stats.Minutes <= 0) continue;
+                        FormTracker.Recompute(_db.GetPlayer(stats.PlayerId));
+                    }
                 }
             }
 
-            // 2. Standings + calendar completion (Team.Wins/Losses is the record authority)
+            // 2. Standings + calendar completion (Team.Wins/Losses is the record
+            //    authority). Preseason lands the score on the calendar event only —
+            //    RecordGameResult skips the W/L itself.
             _season?.RecordGameResult(ctx.GameEvent, result.HomeScore, result.AwayScore);
 
             // 3. League aggregates
-            if (result.BoxScore != null)
-                _leagueStats?.AddGameResult(result.BoxScore);
-            if (!deferAggregates)
-                FinishBatch();
+            if (!preseason)
+            {
+                if (result.BoxScore != null)
+                    _leagueStats?.AddGameResult(result.BoxScore);
+                if (!deferAggregates)
+                    FinishBatch();
+            }
 
-            // 4. Morale for both teams
-            if (_morale != null)
+            // 4. Morale for both teams — preseason must feed NO season state, so an
+            //    0-3 exhibition record can't seed a losing-streak morale penalty.
+            if (!preseason && _morale != null)
             {
                 if (homeTeam != null) _morale.ProcessGameResult(result, homeTeam, ctx.IsPlayoff);
                 if (awayTeam != null) _morale.ProcessGameResult(result, awayTeam, ctx.IsPlayoff);
@@ -145,16 +162,46 @@ namespace NBAHeadCoach.Core.Simulation
 
             // 5. Injuries + minutes load for every participant — headless games roll
             //    the same post-hoc probabilistic model interactive matches use.
-            ProcessInjuriesAndMinutes(ctx, result.BoxScore);
+            ProcessInjuriesAndMinutes(ctx, result.BoxScore, preseason);
 
-            // 6. Energy sanity: post-game values persist to the next game (there is no
+            // 6. Preseason minutes are lighter than the box score says: give back half
+            //    of what the game cost each participant.
+            if (preseason)
+                RefundHalfEnergy(result.BoxScore);
+
+            // 7. Energy sanity: post-game values persist to the next game (there is no
             //    tip-off reset); keep them in range.
             ClampParticipantEnergy(result.BoxScore);
+
+            // 8. Camp progress: the exhibition feeds training camp the same signal the
+            //    auto-scrimmage used to.
+            if (preseason)
+            {
+                Manager.OffseasonManager.Instance?.NotifyPreseasonGamePlayed(ctx.GameEvent, result);
+                // The hook's consumers are all season bookkeeping (franchise/league
+                // record books, gate revenue) — an exhibition belongs in none of them.
+                return;
+            }
 
             OnGameCompleted?.Invoke(ctx);
         }
 
-        private void ProcessInjuriesAndMinutes(in GameCompletionContext ctx, BoxScore box)
+        /// <summary>Half the energy this game charged, back in the tank.</summary>
+        private void RefundHalfEnergy(BoxScore box)
+        {
+            if (box == null || _db == null) return;
+            foreach (var stats in box.PlayerStats.Values)
+            {
+                if (stats == null || stats.EnergyAtTipoff <= 0f) continue;
+                var player = _db.GetPlayer(stats.PlayerId);
+                if (player == null) continue;
+                float spent = stats.EnergyAtTipoff - player.Energy;
+                if (spent > 0f) player.Energy += spent * 0.5f;
+            }
+        }
+
+        private void ProcessInjuriesAndMinutes(in GameCompletionContext ctx, BoxScore box,
+            bool preseason = false)
         {
             if (_injuries == null || box == null || _db == null) return;
 
@@ -188,7 +235,16 @@ namespace NBAHeadCoach.Core.Simulation
 
                     var injuryEvent = _injuries.CheckForInjury(player, context);
                     if (injuryEvent != null)
+                    {
+                        // Preseason knocks are knocks: keep the roll, cap the severity.
+                        if (preseason && injuryEvent.DaysOut > PreseasonMaxInjuryDays)
+                        {
+                            injuryEvent.DaysOut = PreseasonMaxInjuryDays;
+                            injuryEvent.OriginalDaysOut = PreseasonMaxInjuryDays;
+                            injuryEvent.Severity = InjurySeverity.Minor;
+                        }
                         _injuries.ApplyInjury(player, injuryEvent);
+                    }
                 }
 
                 // Record minutes played for load management

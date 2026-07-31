@@ -61,6 +61,16 @@ namespace NBAHeadCoach.UI.GamePanels
             var mt = UIBuilder.Text(matchRow, "M", $"{awayLabel}  @  {homeLabel}  —  {(isHome ? "HOME" : "AWAY")}", 13, FontStyle.Bold, Color.white);
             UIBuilder.Stretch(mt.gameObject); mt.alignment = TextAnchor.MiddleCenter;
 
+            // ── Preseason banner ──
+            if (_gameEvent.IsPreseason)
+            {
+                var preRow = MkRow(br, 22);
+                preRow.gameObject.AddComponent<Image>().color = UITheme.CardHeaderFrosted;
+                var pt = UIBuilder.Text(preRow, "P", "PRESEASON — result doesn't count", 11,
+                    FontStyle.Bold, UITheme.AccentPrimary);
+                UIBuilder.Stretch(pt.gameObject); pt.alignment = TextAnchor.MiddleCenter;
+            }
+
             Spacer(br, 4);
 
             // ── Tabs ──

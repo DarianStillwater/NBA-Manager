@@ -94,19 +94,20 @@ namespace NBAHeadCoach.Core.Simulation
             _foulSystem.ResetGame();
             _possessionSimulator.ResetGameState();
 
-            // Initialize player stats
-            InitializePlayerStats(homeTeam);
-            InitializePlayerStats(awayTeam);
-
             // Energy carries over between games — players tip off with whatever the
             // season (rest days, back-to-backs) left them. Guard only against raw
-            // never-initialized Players from tools/tests.
+            // never-initialized Players from tools/tests. Runs BEFORE the box score is
+            // built so EnergyAtTipoff records the tank the game actually starts from.
             foreach (var pid in homeTeam.RosterPlayerIds.Concat(awayTeam.RosterPlayerIds))
             {
                 if (string.IsNullOrEmpty(pid)) continue;
                 var p = _playerDatabase.GetPlayer(pid);
                 if (p != null && p.Energy <= 0f) p.Energy = 100f;
             }
+
+            // Initialize player stats
+            InitializePlayerStats(homeTeam);
+            InitializePlayerStats(awayTeam);
 
             // Game-day availability: injuries always sit; gassed players get a
             // rest night in the regular season (never in the playoffs).
@@ -516,7 +517,8 @@ namespace NBAHeadCoach.Core.Simulation
         {
             foreach (var playerId in team.RosterPlayerIds)
             {
-                _boxScore.InitializePlayer(playerId);
+                _boxScore.InitializePlayer(playerId,
+                    _playerDatabase?.GetPlayer(playerId)?.Energy ?? 0f);
             }
         }
 
@@ -645,9 +647,17 @@ namespace NBAHeadCoach.Core.Simulation
             AwayTeamId = awayId;
         }
 
-        public void InitializePlayer(string playerId)
+        /// <summary>
+        /// energyAtTipoff lets the completion pipeline reason about how much the game
+        /// cost a player (preseason games only charge half of it).
+        /// </summary>
+        public void InitializePlayer(string playerId, float energyAtTipoff = 0f)
         {
-            PlayerStats[playerId] = new PlayerGameStats { PlayerId = playerId };
+            PlayerStats[playerId] = new PlayerGameStats
+            {
+                PlayerId = playerId,
+                EnergyAtTipoff = energyAtTipoff
+            };
         }
 
         public void AddShotAttempt(string playerId, bool isThree)
@@ -772,6 +782,8 @@ namespace NBAHeadCoach.Core.Simulation
     {
         public string PlayerId;
         public string PlayerName;  // For UI display
+        /// <summary>Energy the player tipped off with (0 when the path didn't record it).</summary>
+        public float EnergyAtTipoff;
         public float SecondsPlayed;
         public int Minutes => Mathf.RoundToInt(SecondsPlayed / 60f);
         public int Points;

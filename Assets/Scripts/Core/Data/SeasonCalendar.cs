@@ -60,6 +60,8 @@ namespace NBAHeadCoach.Core.Data
         public string AwayTeamId;
         public bool IsHomeGame;
         public bool IsPlayoffGame;
+        /// <summary>Camp exhibition: playable, but no W/L, no season stats (absent = false).</summary>
+        public bool IsPreseason;
         public int PlayoffRound;
         public int GameNumber;         // Game 1, 2, 3... of series
 

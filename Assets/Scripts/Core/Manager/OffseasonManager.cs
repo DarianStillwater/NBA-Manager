@@ -275,6 +275,11 @@ namespace NBAHeadCoach.Core.Manager
         private bool _campStarted;
         private int _scrimmagesPlayed;
         private readonly List<string> _scrimmageLines = new List<string>();
+        /// <summary>
+        /// The player's three playable camp exhibitions, live on the season schedule so
+        /// the normal game-day loop (PreGame → play/sim → PostGame) picks them up.
+        /// </summary>
+        private readonly List<Data.CalendarEvent> _preseasonEvents = new List<Data.CalendarEvent>();
         /// <summary>The player's chosen daily training focus during camp (UI-set).</summary>
         public TrainingFocus CampFocus = TrainingFocus.TeamBuilding;
         /// <summary>Most recent camp day report, for the Front Office camp card.</summary>
@@ -403,6 +408,7 @@ namespace NBAHeadCoach.Core.Manager
             _rng = new System.Random(seasonLabel * 31 + 7);
             _market = null;              // fresh market each summer
             _pendingQOs.Clear();
+            _preseasonEvents.Clear();
             _workoutInvites.Clear();
             _workoutsOpened = _workoutsDone = false;
 
@@ -1537,10 +1543,47 @@ namespace NBAHeadCoach.Core.Manager
 
             _scrimmageLines.Clear();
             _scrimmagesPlayed = 0;
+            SchedulePreseasonGames(gm);
             InboxService.Instance?.Publish(InboxMessageType.League, "League Office",
                 "Training camps open",
-                "Pick a daily focus at the Front Office desk. Three preseason scrimmages before opening night.",
+                "Pick a daily focus at the Front Office desk. Three preseason games before opening night — " +
+                "they show up on your schedule and you can play them.",
                 deepLinkPanelId: "FrontOffice");
+        }
+
+        /// <summary>
+        /// Three playable exhibitions on the camp scrimmage days, vs random opponents,
+        /// alternating home/away. They go on the SEASON schedule, so GetTodaysGame /
+        /// GetNextGame find them and the existing game-day flow does all the work.
+        /// AI teams get no scheduled preseason games — their camps stay abstract.
+        /// </summary>
+        private void SchedulePreseasonGames(GameManager gm)
+        {
+            _preseasonEvents.Clear();
+            var team = gm?.GetPlayerTeam();
+            var season = gm?.SeasonController;
+            var opponents = gm?.AllTeams?.Where(t => t != null && t.TeamId != team?.TeamId).ToList();
+            if (team == null || season == null || opponents == null || opponents.Count == 0) return;
+
+            for (int i = 0; i < OffseasonDates.ScrimmageDays.Length; i++)
+            {
+                var opponent = opponents[_rng.Next(opponents.Count)];
+                bool home = i % 2 == 0;
+                _preseasonEvents.Add(new Data.CalendarEvent
+                {
+                    EventId = $"PRE_{_calendarYear}_{i + 1}",
+                    Type = Data.CalendarEventType.Game,
+                    IsPreseason = true,
+                    Date = new DateTime(_calendarYear, 10, OffseasonDates.ScrimmageDays[i]),
+                    Title = $"Preseason vs {opponent.Abbreviation}",
+                    HomeTeamId = home ? team.TeamId : opponent.TeamId,
+                    AwayTeamId = home ? opponent.TeamId : team.TeamId,
+                    IsHomeGame = home,
+                    GameNumber = i + 1
+                });
+            }
+
+            season.AddScheduledEvents(_preseasonEvents);
         }
 
         private void RunCampDay(GameManager gm, DateTime date)
@@ -1555,38 +1598,99 @@ namespace NBAHeadCoach.Core.Manager
 
             LastCampReport = tc.AdvanceCampDay(team, roster, CampFocus);
 
-            if (OffseasonDates.IsScrimmageDay(date) && _scrimmagesPlayed < OffseasonDates.ScrimmageDays.Length)
-                RunScrimmage(gm, team, roster, date);
+            AutoSimUnplayedPreseason(gm, date);
         }
 
-        /// <summary>A camp scrimmage: the REAL sim as an exhibition — no W/L, no stats.</summary>
-        private void RunScrimmage(GameManager gm, Data.Team team, List<Data.Player> roster, DateTime date)
+        /// <summary>
+        /// A preseason game the player never played (simmed past it, coach-only mode,
+        /// headless run) auto-sims the day AFTER its date — same completion path, so the
+        /// save state matches a played game. The calendar event's IsCompleted flag is the
+        /// no-double-sim guard: the pipeline sets it whichever path ran the game.
+        /// </summary>
+        private void AutoSimUnplayedPreseason(GameManager gm, DateTime date)
         {
-            var opponents = gm.AllTeams?.Where(t => t != null && t.TeamId != team.TeamId).ToList();
-            if (opponents == null || opponents.Count == 0) return;
-            var opponent = opponents[_rng.Next(opponents.Count)];
+            foreach (var game in _preseasonEvents)
+            {
+                if (game == null || game.IsCompleted || game.Date.Date >= date.Date) continue;
 
-            var sim = new Simulation.GameSimulator(gm.PlayerDatabase);
-            var result = sim.SimulateExhibition(team, opponent);
-            int us = result.HomeScore, them = result.AwayScore;
+                var home = gm.GetTeam(game.HomeTeamId);
+                var away = gm.GetTeam(game.AwayTeamId);
+                if (home == null || away == null || gm.GameCompletion == null)
+                {
+                    // Unplayable — mark completed with a plausible score so it never
+                    // retries, and still feed camp so progress can't stall on it.
+                    int hs = _rng.Next(90, 111), as_ = _rng.Next(90, 111);
+                    if (hs == as_) hs += 2;
+                    game.IsCompleted = true;
+                    game.HomeScore = hs;
+                    game.AwayScore = as_;
+                    Debug.LogError($"[Offseason] Preseason game {game.EventId} unplayable (missing team/completion pipeline) — scored {hs}-{as_} as a placeholder.");
+                    _scrimmagesPlayed++;
+                    continue;
+                }
+
+                try
+                {
+                    var result = new Simulation.GameSimulator(gm.PlayerDatabase).SimulateGame(home, away);
+                    gm.GameCompletion.Complete(new Simulation.GameCompletionContext(
+                        game, result, Simulation.GameSource.LeagueAutoSim, gm.PlayerTeamId));
+                }
+                catch (Exception ex)
+                {
+                    // Sim blew up: fall back like LeagueGameSimSystem does — score-only
+                    // completion so the event can never retry and soft-lock the offseason.
+                    int hs = _rng.Next(90, 111), as_ = _rng.Next(90, 111);
+                    if (hs == as_) hs += 2;
+                    Debug.LogError($"[Offseason] Preseason sim failed for {game.EventId}: {ex.Message} — falling back to score-only completion.");
+                    gm.GameCompletion.CompleteScoreOnly(game, hs, as_);
+                    _scrimmagesPlayed++;
+                }
+            }
+        }
+
+        /// <summary>
+        /// A preseason game finished (played, quick-simmed, or auto-simmed) — feed the
+        /// camp the same signal the old auto-scrimmage produced. Called by
+        /// GameCompletionPipeline, the one choke point every sim path funnels through.
+        /// </summary>
+        public void NotifyPreseasonGamePlayed(Data.CalendarEvent game, Simulation.GameResult result)
+        {
+            var gm = GameManager.Instance;
+            var team = gm?.GetPlayerTeam();
+            var tc = gm?.TrainingCampManager;
+            if (game == null || result == null || team == null || tc == null) return;
+
+            if (game.HomeTeamId != team.TeamId && game.AwayTeamId != team.TeamId) return;
+
+            bool isHome = game.HomeTeamId == team.TeamId;
+            var opponent = gm.GetTeam(isHome ? game.AwayTeamId : game.HomeTeamId);
+            if (opponent == null) return;
+
+            int us = isHome ? result.HomeScore : result.AwayScore;
+            int them = isHome ? result.AwayScore : result.HomeScore;
 
             _scrimmagesPlayed++;
-            var game = new PreseasonGame
-            {
-                GameId = $"PRE_{_calendarYear}_{_scrimmagesPlayed}",
-                OpponentTeamId = opponent.TeamId
-            };
-            gm.TrainingCampManager?.SimulatePreseasonGame(game, team, opponent, roster,
-                (opponent.RosterPlayerIds ?? new List<string>())
-                    .Select(id => gm.PlayerDatabase?.GetPlayer(id)).Where(pl => pl != null).ToList(),
-                us, them);
+            tc.SimulatePreseasonGame(
+                new PreseasonGame
+                {
+                    GameId = game.EventId,
+                    GameNumber = _scrimmagesPlayed,
+                    IsHome = isHome,
+                    OpponentTeamId = opponent.TeamId
+                },
+                team, opponent, RosterOf(gm, team), RosterOf(gm, opponent), us, them);
 
-            string line = $"Scrimmage {_scrimmagesPlayed}: {(us > them ? "W" : "L")} {us}-{them} vs {opponent.Name}";
+            string line = $"Preseason {_scrimmagesPlayed}: {(us > them ? "W" : "L")} {us}-{them} vs {opponent.Name}";
             _scrimmageLines.Add(line);
             InboxService.Instance?.Publish(InboxMessageType.League, "Coaching Staff",
                 line, "Preseason reps — the result doesn't count, the tape does.",
                 deepLinkPanelId: "FrontOffice");
         }
+
+        private static List<Data.Player> RosterOf(GameManager gm, Data.Team team) =>
+            (team?.RosterPlayerIds ?? new List<string>())
+                .Select(id => gm.PlayerDatabase?.GetPlayer(id))
+                .Where(pl => pl != null).ToList();
 
         /// <summary>Oct 20: camp closes — cut recommendations, then roster compliance.</summary>
         private void FinishCamp(GameManager gm)
@@ -1691,6 +1795,7 @@ namespace NBAHeadCoach.Core.Manager
             _engineActive = false;
             _market = null;
             _pendingQOs.Clear();
+            _preseasonEvents.Clear();   // exhibitions are done; don't ghost-inject PRE rows into next save
 
             PlayoffManager.Instance?.ResetForNewSeason();
             gm.Development?.SetCurrentSeason(_seasonLabel + 1);
@@ -1750,6 +1855,20 @@ namespace NBAHeadCoach.Core.Manager
                 WorkoutInvites = new List<string>(_workoutInvites),
                 WorkoutsOpened = _workoutsOpened,
                 WorkoutsDone = _workoutsDone,
+
+                PreseasonGames = _preseasonEvents
+                    .Where(e => e != null)
+                    .Select(e => new Data.PreseasonGameRecord
+                    {
+                        EventId = e.EventId,
+                        DateStr = e.Date.ToString("o"),
+                        HomeTeamId = e.HomeTeamId,
+                        AwayTeamId = e.AwayTeamId,
+                        GameNumber = e.GameNumber,
+                        IsCompleted = e.IsCompleted,
+                        HomeScore = e.HomeScore,
+                        AwayScore = e.AwayScore
+                    }).ToList(),
                 FreeAgentPool = GameManager.Instance?.FreeAgents?.GetFreeAgents()?
                     .Select(fa => new Data.FreeAgentRecord
                     {
@@ -1829,6 +1948,36 @@ namespace NBAHeadCoach.Core.Manager
             _rng = new System.Random(_seasonLabel * 31 + 7);
 
             var gm = GameManager.Instance;
+
+            // Preseason games: the regenerated schedule holds regular-season games only,
+            // so put ours back — played ones with their score, pending ones playable.
+            _preseasonEvents.Clear();
+            if (s.PreseasonGames != null && gm != null)
+            {
+                foreach (var rec in s.PreseasonGames)
+                {
+                    if (rec == null || string.IsNullOrEmpty(rec.EventId)) continue;
+                    var game = new Data.CalendarEvent
+                    {
+                        EventId = rec.EventId,
+                        Type = Data.CalendarEventType.Game,
+                        IsPreseason = true,
+                        HomeTeamId = rec.HomeTeamId,
+                        AwayTeamId = rec.AwayTeamId,
+                        IsHomeGame = rec.HomeTeamId == gm.PlayerTeamId,
+                        GameNumber = rec.GameNumber,
+                        IsCompleted = rec.IsCompleted,
+                        HomeScore = rec.HomeScore,
+                        AwayScore = rec.AwayScore,
+                        Title = $"Preseason vs {gm.GetTeam(rec.HomeTeamId == gm.PlayerTeamId ? rec.AwayTeamId : rec.HomeTeamId)?.Abbreviation}"
+                    };
+                    if (DateTime.TryParse(rec.DateStr, null,
+                            System.Globalization.DateTimeStyles.RoundtripKind, out var when))
+                        game.Date = when;
+                    _preseasonEvents.Add(game);
+                }
+                gm.SeasonController?.AddScheduledEvents(_preseasonEvents);
+            }
 
             var fam = gm?.FreeAgents;
             if (fam != null && s.FreeAgentPool != null)

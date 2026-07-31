@@ -80,6 +80,7 @@ namespace NBAHeadCoach.Tests
             RunTest<OffseasonStabilityTest>("Offseason Stability (3 consecutive offseasons)");
             RunTest<DraftScoutingTest>("Draft Scouting (intel, ranges, workouts)");
             RunTest<DraftNightTradeTest>("Draft Night Trades (pick ownership, trade-up offers)");
+            RunTest<PreseasonGameTest>("Preseason Games (playable camp exhibitions)");
             RunTest<TradeDeskTest>("Trade Desk");
             RunTest<FinanceFlowTest>("Finance Flow");
             RunTest<StaffEffectsTest>("Staff Effects");

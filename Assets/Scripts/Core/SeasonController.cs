@@ -705,10 +705,19 @@ namespace NBAHeadCoach.Core
                 PlayoffGame = game.GameNumber
             };
 
-            _completedGames.Add(result);
             game.IsCompleted = true;
             game.HomeScore = homeScore;
             game.AwayScore = awayScore;
+
+            // Preseason: the score sits on the calendar event so the Schedule panel can
+            // show it, and that's all it touches — no completed-game log, no W/L.
+            if (game.IsPreseason)
+            {
+                Debug.Log($"[SeasonController] Preseason result (no W/L): {game.AwayTeamId} {awayScore} @ {game.HomeTeamId} {homeScore}");
+                return;
+            }
+
+            _completedGames.Add(result);
             _currentGameIndex++;
 
             // Team.Wins/Losses is the single authority for records; standings sync from teams.

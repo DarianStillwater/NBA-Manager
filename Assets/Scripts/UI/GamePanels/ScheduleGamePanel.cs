@@ -115,7 +115,8 @@ namespace NBAHeadCoach.UI.GamePanels
                 if (sp != null) limg.sprite = sp;
                 lgo.AddComponent<LayoutElement>().preferredWidth = 18;
 
-                B.TableCell(row, opp?.Abbreviation ?? oppId, 120, FontStyle.Normal, Color.white);
+                B.TableCell(row, (game.IsPreseason ? "PRE  " : "") + (opp?.Abbreviation ?? oppId),
+                    120, FontStyle.Normal, Color.white);
                 B.TableCell(row, isHome ? "HOME" : "AWAY", 40, FontStyle.Normal,
                     isHome ? UITheme.Success : UITheme.TextSecondary);
 
@@ -123,8 +124,11 @@ namespace NBAHeadCoach.UI.GamePanels
                 {
                     bool won = (isHome && game.HomeScore > game.AwayScore) || (!isHome && game.AwayScore > game.HomeScore);
                     string resultStr = isHome ? $"{game.HomeScore}-{game.AwayScore}" : $"{game.AwayScore}-{game.HomeScore}";
-                    B.TableCell(row, won ? $"W {resultStr}" : $"L {resultStr}", 55, FontStyle.Bold,
-                        won ? UITheme.Success : UITheme.Danger);
+                    // Preseason results carry no W/L — just the score.
+                    B.TableCell(row,
+                        game.IsPreseason ? resultStr : (won ? $"W {resultStr}" : $"L {resultStr}"),
+                        55, FontStyle.Bold,
+                        game.IsPreseason ? UITheme.TextSecondary : (won ? UITheme.Success : UITheme.Danger));
                 }
                 else
                 {

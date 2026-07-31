@@ -377,7 +377,11 @@ namespace NBAHeadCoach.Core
             {
                 _playerMinutes[playerId] = 0f;
                 _playerFouls[playerId] = 0;
-                _liveBox.InitializePlayer(playerId);
+                // Records EnergyAtTipoff, but interactive matches never call ConsumeEnergy
+                // (GameSimulator is its only caller) — so on this path Energy never actually
+                // drops during play. Future feature; RefundHalfEnergy's spent>0 guard keeps
+                // that a no-op instead of a free energy gain.
+                _liveBox.InitializePlayer(playerId, GetPlayer(playerId)?.Energy ?? 0f);
             }
 
             // Initialize analytics systems with player lookup functions

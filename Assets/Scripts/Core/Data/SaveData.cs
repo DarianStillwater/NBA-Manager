@@ -825,6 +825,25 @@ namespace NBAHeadCoach.Core.Data
         public List<string> WorkoutInvites = new List<string>();
         public bool WorkoutsOpened;
         public bool WorkoutsDone;
+
+        // O5: the player's three playable camp exhibitions. The season schedule is
+        // regenerated on load (regular-season games only), so these are re-added from
+        // here. Empty in pre-O5 saves = no preseason games, the old behavior.
+        public List<PreseasonGameRecord> PreseasonGames = new List<PreseasonGameRecord>();
+    }
+
+    /// <summary>One scheduled preseason game, played or pending.</summary>
+    [Serializable]
+    public class PreseasonGameRecord
+    {
+        public string EventId;
+        public string DateStr;
+        public string HomeTeamId;
+        public string AwayTeamId;
+        public int GameNumber;
+        public bool IsCompleted;
+        public int HomeScore;
+        public int AwayScore;
     }
 
     [Serializable]
